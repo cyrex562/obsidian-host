@@ -437,3 +437,314 @@
 - [ ] Plan version control integration
 - [ ] Document extension points
 - [ ] Create roadmap
+
+## Feature 13: Multi-Media File Support
+
+### Task 13.1: Image viewing and handling
+- [ ] Add image file detection (png, jpg, jpeg, gif, svg, webp)
+- [ ] Create image viewer component in UI
+- [ ] Implement image thumbnail generation
+- [ ] Add image lazy loading for performance
+- [ ] Support image zoom and pan
+- [ ] Display image metadata (dimensions, size, type)
+- [ ] Test with various image formats
+
+### Task 13.2: PDF viewing
+- [ ] Add PDF file detection
+- [ ] Integrate PDF.js or similar viewer
+- [ ] Implement PDF page navigation
+- [ ] Add PDF search functionality
+- [ ] Support PDF zoom controls
+- [ ] Display PDF metadata
+- [ ] Test with various PDF files
+
+### Task 13.3: Other file type support
+- [ ] Add audio file playback (mp3, wav, ogg)
+- [ ] Add video file playback (mp4, webm)
+- [ ] Support code file syntax highlighting (js, py, rs, etc)
+- [ ] Add text file viewing for non-markdown
+- [ ] Create fallback download option for unsupported types
+- [ ] Test with various file types
+- [ ] Document supported file types
+
+### Task 13.4: File preview in sidebar
+- [ ] Add hover preview for images
+- [ ] Show file type icons
+- [ ] Display file size and metadata
+- [ ] Add quick preview panel
+- [ ] Test preview performance
+- [ ] Optimize for large files
+- [ ] Add preview caching
+
+## Feature 14: File Upload & Download
+
+### Task 14.1: Single file upload
+- [ ] Create upload API endpoint
+- [ ] Add drag-and-drop upload to UI
+- [ ] Implement file upload button
+- [ ] Add upload progress indicator
+- [ ] Validate file types and sizes
+- [ ] Handle upload errors gracefully
+- [ ] Test with various file types and sizes
+
+### Task 14.2: Multiple file upload
+- [ ] Support multiple file selection
+- [ ] Implement batch upload queue
+- [ ] Add individual file progress indicators
+- [ ] Support drag-and-drop multiple files
+- [ ] Handle partial upload failures
+- [ ] Add upload resume capability
+- [ ] Test with large batches
+
+### Task 14.3: Folder upload
+- [ ] Add folder upload support
+- [ ] Preserve directory structure
+- [ ] Show folder upload progress
+- [ ] Handle nested folders
+- [ ] Validate total upload size
+- [ ] Test with complex folder structures
+- [ ] Add folder upload UI
+
+### Task 14.4: Download functionality
+- [ ] Implement single file download
+- [ ] Add folder download as zip
+- [ ] Support multiple file selection download
+- [ ] Create zip compression service
+- [ ] Add download progress for large files
+- [ ] Include metadata in downloads
+- [ ] Test download performance
+
+### Task 14.5: Bulk operations UI
+- [ ] Add checkbox selection to file tree
+- [ ] Create bulk action toolbar
+- [ ] Support select all/none/invert
+- [ ] Add context menu for selections
+- [ ] Implement bulk delete with confirmation
+- [ ] Add bulk move/rename
+- [ ] Test bulk operations performance
+
+## Feature 15: Server-Side Plugin System
+
+### Task 15.1: Plugin architecture design
+- [ ] Design plugin trait/interface
+- [ ] Define plugin lifecycle hooks
+- [ ] Create plugin manifest format (TOML/JSON)
+- [ ] Design plugin sandboxing strategy
+- [ ] Plan plugin API surface
+- [ ] Document plugin capabilities
+- [ ] Create plugin security model
+
+### Task 15.2: Plugin loading mechanism
+- [ ] Implement dynamic plugin loading (WASM or native)
+- [ ] Create plugin discovery system
+- [ ] Add plugin dependency resolution
+- [ ] Implement plugin version checking
+- [ ] Create plugin registry/catalog
+- [ ] Add plugin enable/disable functionality
+- [ ] Test plugin isolation
+
+### Task 15.3: Plugin API implementation
+- [ ] Expose file system operations to plugins
+- [ ] Provide markdown parsing utilities
+- [ ] Add event system for plugins
+- [ ] Create plugin settings storage
+- [ ] Implement plugin-to-plugin communication
+- [ ] Add plugin UI extension points
+- [ ] Document plugin API
+
+### Task 15.4: Core plugins
+- [ ] Implement Daily Notes plugin
+- [ ] Create Templates plugin
+- [ ] Build Backlinks plugin
+- [ ] Add Tag browser plugin
+- [ ] Create Outline/TOC plugin
+- [ ] Build Word count plugin
+- [ ] Test all core plugins
+
+### Task 15.5: Plugin management UI
+- [ ] Create plugin marketplace/browser
+- [ ] Add plugin installation UI
+- [ ] Implement plugin settings page
+- [ ] Show plugin status and logs
+- [ ] Add plugin update notifications
+- [ ] Create plugin developer tools
+- [ ] Test plugin UI workflows
+
+## Feature 16: Obsidian-Native Features
+
+### Task 16.1: Daily Notes
+- [ ] Implement daily note creation logic
+- [ ] Add configurable daily note template
+- [ ] Create daily note naming convention settings
+- [ ] Add calendar picker for date selection
+- [ ] Implement "Open today's note" command
+- [ ] Support custom date formats
+- [ ] Test daily note workflow
+
+### Task 16.2: Random Note
+- [ ] Implement random note selection algorithm
+- [ ] Add "Random Note" button to UI
+- [ ] Support filtering (e.g., only certain folders)
+- [ ] Add keyboard shortcut
+- [ ] Weight by recent edits or tags
+- [ ] Test randomization fairness
+- [ ] Add random note API endpoint
+
+### Task 16.3: Calendar integration
+- [ ] Create calendar view component
+- [ ] Show notes by creation/modification date
+- [ ] Highlight days with notes
+- [ ] Support date-based note navigation
+- [ ] Add calendar in sidebar panel
+- [ ] Integrate with daily notes
+- [ ] Test calendar performance
+
+### Task 16.4: Templates system
+- [ ] Create template storage location
+- [ ] Implement template variable substitution
+- [ ] Add template insertion UI
+- [ ] Support template snippets
+- [ ] Create default templates
+- [ ] Add template creation from note
+- [ ] Test template functionality
+
+### Task 16.5: Quick switcher
+- [ ] Implement fuzzy file search
+- [ ] Create quick switcher modal (Cmd/Ctrl+O)
+- [ ] Add recent files list
+- [ ] Support file creation from switcher
+- [ ] Show file path and preview
+- [ ] Add keyboard navigation
+- [ ] Test switcher performance
+
+## Feature 17: Canvas View
+
+### Task 17.1: Canvas data model
+- [ ] Design canvas file format (.canvas)
+- [ ] Create node and edge data structures
+- [ ] Implement canvas serialization
+- [ ] Add support for different node types
+- [ ] Design canvas metadata
+- [ ] Create canvas validation
+- [ ] Test canvas persistence
+
+### Task 17.2: Canvas rendering
+- [ ] Create canvas viewport component
+- [ ] Implement pan and zoom controls
+- [ ] Render note nodes with previews
+- [ ] Draw connections between nodes
+- [ ] Add node positioning system
+- [ ] Implement canvas background grid
+- [ ] Optimize rendering performance
+
+### Task 17.3: Canvas editing
+- [ ] Add drag-and-drop nodes
+- [ ] Implement node resizing
+- [ ] Create edge drawing tool
+- [ ] Add text/media nodes
+- [ ] Support node grouping
+- [ ] Implement undo/redo for canvas
+- [ ] Test canvas editing workflow
+
+### Task 17.4: Canvas-note integration
+- [ ] Add "Add to canvas" option for notes
+- [ ] Create canvas from selected notes
+- [ ] Support embedding canvas in notes
+- [ ] Implement bi-directional links
+- [ ] Add canvas thumbnail previews
+- [ ] Support canvas templates
+- [ ] Test integration points
+
+### Task 17.5: Graph view
+- [ ] Create force-directed graph layout
+- [ ] Show all notes as graph nodes
+- [ ] Display wiki link connections
+- [ ] Add filtering and highlighting
+- [ ] Implement graph navigation
+- [ ] Support graph export
+- [ ] Test with large note collections
+
+## Feature 18: Metadata Management
+
+### Task 18.1: Frontmatter editing
+- [ ] Parse YAML frontmatter
+- [ ] Create frontmatter editor UI
+- [ ] Support key-value pair editing
+- [ ] Add frontmatter templates
+- [ ] Validate frontmatter syntax
+- [ ] Support arrays and nested objects
+- [ ] Test frontmatter parsing
+
+### Task 18.2: Property types
+- [ ] Support text properties
+- [ ] Add number properties
+- [ ] Implement date/datetime properties
+- [ ] Support tag/multi-tag properties
+- [ ] Add link/multi-link properties
+- [ ] Create checkbox properties
+- [ ] Test all property types
+
+### Task 18.3: Metadata views
+- [ ] Create properties panel in UI
+- [ ] Show all properties for current note
+- [ ] Add inline property editing
+- [ ] Support property search/filter
+- [ ] Display property statistics
+- [ ] Create property auto-complete
+- [ ] Test metadata display
+
+### Task 18.4: Property-based features
+- [ ] Implement property-based search
+- [ ] Create property-based note sorting
+- [ ] Add property templates
+- [ ] Support property inheritance
+- [ ] Create property views/tables
+- [ ] Add property validation rules
+- [ ] Test property queries
+
+### Task 18.5: Tags system
+- [ ] Implement tag parsing from content
+- [ ] Create tag browser/explorer
+- [ ] Add tag auto-complete
+- [ ] Support nested tags (tag/subtag)
+- [ ] Create tag-based search
+- [ ] Show tag counts and usage
+- [ ] Test tag functionality
+
+## Feature 19: Enhanced Search & Organization
+
+### Task 19.1: Advanced search operators
+- [ ] Support boolean operators (AND, OR, NOT)
+- [ ] Add field-specific search (title:, content:, tag:)
+- [ ] Implement regex search
+- [ ] Add date range search
+- [ ] Support property-based queries
+- [ ] Create search query builder UI
+- [ ] Test complex queries
+
+### Task 19.2: Saved searches
+- [ ] Implement search saving mechanism
+- [ ] Create saved search UI
+- [ ] Add search history
+- [ ] Support search sharing/export
+- [ ] Create search shortcuts
+- [ ] Add search notifications
+- [ ] Test saved search persistence
+
+### Task 19.3: Note collections
+- [ ] Create manual note collections
+- [ ] Implement smart collections (dynamic queries)
+- [ ] Add collection management UI
+- [ ] Support collection nesting
+- [ ] Create collection views
+- [ ] Add collection export
+- [ ] Test collection performance
+
+### Task 19.4: Dataview-like queries
+- [ ] Implement query language
+- [ ] Support table/list/task views
+- [ ] Add aggregation functions
+- [ ] Create query editor
+- [ ] Support query embedding in notes
+- [ ] Add query result caching
+- [ ] Test query performance
