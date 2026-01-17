@@ -146,6 +146,22 @@ impl FileService {
         })
     }
 
+    /// Read raw file content (for binary files like images, PDFs, etc.)
+    pub fn read_raw_file(vault_path: &str, file_path: &str) -> AppResult<Vec<u8>> {
+        let full_path = Self::resolve_path(vault_path, file_path)?;
+
+        if !full_path.exists() {
+            return Err(AppError::NotFound(format!("File not found: {}", file_path)));
+        }
+
+        if full_path.is_dir() {
+            return Err(AppError::InvalidInput("Cannot read a directory".to_string()));
+        }
+
+        let content = fs::read(&full_path)?;
+        Ok(content)
+    }
+
     /// Write file content with conflict detection
     pub fn write_file(
         vault_path: &str,

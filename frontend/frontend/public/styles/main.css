@@ -576,3 +576,77 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--border-color);
 }
+
+/* Image Viewer */
+.image-viewer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: var(--bg-secondary);
+}
+
+.image-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.zoom-level {
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.image-container {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    position: relative;
+}
+
+.image-container img {
+    max-width: none;
+    max-height: none;
+    transition: transform 0.2s ease;
+}
+
+/* PDF Viewer */
+.pdf-viewer {
+    width: 100%;
+    height: 100%;
+}
+
+.pdf-viewer iframe {
+    width: 100%;
+    height: 100%;
+}
+
+/* Unsupported File */
+.unsupported-file {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 2rem;
+    text-align: center;
+}
+
+.unsupported-file h2 {
+    margin-bottom: 1rem;
+}
+
+.unsupported-file p {
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+}
+
+.unsupported-file .btn {
+    margin-top: 1rem;
+}

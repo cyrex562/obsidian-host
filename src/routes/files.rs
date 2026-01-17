@@ -4,6 +4,7 @@ use crate::models::{CreateFileRequest, UpdateFileRequest};
 use crate::routes::vaults::AppState;
 use crate::services::FileService;
 use actix_web::{delete, get, post, put, web, HttpResponse};
+use std::path::Path;
 
 #[get("/api/vaults/{vault_id}/files")]
 async fn get_file_tree(
@@ -27,6 +28,48 @@ async fn read_file(
 
     let content = FileService::read_file(&vault.path, &file_path)?;
     Ok(HttpResponse::Ok().json(content))
+}
+
+#[get("/api/vaults/{vault_id}/raw/{file_path:.*}")]
+async fn serve_raw_file(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, file_path) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let raw_content = FileService::read_raw_file(&vault.path, &file_path)?;
+
+    // Determine MIME type based on file extension
+    let mime_type = get_mime_type(&file_path);
+
+    Ok(HttpResponse::Ok()
+        .content_type(mime_type)
+        .body(raw_content))
+}
+
+fn get_mime_type(file_path: &str) -> &'static str {
+    let path = Path::new(file_path);
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("pdf") => "application/pdf",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("ogg") => "audio/ogg",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("js") => "text/javascript",
+        Some("json") => "application/json",
+        Some("css") => "text/css",
+        Some("html") => "text/html",
+        Some("txt") => "text/plain",
+        Some("md") => "text/markdown",
+        _ => "application/octet-stream",
+    }
 }
 
 #[post("/api/vaults/{vault_id}/files")]
@@ -151,6 +194,7 @@ async fn rename_file(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(get_file_tree)
         .service(read_file)
+        .service(serve_raw_file)
         .service(create_file)
         .service(update_file)
         .service(delete_file)
