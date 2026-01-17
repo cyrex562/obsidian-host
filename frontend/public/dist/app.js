@@ -86,11 +86,15 @@ class ApiClient {
             throw new Error('Failed to read file');
         return response.json();
     }
-    async writeFile(vaultId, filePath, content, lastModified) {
+    async writeFile(vaultId, filePath, content, lastModified, frontmatter) {
         const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/files/${filePath}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, last_modified: lastModified }),
+            body: JSON.stringify({
+                content,
+                last_modified: lastModified,
+                frontmatter: frontmatter
+            }),
         });
         if (!response.ok) {
             const error = await response.json();
@@ -332,11 +336,13 @@ class UIManager {
         try {
             let content = '';
             let modified = new Date().toISOString();
+            let frontmatter = undefined;
             // For text-based files, read the content
             if (fileType === 'markdown' || fileType === 'text') {
                 const fileContent = await this.api.readFile(this.state.currentVaultId, filePath);
                 content = fileContent.content;
                 modified = fileContent.modified;
+                frontmatter = fileContent.frontmatter;
             }
             else if (fileType === 'image' || fileType === 'pdf') {
                 // For binary files, we'll use the raw endpoint directly
@@ -351,6 +357,7 @@ class UIManager {
                 isDirty: false,
                 pane: 1,
                 fileType: fileType,
+                frontmatter: frontmatter,
             };
             this.state.addTab(tab);
             this.renderTabs();
@@ -366,7 +373,7 @@ class UIManager {
         if (!tab || !this.state.currentVaultId)
             return;
         try {
-            const updated = await this.api.writeFile(this.state.currentVaultId, tab.filePath, tab.content, tab.modified);
+            const updated = await this.api.writeFile(this.state.currentVaultId, tab.filePath, tab.content, tab.modified, tab.frontmatter);
             tab.modified = updated.modified;
             tab.isDirty = false;
             this.renderTabs();
@@ -400,6 +407,11 @@ class UIManager {
         this.state.setActiveTab(tabId);
         this.renderTabs();
         this.renderEditor();
+        // Update properties panel if it's open
+        const propertiesPanel = document.getElementById('properties-panel');
+        if (propertiesPanel && !propertiesPanel.classList.contains('hidden')) {
+            this.renderProperties();
+        }
     }
     closeTab(tabId) {
         const tab = this.state.getTab(tabId);
@@ -706,6 +718,24 @@ class UIManager {
                 alert('Failed to download file: ' + error);
             }
         });
+        // Properties panel toggle
+        const propertiesToggleBtn = document.getElementById('properties-toggle-btn');
+        propertiesToggleBtn?.addEventListener('click', () => {
+            this.togglePropertiesPanel();
+        });
+        const closePropertiesBtn = document.getElementById('close-properties');
+        closePropertiesBtn?.addEventListener('click', () => {
+            this.hidePropertiesPanel();
+        });
+        // Properties panel actions
+        const addPropertyBtn = document.getElementById('add-property-btn');
+        addPropertyBtn?.addEventListener('click', () => {
+            this.addProperty();
+        });
+        const savePropertiesBtn = document.getElementById('save-properties-btn');
+        savePropertiesBtn?.addEventListener('click', async () => {
+            await this.saveProperties();
+        });
         // Upload functionality
         this.setupUploadHandlers();
         this.setupDragAndDrop();
@@ -843,6 +873,159 @@ class UIManager {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+    togglePropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        if (!panel)
+            return;
+        if (panel.classList.contains('hidden')) {
+            this.showPropertiesPanel();
+        }
+        else {
+            this.hidePropertiesPanel();
+        }
+    }
+    showPropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        if (!panel)
+            return;
+        panel.classList.remove('hidden');
+        this.renderProperties();
+    }
+    hidePropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        panel?.classList.add('hidden');
+    }
+    renderProperties() {
+        const content = document.getElementById('properties-content');
+        if (!content || !this.state.activeTabId)
+            return;
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            content.innerHTML = '<div class="empty-state"><p>No properties available for this file</p></div>';
+            return;
+        }
+        const frontmatter = tab.frontmatter || {};
+        content.innerHTML = '';
+        // Render each property
+        for (const [key, value] of Object.entries(frontmatter)) {
+            const propertyItem = this.createPropertyItem(key, value);
+            content.appendChild(propertyItem);
+        }
+        if (Object.keys(frontmatter).length === 0) {
+            content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
+        }
+    }
+    createPropertyItem(key, value) {
+        const item = document.createElement('div');
+        item.className = 'property-item';
+        item.dataset.key = key;
+        const valueType = Array.isArray(value) ? 'array' : typeof value;
+        let valueStr = '';
+        if (Array.isArray(value)) {
+            valueStr = value.join(', ');
+        }
+        else if (typeof value === 'object' && value !== null) {
+            valueStr = JSON.stringify(value);
+        }
+        else {
+            valueStr = String(value);
+        }
+        item.innerHTML = `
+            <div class="property-item-header">
+                <input type="text" class="property-key" value="${key}" placeholder="Property name">
+                <button class="property-remove-btn">Remove</button>
+            </div>
+            <div class="property-type-selector">
+                <select class="property-type">
+                    <option value="string" ${valueType === 'string' ? 'selected' : ''}>Text</option>
+                    <option value="array" ${valueType === 'array' ? 'selected' : ''}>List</option>
+                    <option value="number" ${valueType === 'number' ? 'selected' : ''}>Number</option>
+                    <option value="boolean" ${valueType === 'boolean' ? 'selected' : ''}>Boolean</option>
+                </select>
+            </div>
+            <textarea class="property-value" placeholder="Value">${valueStr}</textarea>
+        `;
+        // Add remove button handler
+        const removeBtn = item.querySelector('.property-remove-btn');
+        removeBtn?.addEventListener('click', () => {
+            item.remove();
+            if (document.querySelectorAll('.property-item').length === 0) {
+                const content = document.getElementById('properties-content');
+                if (content) {
+                    content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
+                }
+            }
+        });
+        return item;
+    }
+    addProperty() {
+        const content = document.getElementById('properties-content');
+        if (!content)
+            return;
+        // Remove empty state if present
+        const emptyState = content.querySelector('.empty-state');
+        if (emptyState) {
+            emptyState.remove();
+        }
+        const propertyItem = this.createPropertyItem('', '');
+        content.appendChild(propertyItem);
+        // Focus the key input
+        const keyInput = propertyItem.querySelector('.property-key');
+        keyInput?.focus();
+    }
+    async saveProperties() {
+        if (!this.state.activeTabId || !this.state.currentVaultId) {
+            alert('No file is currently open');
+            return;
+        }
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            alert('Properties can only be saved for markdown files');
+            return;
+        }
+        // Collect properties from UI
+        const properties = {};
+        const propertyItems = document.querySelectorAll('.property-item');
+        for (const item of Array.from(propertyItems)) {
+            const keyInput = item.querySelector('.property-key');
+            const valueTextarea = item.querySelector('.property-value');
+            const typeSelect = item.querySelector('.property-type');
+            const key = keyInput.value.trim();
+            const valueStr = valueTextarea.value.trim();
+            const type = typeSelect.value;
+            if (!key)
+                continue; // Skip empty keys
+            let value;
+            switch (type) {
+                case 'array':
+                    value = valueStr.split(',').map(v => v.trim()).filter(v => v);
+                    break;
+                case 'number':
+                    value = parseFloat(valueStr) || 0;
+                    break;
+                case 'boolean':
+                    value = valueStr.toLowerCase() === 'true';
+                    break;
+                default:
+                    value = valueStr;
+            }
+            properties[key] = value;
+        }
+        // Update tab frontmatter
+        tab.frontmatter = Object.keys(properties).length > 0 ? properties : undefined;
+        tab.isDirty = true;
+        // Save the file
+        try {
+            await this.api.writeFile(this.state.currentVaultId, tab.filePath, tab.content, tab.modified, tab.frontmatter);
+            tab.isDirty = false;
+            this.renderTabs();
+            alert('Properties saved successfully');
+        }
+        catch (error) {
+            console.error('Failed to save properties:', error);
+            alert('Failed to save properties: ' + error);
+        }
     }
     async performSearch(query) {
         if (!this.state.currentVaultId)
