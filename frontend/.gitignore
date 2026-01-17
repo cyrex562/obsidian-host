@@ -1,0 +1,29 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+*.db
+*.db-shm
+*.db-wal
+
+# Frontend
+node_modules/
+frontend/public/dist/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+config.toml
+
+# Development
+.env

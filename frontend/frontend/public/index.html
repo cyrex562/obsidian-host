@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian Host</title>
+    <link rel="stylesheet" href="/styles/main.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="/dist/app.js" defer></script>
+</head>
+<body class="theme-dark">
+    <div id="app">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="vault-selector">
+                <select id="vault-select" class="vault-dropdown">
+                    <option value="">Select a vault...</option>
+                </select>
+                <button id="add-vault-btn" class="btn btn-primary">Add Vault</button>
+            </div>
+            <div class="search-bar">
+                <input type="search" id="search-input" placeholder="Search..." class="search-input">
+            </div>
+            <div class="theme-toggle">
+                <button id="theme-toggle-btn" class="btn btn-icon">
+                    <span class="icon">🌙</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>Files</h3>
+                    <div class="sidebar-actions">
+                        <button id="upload-btn" class="btn btn-icon" title="Upload files">
+                            <span class="icon">⬆️</span>
+                        </button>
+                        <button id="new-file-btn" class="btn btn-icon" title="New file">
+                            <span class="icon">📄</span>
+                        </button>
+                        <button id="new-folder-btn" class="btn btn-icon" title="New folder">
+                            <span class="icon">📁</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="file-tree" id="file-tree">
+                    <div class="empty-state">
+                        <p>No vault selected</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resizer -->
+            <div class="resizer" id="resizer"></div>
+
+            <!-- Editor Area -->
+            <div class="editor-area">
+                <!-- Tab Bar -->
+                <div class="tab-bar" id="tab-bar">
+                    <div class="tabs" id="tabs"></div>
+                    <div class="tab-actions">
+                        <button id="properties-toggle-btn" class="btn btn-icon" title="Toggle properties panel">
+                            <span class="icon">ℹ️</span>
+                        </button>
+                        <button id="download-btn" class="btn btn-icon" title="Download current file">
+                            <span class="icon">⬇️</span>
+                        </button>
+                        <button id="split-view-btn" class="btn btn-icon" title="Split view">
+                            <span class="icon">⚡</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Split Container -->
+                <div class="split-container" id="split-container">
+                    <!-- Pane 1 -->
+                    <div class="editor-pane" id="pane-1" data-pane="1">
+                        <div class="editor-toolbar">
+                            <div class="editor-mode-selector">
+                                <button class="mode-btn active" data-mode="raw">Raw</button>
+                                <button class="mode-btn" data-mode="side-by-side">Side by Side</button>
+                                <button class="mode-btn" data-mode="formatted">Formatted</button>
+                                <button class="mode-btn" data-mode="rendered">Rendered</button>
+                            </div>
+                        </div>
+                        <div class="editor-content">
+                            <div class="empty-state">
+                                <h2>No file open</h2>
+                                <p>Select a file from the sidebar to start editing</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pane 2 (hidden by default) -->
+                    <div class="editor-pane hidden" id="pane-2" data-pane="2">
+                        <div class="pane-close">
+                            <button id="close-pane-2" class="btn btn-icon">✕</button>
+                        </div>
+                        <div class="editor-toolbar">
+                            <div class="editor-mode-selector">
+                                <button class="mode-btn active" data-mode="raw">Raw</button>
+                                <button class="mode-btn" data-mode="side-by-side">Side by Side</button>
+                                <button class="mode-btn" data-mode="formatted">Formatted</button>
+                                <button class="mode-btn" data-mode="rendered">Rendered</button>
+                            </div>
+                        </div>
+                        <div class="editor-content">
+                            <div class="empty-state">
+                                <h2>No file open</h2>
+                                <p>Drag a tab here or select a file</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Properties Panel -->
+                <div class="properties-panel hidden" id="properties-panel">
+                    <div class="properties-header">
+                        <h3>Properties</h3>
+                        <button id="close-properties" class="btn btn-icon">✕</button>
+                    </div>
+                    <div class="properties-content" id="properties-content">
+                        <div class="empty-state">
+                            <p>No properties available</p>
+                        </div>
+                    </div>
+                    <div class="properties-actions">
+                        <button id="add-property-btn" class="btn btn-secondary">Add Property</button>
+                        <button id="save-properties-btn" class="btn btn-primary">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for adding vault -->
+    <div id="add-vault-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Vault</h2>
+                <button class="modal-close" data-close-modal="add-vault-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-vault-form">
+                    <div class="form-group">
+                        <label for="vault-name">Vault Name</label>
+                        <input type="text" id="vault-name" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="vault-path">Vault Path</label>
+                        <input type="text" id="vault-path" name="path" required placeholder="/path/to/vault">
+                        <small>Absolute path to your Obsidian vault directory</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" data-close-modal="add-vault-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add Vault</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results Modal -->
+    <div id="search-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Search Results</h2>
+                <button class="modal-close" data-close-modal="search-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Upload Files</h2>
+                <button class="modal-close" data-close-modal="upload-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="upload-area">
+                    <input type="file" id="file-input" multiple hidden>
+                    <div class="upload-prompt">
+                        <span class="upload-icon">📁</span>
+                        <p>Drag and drop files here or click to browse</p>
+                        <button type="button" class="btn btn-primary" id="browse-btn">Browse Files</button>
+                    </div>
+                </div>
+                <div class="upload-list" id="upload-list"></div>
+                <div class="upload-progress hidden" id="upload-progress">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Uploading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drag-and-drop overlay -->
+    <div id="drag-overlay" class="drag-overlay hidden">
+        <div class="drag-content">
+            <span class="drag-icon">📂</span>
+            <p>Drop files to upload</p>
+        </div>
+    </div>
+</body>
+</html>
