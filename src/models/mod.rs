@@ -59,12 +59,16 @@ pub struct FileContent {
     pub path: String,
     pub content: String,
     pub modified: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateFileRequest {
     pub content: String,
     pub last_modified: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

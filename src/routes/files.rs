@@ -119,6 +119,7 @@ async fn update_file(
         &file_path,
         &req.content,
         req.last_modified,
+        req.frontmatter.as_ref(),
     )?;
 
     // Update search index if it's a markdown file

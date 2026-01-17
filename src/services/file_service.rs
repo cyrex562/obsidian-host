@@ -128,7 +128,7 @@ impl FileService {
             return Err(AppError::InvalidInput("Cannot read a directory".to_string()));
         }
 
-        let content = fs::read_to_string(&full_path)?;
+        let raw_content = fs::read_to_string(&full_path)?;
         let metadata = fs::metadata(&full_path)?;
         let modified = metadata
             .modified()
@@ -139,10 +139,18 @@ impl FileService {
             ))
             .unwrap_or_else(Utc::now);
 
+        // Parse frontmatter for markdown files
+        let (frontmatter, content) = if file_path.ends_with(".md") {
+            crate::services::frontmatter_service::parse_frontmatter(&raw_content)?
+        } else {
+            (None, raw_content)
+        };
+
         Ok(FileContent {
             path: file_path.to_string(),
             content,
             modified,
+            frontmatter,
         })
     }
 
@@ -168,6 +176,7 @@ impl FileService {
         file_path: &str,
         content: &str,
         last_modified: Option<DateTime<Utc>>,
+        frontmatter: Option<&serde_json::Value>,
     ) -> AppResult<FileContent> {
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
@@ -203,7 +212,14 @@ impl FileService {
             fs::create_dir_all(parent)?;
         }
 
-        fs::write(&full_path, content)?;
+        // Serialize frontmatter with content for markdown files
+        let final_content = if file_path.ends_with(".md") {
+            crate::services::frontmatter_service::serialize_frontmatter(frontmatter, content)?
+        } else {
+            content.to_string()
+        };
+
+        fs::write(&full_path, &final_content)?;
 
         let metadata = fs::metadata(&full_path)?;
         let modified = metadata
@@ -219,6 +235,7 @@ impl FileService {
             path: file_path.to_string(),
             content: content.to_string(),
             modified,
+            frontmatter: frontmatter.cloned(),
         })
     }
 
@@ -280,6 +297,7 @@ impl FileService {
             path: file_path.to_string(),
             content: content_str.to_string(),
             modified,
+            frontmatter: None,
         })
     }
 
