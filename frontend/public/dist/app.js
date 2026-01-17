@@ -123,6 +123,78 @@ class ApiClient {
             throw new Error('Failed to search');
         return response.json();
     }
+    async uploadFiles(vaultId, files, targetPath = '', onProgress) {
+        const formData = new FormData();
+        // Add all files to form data
+        for (let i = 0; i < files.length; i++) {
+            formData.append('file', files[i]);
+        }
+        // Add target path if specified
+        if (targetPath) {
+            formData.append('path', targetPath);
+        }
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable && onProgress) {
+                    onProgress(e.loaded, e.total);
+                }
+            });
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(JSON.parse(xhr.responseText));
+                }
+                else {
+                    reject(new Error(`Upload failed: ${xhr.statusText}`));
+                }
+            });
+            xhr.addEventListener('error', () => {
+                reject(new Error('Upload failed'));
+            });
+            xhr.open('POST', `${this.baseUrl}/api/vaults/${vaultId}/upload`);
+            xhr.send(formData);
+        });
+    }
+    async downloadFile(vaultId, filePath) {
+        const url = `${this.baseUrl}/api/vaults/${vaultId}/download/${filePath}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filePath.split('/').pop() || 'download';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    async downloadZip(vaultId, paths) {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/download-zip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to download files');
+        }
+        // Get the blob and trigger download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        // Extract filename from Content-Disposition header
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'download.zip';
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    }
 }
 // UI Manager
 class UIManager {
@@ -191,6 +263,11 @@ class UIManager {
             if (!node.is_directory) {
                 item.addEventListener('click', () => this.openFile(node.path));
             }
+            // Add context menu support
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.showFileContextMenu(e, node);
+            });
             container.appendChild(item);
             if (node.is_directory && node.children && node.children.length > 0) {
                 const childContainer = document.createElement('div');
@@ -199,6 +276,48 @@ class UIManager {
                 this.renderFileTree(node.children, childContainer);
             }
         }
+    }
+    showFileContextMenu(event, node) {
+        // Remove any existing context menu
+        const existingMenu = document.querySelector('.context-menu');
+        existingMenu?.remove();
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+        const downloadOption = document.createElement('div');
+        downloadOption.className = 'context-menu-item';
+        downloadOption.textContent = node.is_directory ? 'Download as ZIP' : 'Download';
+        downloadOption.addEventListener('click', async () => {
+            if (!this.state.currentVaultId)
+                return;
+            try {
+                if (node.is_directory) {
+                    await this.api.downloadZip(this.state.currentVaultId, [node.path]);
+                }
+                else {
+                    await this.api.downloadFile(this.state.currentVaultId, node.path);
+                }
+            }
+            catch (error) {
+                console.error('Download failed:', error);
+                alert('Failed to download: ' + error);
+            }
+            menu.remove();
+        });
+        menu.appendChild(downloadOption);
+        document.body.appendChild(menu);
+        // Close menu when clicking outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu);
+        }, 0);
     }
     async openFile(filePath) {
         if (!this.state.currentVaultId)
@@ -569,6 +688,161 @@ class UIManager {
                 }
             });
         });
+        // Download button
+        const downloadBtn = document.getElementById('download-btn');
+        downloadBtn?.addEventListener('click', async () => {
+            if (!this.state.activeTabId || !this.state.currentVaultId) {
+                alert('No file is currently open');
+                return;
+            }
+            const tab = this.state.getTab(this.state.activeTabId);
+            if (!tab)
+                return;
+            try {
+                await this.api.downloadFile(this.state.currentVaultId, tab.filePath);
+            }
+            catch (error) {
+                console.error('Download failed:', error);
+                alert('Failed to download file: ' + error);
+            }
+        });
+        // Upload functionality
+        this.setupUploadHandlers();
+        this.setupDragAndDrop();
+    }
+    setupUploadHandlers() {
+        const uploadBtn = document.getElementById('upload-btn');
+        const browseBtn = document.getElementById('browse-btn');
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        uploadBtn?.addEventListener('click', () => {
+            this.showModal('upload-modal');
+        });
+        browseBtn?.addEventListener('click', () => {
+            fileInput?.click();
+        });
+        uploadArea?.addEventListener('click', (e) => {
+            if (e.target === uploadArea || e.target.closest('.upload-prompt')) {
+                fileInput?.click();
+            }
+        });
+        fileInput?.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                this.displaySelectedFiles(files);
+            }
+        });
+        // Upload area drag and drop
+        uploadArea?.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+        uploadArea?.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+        uploadArea?.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0) {
+                this.displaySelectedFiles(files);
+            }
+        });
+    }
+    setupDragAndDrop() {
+        const dragOverlay = document.getElementById('drag-overlay');
+        let dragCounter = 0;
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            if (this.state.currentVaultId) {
+                dragOverlay?.classList.remove('hidden');
+            }
+        });
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) {
+                dragOverlay?.classList.add('hidden');
+            }
+        });
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        document.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dragOverlay?.classList.add('hidden');
+            if (!this.state.currentVaultId)
+                return;
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0) {
+                await this.handleUpload(files);
+            }
+        });
+    }
+    displaySelectedFiles(files) {
+        const uploadList = document.getElementById('upload-list');
+        if (!uploadList)
+            return;
+        uploadList.innerHTML = '';
+        const filesArray = Array.from(files);
+        for (const file of filesArray) {
+            const item = document.createElement('div');
+            item.className = 'upload-item';
+            item.innerHTML = `
+                <span class="upload-item-name">${file.name}</span>
+                <span class="upload-item-size">${this.formatFileSize(file.size)}</span>
+                <button class="upload-item-remove" data-file="${file.name}">✕</button>
+            `;
+            uploadList.appendChild(item);
+        }
+        // Add upload button
+        const uploadButton = document.createElement('button');
+        uploadButton.className = 'btn btn-primary';
+        uploadButton.textContent = `Upload ${filesArray.length} file(s)`;
+        uploadButton.style.marginTop = '1rem';
+        uploadButton.addEventListener('click', () => this.handleUpload(files));
+        uploadList.appendChild(uploadButton);
+    }
+    async handleUpload(files) {
+        if (!this.state.currentVaultId) {
+            alert('Please select a vault first');
+            return;
+        }
+        const progressContainer = document.getElementById('upload-progress');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        progressContainer?.classList.remove('hidden');
+        try {
+            await this.api.uploadFiles(this.state.currentVaultId, files, '', (loaded, total) => {
+                const percentage = Math.round((loaded / total) * 100);
+                if (progressBar)
+                    progressBar.style.width = `${percentage}%`;
+                if (progressText)
+                    progressText.textContent = `Uploading... ${percentage}%`;
+            });
+            if (progressText)
+                progressText.textContent = 'Upload complete!';
+            setTimeout(() => {
+                this.hideModal('upload-modal');
+                progressContainer?.classList.add('hidden');
+                this.loadFileTree();
+            }, 1000);
+        }
+        catch (error) {
+            console.error('Upload failed:', error);
+            alert('Upload failed: ' + error);
+            progressContainer?.classList.add('hidden');
+        }
+    }
+    formatFileSize(bytes) {
+        if (bytes === 0)
+            return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
     async performSearch(query) {
         if (!this.state.currentVaultId)

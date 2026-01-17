@@ -35,6 +35,9 @@
                 <div class="sidebar-header">
                     <h3>Files</h3>
                     <div class="sidebar-actions">
+                        <button id="upload-btn" class="btn btn-icon" title="Upload files">
+                            <span class="icon">⬆️</span>
+                        </button>
                         <button id="new-file-btn" class="btn btn-icon" title="New file">
                             <span class="icon">📄</span>
                         </button>
@@ -59,6 +62,9 @@
                 <div class="tab-bar" id="tab-bar">
                     <div class="tabs" id="tabs"></div>
                     <div class="tab-actions">
+                        <button id="download-btn" class="btn btn-icon" title="Download current file">
+                            <span class="icon">⬇️</span>
+                        </button>
                         <button id="split-view-btn" class="btn btn-icon" title="Split view">
                             <span class="icon">⚡</span>
                         </button>
@@ -147,6 +153,41 @@
             <div class="modal-body">
                 <div id="search-results"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Upload Files</h2>
+                <button class="modal-close" data-close-modal="upload-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="upload-area">
+                    <input type="file" id="file-input" multiple hidden>
+                    <div class="upload-prompt">
+                        <span class="upload-icon">📁</span>
+                        <p>Drag and drop files here or click to browse</p>
+                        <button type="button" class="btn btn-primary" id="browse-btn">Browse Files</button>
+                    </div>
+                </div>
+                <div class="upload-list" id="upload-list"></div>
+                <div class="upload-progress hidden" id="upload-progress">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Uploading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drag-and-drop overlay -->
+    <div id="drag-overlay" class="drag-overlay hidden">
+        <div class="drag-content">
+            <span class="drag-icon">📂</span>
+            <p>Drop files to upload</p>
         </div>
     </div>
 </body>

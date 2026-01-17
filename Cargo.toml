@@ -8,9 +8,11 @@ edition = "2021"
 actix-web = "4.9"
 actix-files = "0.6"
 actix-ws = "0.3"
+actix-multipart = "0.7"
 
 # Async runtime
 tokio = { version = "1.42", features = ["full"] }
+futures = "0.3"
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
@@ -43,6 +45,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
 walkdir = "2.5"
 regex = "1.11"
+zip = "2.2"
 
 # Configuration
 config = "0.14"

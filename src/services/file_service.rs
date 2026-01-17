@@ -335,7 +335,7 @@ impl FileService {
     }
 
     /// Resolve and validate a path within the vault
-    fn resolve_path(vault_path: &str, file_path: &str) -> AppResult<PathBuf> {
+    pub fn resolve_path(vault_path: &str, file_path: &str) -> AppResult<PathBuf> {
         let vault = Path::new(vault_path).canonicalize()
             .map_err(|_| AppError::NotFound(format!("Vault not found: {}", vault_path)))?;
 
