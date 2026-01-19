@@ -86,6 +86,19 @@ body {
     margin-left: auto;
 }
 
+/* Connection Status */
+.connection-status-container {
+    display: flex;
+    align-items: center;
+    padding: 0 0.5rem;
+}
+
+.connection-status {
+    font-size: 1.2rem;
+    cursor: help;
+    transition: color 0.3s ease;
+}
+
 /* Buttons */
 .btn {
     padding: 0.5rem 1rem;
@@ -377,7 +390,9 @@ body {
 }
 
 /* Markdown Rendering */
-.markdown-content h1, .markdown-content h2, .markdown-content h3 {
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
 }
@@ -930,4 +945,260 @@ body {
 .property-type-selector select {
     padding: 0.25rem;
     font-size: 0.75rem;
+}
+
+/* Conflict Resolution Modal */
+.conflict-message {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-left: 4px solid #fbbf24;
+    border-radius: 4px;
+}
+
+.conflict-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.conflict-option {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+}
+
+.conflict-option h3 {
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.conflict-preview {
+    background-color: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.conflict-option button {
+    width: 100%;
+}
+
+.conflict-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Editor */
+.editor-content {
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.editor-raw {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 2rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 16px;
+    line-height: 1.6;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    display: block;
+}
+
+.code-viewer {
+    height: 100%;
+    overflow: auto;
+    padding: 1rem;
+    background-color: var(--bg-primary);
+}
+
+.code-viewer pre {
+    margin: 0;
+}
+
+/* Side by Side Editor */
+.editor-side-by-side {
+    display: flex;
+    height: 100%;
+    width: 100%;
+}
+
+.editor-side-by-side>div {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    border-right: 1px solid var(--border-color);
+}
+
+.editor-side-by-side>div:last-child {
+    border-right: none;
+}
+
+.markdown-content {
+    padding: 2rem;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.markdown-content p {
+    margin-bottom: 1rem;
+}
+
+.markdown-content img {
+    max-width: 100%;
+    border-radius: 4px;
+}
+
+.markdown-content pre {
+    background-color: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid var(--accent-color);
+    padding-left: 1rem;
+    margin-left: 0;
+    color: var(--text-secondary);
+}
+
+.markdown-content .tag {
+    color: var(--accent-color);
+    text-decoration: none;
+    background-color: var(--bg-tertiary);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+/* Formatted Editor */
+.editor-formatted {
+    width: 100%;
+    height: 100%;
+    padding: 2rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 16px;
+    line-height: 1.6;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+/* Syntax Highlighting Enhancements */
+.editor-formatted .hljs-section,
+.editor-formatted .hljs-title {
+    font-weight: 700;
+    font-size: 1.1em;
+    color: var(--accent-color);
+}
+
+.editor-formatted .hljs-strong {
+    font-weight: 700;
+}
+
+.editor-formatted .hljs-emphasis {
+    font-style: italic;
+}
+
+.editor-formatted .hljs-link {
+    text-decoration: underline;
+    color: var(--text-secondary);
+}
+
+/* WYSIWYG Editor (Quill) */
+.editor-wysiwyg {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Override Quill Theme for Dark Mode */
+.ql-toolbar.ql-snow {
+    border: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    background-color: var(--bg-secondary);
+    font-family: inherit;
+}
+
+.ql-container.ql-snow {
+    border: none !important;
+    flex: 1;
+    background-color: var(--bg-primary);
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.ql-editor {
+    color: var(--text-primary);
+    padding: 2rem;
+}
+
+/* Toolbar Icons */
+.ql-snow .ql-stroke {
+    stroke: var(--text-secondary) !important;
+}
+
+.ql-snow .ql-fill {
+    fill: var(--text-secondary) !important;
+}
+
+.ql-snow .ql-picker {
+    color: var(--text-secondary) !important;
+}
+
+.ql-snow .ql-picker-options {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Hover/Active states */
+.ql-snow .ql-picker-item:hover,
+.ql-snow .ql-picker-label:hover {
+    color: var(--accent-color) !important;
+}
+
+.ql-snow .ql-picker-item:hover .ql-stroke,
+.ql-snow .ql-picker-label:hover .ql-stroke {
+    stroke: var(--accent-color) !important;
+}
+
+.ql-snow button:hover .ql-stroke {
+    stroke: var(--accent-color) !important;
+}
+
+.ql-snow .ql-active .ql-stroke {
+    stroke: var(--accent-color) !important;
 }

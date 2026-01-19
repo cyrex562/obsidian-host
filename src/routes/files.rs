@@ -6,11 +6,11 @@ use crate::services::FileService;
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, put, web, HttpResponse};
 use futures::{StreamExt, TryStreamExt};
-use std::io::{Write, Cursor};
+use std::io::{Cursor, Write};
 use std::path::Path;
+use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
-use walkdir::WalkDir;
 
 #[get("/api/vaults/{vault_id}/files")]
 async fn get_file_tree(
@@ -49,9 +49,7 @@ async fn serve_raw_file(
     // Determine MIME type based on file extension
     let mime_type = get_mime_type(&file_path);
 
-    Ok(HttpResponse::Ok()
-        .content_type(mime_type)
-        .body(raw_content))
+    Ok(HttpResponse::Ok().content_type(mime_type).body(raw_content))
 }
 
 fn get_mime_type(file_path: &str) -> &'static str {
@@ -87,19 +85,13 @@ async fn create_file(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content = FileService::create_file(
-        &vault.path,
-        &req.path,
-        req.content.as_deref(),
-    )?;
+    let content = FileService::create_file(&vault.path, &req.path, req.content.as_deref())?;
 
     // Update search index if it's a markdown file
     if req.path.ends_with(".md") {
-        state.search_index.update_file(
-            &vault_id,
-            &req.path,
-            content.content.clone(),
-        )?;
+        state
+            .search_index
+            .update_file(&vault_id, &req.path, content.content.clone())?;
     }
 
     Ok(HttpResponse::Created().json(content))
@@ -124,11 +116,9 @@ async fn update_file(
 
     // Update search index if it's a markdown file
     if file_path.ends_with(".md") {
-        state.search_index.update_file(
-            &vault_id,
-            &file_path,
-            content.content.clone(),
-        )?;
+        state
+            .search_index
+            .update_file(&vault_id, &file_path, content.content.clone())?;
     }
 
     Ok(HttpResponse::Ok().json(content))
@@ -175,26 +165,41 @@ async fn rename_file(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let from = req["from"].as_str()
-        .ok_or(crate::error::AppError::InvalidInput("Missing 'from' field".to_string()))?;
-    let to = req["to"].as_str()
-        .ok_or(crate::error::AppError::InvalidInput("Missing 'to' field".to_string()))?;
+    let from = req["from"]
+        .as_str()
+        .ok_or(crate::error::AppError::InvalidInput(
+            "Missing 'from' field".to_string(),
+        ))?;
+    let to = req["to"]
+        .as_str()
+        .ok_or(crate::error::AppError::InvalidInput(
+            "Missing 'to' field".to_string(),
+        ))?;
 
-    FileService::rename(&vault.path, from, to)?;
+    let strategy_str = req["strategy"].as_str().unwrap_or("fail");
+    let strategy = match strategy_str {
+        "overwrite" => crate::services::RenameStrategy::Overwrite,
+        "autorename" => crate::services::RenameStrategy::AutoRename,
+        _ => crate::services::RenameStrategy::Fail,
+    };
+
+    let new_path = FileService::rename(&vault.path, from, to, strategy)?;
 
     // Update search index if it's a markdown file
     if from.ends_with(".md") {
         state.search_index.remove_file(&vault_id, from)?;
     }
-    if to.ends_with(".md") {
-        if let Ok(content) = FileService::read_file(&vault.path, to) {
-            state.search_index.update_file(&vault_id, to, content.content)?;
+    if new_path.ends_with(".md") {
+        if let Ok(content) = FileService::read_file(&vault.path, &new_path) {
+            state
+                .search_index
+                .update_file(&vault_id, &new_path, content.content)?;
         }
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "from": from,
-        "to": to,
+        "to": new_path,
     })))
 }
 
@@ -230,7 +235,8 @@ async fn upload_files(
         if field_name == "path" {
             let mut path_bytes = Vec::new();
             while let Some(chunk) = field.next().await {
-                let data = chunk.map_err(|e| AppError::InternalError(format!("Upload error: {}", e)))?;
+                let data =
+                    chunk.map_err(|e| AppError::InternalError(format!("Upload error: {}", e)))?;
                 path_bytes.extend_from_slice(&data);
             }
             target_path = String::from_utf8(path_bytes)
@@ -259,7 +265,8 @@ async fn upload_files(
         let mut file = std::fs::File::create(&full_path)?;
 
         while let Some(chunk) = field.next().await {
-            let data = chunk.map_err(|e| AppError::InternalError(format!("Upload error: {}", e)))?;
+            let data =
+                chunk.map_err(|e| AppError::InternalError(format!("Upload error: {}", e)))?;
             total_size += data.len();
 
             if total_size > max_file_size {
@@ -280,7 +287,9 @@ async fn upload_files(
         // Update search index if it's a markdown file
         if file_path.ends_with(".md") {
             if let Ok(content) = FileService::read_file(&vault.path, &file_path) {
-                state.search_index.update_file(&vault_id, &file_path, content.content)?;
+                state
+                    .search_index
+                    .update_file(&vault_id, &file_path, content.content)?;
             }
         }
 
@@ -312,7 +321,9 @@ async fn download_file(
     }
 
     if full_path.is_dir() {
-        return Err(AppError::InvalidInput("Cannot download directory as single file. Use zip download instead.".to_string()));
+        return Err(AppError::InvalidInput(
+            "Cannot download directory as single file. Use zip download instead.".to_string(),
+        ));
     }
 
     let content = std::fs::read(&full_path)?;
@@ -323,7 +334,10 @@ async fn download_file(
 
     Ok(HttpResponse::Ok()
         .content_type("application/octet-stream")
-        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", filename)))
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", filename),
+        ))
         .body(content))
 }
 
@@ -337,7 +351,8 @@ async fn download_zip(
     let vault = state.db.get_vault(&vault_id).await?;
 
     // Get paths array from request
-    let paths = req["paths"].as_array()
+    let paths = req["paths"]
+        .as_array()
         .ok_or(AppError::InvalidInput("Missing 'paths' array".to_string()))?;
 
     if paths.is_empty() {
@@ -353,7 +368,8 @@ async fn download_zip(
             .compression_level(Some(6));
 
         for path_value in paths {
-            let file_path = path_value.as_str()
+            let file_path = path_value
+                .as_str()
                 .ok_or(AppError::InvalidInput("Invalid path in array".to_string()))?;
 
             let full_path = FileService::resolve_path(&vault.path, file_path)?;
@@ -373,10 +389,12 @@ async fn download_zip(
                     let entry_path = entry.path();
                     if entry_path.is_file() {
                         // Get relative path from vault root
-                        let relative_path = entry_path.strip_prefix(&vault.path)
+                        let relative_path = entry_path
+                            .strip_prefix(&vault.path)
                             .map_err(|_| AppError::InternalError("Path error".to_string()))?;
 
-                        let zip_path = relative_path.to_str()
+                        let zip_path = relative_path
+                            .to_str()
                             .ok_or(AppError::InternalError("Invalid UTF-8 in path".to_string()))?;
 
                         let content = std::fs::read(entry_path)?;
@@ -406,8 +424,69 @@ async fn download_zip(
 
     Ok(HttpResponse::Ok()
         .content_type("application/zip")
-        .insert_header(("Content-Disposition", format!("attachment; filename=\"{}\"", zip_filename)))
+        .insert_header((
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", zip_filename),
+        ))
         .body(zip_data))
+}
+
+#[get("/api/vaults/{vault_id}/random")]
+async fn get_random_file(
+    state: web::Data<AppState>,
+    vault_id: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let vault_id = vault_id.into_inner();
+
+    // Verify vault exists
+    state.db.get_vault(&vault_id).await?;
+
+    let random_file = state.search_index.get_random_file(&vault_id)?;
+
+    if let Some(path) = random_file {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "path": path,
+        })))
+    } else {
+        Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "No markdown files found in vault",
+        })))
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct DailyNoteRequest {
+    date: String,
+}
+
+#[post("/api/vaults/{vault_id}/daily")]
+async fn get_daily_note(
+    state: web::Data<AppState>,
+    vault_id: web::Path<String>,
+    req: web::Json<DailyNoteRequest>,
+) -> AppResult<HttpResponse> {
+    let vault_id = vault_id.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let file_path = format!("{}.md", req.date);
+
+    // Try to read the file
+    match FileService::read_file(&vault.path, &file_path) {
+        Ok(content) => Ok(HttpResponse::Ok().json(content)),
+        Err(AppError::NotFound(_)) => {
+            // Create the file if it doesn't exist
+            let header = format!("# {}\n\n", req.date);
+            let content = FileService::create_file(&vault.path, &file_path, Some(&header))?;
+
+            // Update search index
+            state
+                .search_index
+                .update_file(&vault_id, &file_path, content.content.clone())?;
+
+            Ok(HttpResponse::Created().json(content))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -421,5 +500,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(rename_file)
         .service(upload_files)
         .service(download_file)
-        .service(download_zip);
+        .service(download_zip)
+        .service(get_random_file)
+        .service(get_daily_note);
 }

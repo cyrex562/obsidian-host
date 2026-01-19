@@ -2,7 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{FileChangeEvent, FileChangeType};
 use chrono::Utc;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, NoCache};
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -14,7 +14,7 @@ pub type ChangeReceiver = mpsc::UnboundedReceiver<FileChangeEvent>;
 pub type ChangeSender = mpsc::UnboundedSender<FileChangeEvent>;
 
 pub struct FileWatcher {
-    debouncer: Debouncer<RecommendedWatcher, NoCache>,
+    debouncer: Debouncer<RecommendedWatcher, FileIdMap>,
     vault_paths: Arc<RwLock<HashMap<String, PathBuf>>>,
     change_tx: ChangeSender,
 }
@@ -29,27 +29,24 @@ impl FileWatcher {
         let debouncer = new_debouncer(
             Duration::from_millis(500),
             None,
-            move |result: DebounceEventResult| {
-                match result {
-                    Ok(events) => {
-                        for event in events {
-                            if let Err(e) = Self::handle_event(
-                                event.event,
-                                &vault_paths_clone,
-                                &tx_clone,
-                            ) {
-                                error!("Error handling file event: {}", e);
-                            }
-                        }
-                    }
-                    Err(errors) => {
-                        for error in errors {
-                            error!("Watch error: {:?}", error);
+            move |result: DebounceEventResult| match result {
+                Ok(events) => {
+                    for event in events {
+                        if let Err(e) =
+                            Self::handle_event(event.event, &vault_paths_clone, &tx_clone)
+                        {
+                            error!("Error handling file event: {}", e);
                         }
                     }
                 }
+                Err(errors) => {
+                    for error in errors {
+                        error!("Watch error: {:?}", error);
+                    }
+                }
             },
-        ).map_err(|e| AppError::InternalError(format!("Failed to create watcher: {}", e)))?;
+        )
+        .map_err(|e| AppError::InternalError(format!("Failed to create watcher: {}", e)))?;
 
         Ok((
             Self {
@@ -68,7 +65,9 @@ impl FileWatcher {
             .watch(&vault_path, RecursiveMode::Recursive)
             .map_err(|e| AppError::InternalError(format!("Failed to watch path: {}", e)))?;
 
-        let mut paths = self.vault_paths.write()
+        let mut paths = self
+            .vault_paths
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
         paths.insert(vault_id, vault_path);
 
@@ -76,7 +75,9 @@ impl FileWatcher {
     }
 
     pub fn unwatch_vault(&mut self, vault_id: &str) -> AppResult<()> {
-        let mut paths = self.vault_paths.write()
+        let mut paths = self
+            .vault_paths
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
 
         if let Some(vault_path) = paths.remove(vault_id) {
@@ -100,7 +101,8 @@ impl FileWatcher {
             return Ok(());
         }
 
-        let paths = vault_paths.read()
+        let paths = vault_paths
+            .read()
             .map_err(|_| AppError::InternalError("Failed to acquire read lock".to_string()))?;
 
         // Find which vault this event belongs to

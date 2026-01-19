@@ -1,19 +1,11 @@
-mod config;
-mod db;
-mod error;
-mod models;
-mod routes;
-mod services;
-mod watcher;
-
-use crate::config::AppConfig;
-use crate::db::Database;
-use crate::models::FileChangeEvent;
-use crate::routes::AppState;
-use crate::services::SearchIndex;
-use crate::watcher::FileWatcher;
 use actix_files as fs;
 use actix_web::{middleware, web, App, HttpServer};
+use obsidian_host::config::AppConfig;
+use obsidian_host::db::Database;
+use obsidian_host::models::FileChangeEvent;
+use obsidian_host::routes::AppState;
+use obsidian_host::services::SearchIndex;
+use obsidian_host::watcher::FileWatcher;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tracing::{error, info};
@@ -33,7 +25,10 @@ async fn main() -> std::io::Result<()> {
     // Load configuration
     let config = AppConfig::load().unwrap_or_default();
     info!("Starting Obsidian Host server...");
-    info!("Server config: {}:{}", config.server.host, config.server.port);
+    info!(
+        "Server config: {}:{}",
+        config.server.host, config.server.port
+    );
 
     // Initialize database
     let db_url = format!("sqlite:{}", config.database.path);
@@ -64,11 +59,15 @@ async fn main() -> std::io::Result<()> {
 
             // Update search index based on change type
             match &change_event.event_type {
-                crate::models::FileChangeType::Created | crate::models::FileChangeType::Modified => {
+                obsidian_host::models::FileChangeType::Created
+                | obsidian_host::models::FileChangeType::Modified => {
                     if change_event.path.ends_with(".md") {
                         // Read the file and update index
                         if let Ok(vault) = db_clone.get_vault(&change_event.vault_id).await {
-                            if let Ok(content) = crate::services::FileService::read_file(&vault.path, &change_event.path) {
+                            if let Ok(content) = obsidian_host::services::FileService::read_file(
+                                &vault.path,
+                                &change_event.path,
+                            ) {
                                 let _ = search_index_clone.update_file(
                                     &change_event.vault_id,
                                     &change_event.path,
@@ -78,14 +77,17 @@ async fn main() -> std::io::Result<()> {
                         }
                     }
                 }
-                crate::models::FileChangeType::Deleted => {
-                    let _ = search_index_clone.remove_file(&change_event.vault_id, &change_event.path);
+                obsidian_host::models::FileChangeType::Deleted => {
+                    let _ =
+                        search_index_clone.remove_file(&change_event.vault_id, &change_event.path);
                 }
-                crate::models::FileChangeType::Renamed { from, to } => {
+                obsidian_host::models::FileChangeType::Renamed { from, to } => {
                     let _ = search_index_clone.remove_file(&change_event.vault_id, from);
                     if to.ends_with(".md") {
                         if let Ok(vault) = db_clone.get_vault(&change_event.vault_id).await {
-                            if let Ok(content) = crate::services::FileService::read_file(&vault.path, to) {
+                            if let Ok(content) =
+                                obsidian_host::services::FileService::read_file(&vault.path, to)
+                            {
                                 let _ = search_index_clone.update_file(
                                     &change_event.vault_id,
                                     to,
@@ -142,10 +144,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::default())
-            .configure(routes::vaults::configure)
-            .configure(routes::files::configure)
-            .configure(routes::search::configure)
-            .configure(routes::ws::configure)
+            .configure(obsidian_host::routes::vaults::configure)
+            .configure(obsidian_host::routes::files::configure)
+            .configure(obsidian_host::routes::search::configure)
+            .configure(obsidian_host::routes::ws::configure)
+            .configure(obsidian_host::routes::markdown::configure)
             .service(fs::Files::new("/", "./frontend/public").index_file("index.html"))
     })
     .bind((server_host.as_str(), server_port))?

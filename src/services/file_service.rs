@@ -7,6 +7,13 @@ use walkdir::WalkDir;
 
 pub struct FileService;
 
+#[derive(Debug, PartialEq)]
+pub enum RenameStrategy {
+    Fail,
+    Overwrite,
+    AutoRename, // e.g., file.txt -> file (1).txt
+}
+
 impl FileService {
     /// Get file tree for a vault
     pub fn get_file_tree(vault_path: &str) -> AppResult<Vec<FileNode>> {
@@ -19,9 +26,7 @@ impl FileService {
         }
 
         let mut root_nodes = Vec::new();
-        let entries: Vec<_> = fs::read_dir(path)?
-            .filter_map(|e| e.ok())
-            .collect();
+        let entries: Vec<_> = fs::read_dir(path)?.filter_map(|e| e.ok()).collect();
 
         for entry in entries {
             let path = entry.path();
@@ -39,12 +44,10 @@ impl FileService {
         }
 
         // Sort: directories first, then alphabetically
-        root_nodes.sort_by(|a, b| {
-            match (a.is_directory, b.is_directory) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        root_nodes.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
 
         Ok(root_nodes)
@@ -64,13 +67,12 @@ impl FileService {
             .to_string_lossy()
             .to_string();
 
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|t| DateTime::from_timestamp(
+        let modified = metadata.modified().ok().and_then(|t| {
+            DateTime::from_timestamp(
                 t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                0
-            ));
+                0,
+            )
+        });
 
         let is_directory = metadata.is_dir();
         let mut children = None;
@@ -95,12 +97,10 @@ impl FileService {
             }
 
             // Sort children
-            child_nodes.sort_by(|a, b| {
-                match (a.is_directory, b.is_directory) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                }
+            child_nodes.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             });
 
             children = Some(child_nodes);
@@ -111,7 +111,11 @@ impl FileService {
             path: relative_path,
             is_directory,
             children,
-            size: if !is_directory { Some(metadata.len()) } else { None },
+            size: if !is_directory {
+                Some(metadata.len())
+            } else {
+                None
+            },
             modified,
         })
     }
@@ -125,7 +129,9 @@ impl FileService {
         }
 
         if full_path.is_dir() {
-            return Err(AppError::InvalidInput("Cannot read a directory".to_string()));
+            return Err(AppError::InvalidInput(
+                "Cannot read a directory".to_string(),
+            ));
         }
 
         let raw_content = fs::read_to_string(&full_path)?;
@@ -133,10 +139,12 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| DateTime::from_timestamp(
-                t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                0
-            ))
+            .and_then(|t| {
+                DateTime::from_timestamp(
+                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
+                    0,
+                )
+            })
             .unwrap_or_else(Utc::now);
 
         // Parse frontmatter for markdown files
@@ -163,7 +171,9 @@ impl FileService {
         }
 
         if full_path.is_dir() {
-            return Err(AppError::InvalidInput("Cannot read a directory".to_string()));
+            return Err(AppError::InvalidInput(
+                "Cannot read a directory".to_string(),
+            ));
         }
 
         let content = fs::read(&full_path)?;
@@ -185,12 +195,14 @@ impl FileService {
             let metadata = fs::metadata(&full_path)?;
             if let Ok(modified_time) = metadata.modified() {
                 let file_modified = DateTime::from_timestamp(
-                    modified_time.duration_since(std::time::UNIX_EPOCH)
+                    modified_time
+                        .duration_since(std::time::UNIX_EPOCH)
                         .ok()
                         .ok_or(AppError::InternalError("Invalid timestamp".to_string()))?
                         .as_secs() as i64,
-                    0
-                ).ok_or(AppError::InternalError("Invalid timestamp".to_string()))?;
+                    0,
+                )
+                .ok_or(AppError::InternalError("Invalid timestamp".to_string()))?;
 
                 if let Some(last_mod) = last_modified {
                     // Allow 1 second tolerance for filesystem timestamp precision
@@ -225,10 +237,12 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| DateTime::from_timestamp(
-                t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                0
-            ))
+            .and_then(|t| {
+                DateTime::from_timestamp(
+                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
+                    0,
+                )
+            })
             .unwrap_or_else(Utc::now);
 
         Ok(FileContent {
@@ -250,8 +264,10 @@ impl FileService {
         let content = fs::read_to_string(&full_path)?;
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
 
-        let conflict_filename = format!("conflict_{}_{}",
-            full_path.file_stem()
+        let conflict_filename = format!(
+            "conflict_{}_{}",
+            full_path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("file"),
             timestamp
@@ -268,11 +284,18 @@ impl FileService {
     }
 
     /// Create a new file
-    pub fn create_file(vault_path: &str, file_path: &str, content: Option<&str>) -> AppResult<FileContent> {
+    pub fn create_file(
+        vault_path: &str,
+        file_path: &str,
+        content: Option<&str>,
+    ) -> AppResult<FileContent> {
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
         if full_path.exists() {
-            return Err(AppError::Conflict(format!("File already exists: {}", file_path)));
+            return Err(AppError::Conflict(format!(
+                "File already exists: {}",
+                file_path
+            )));
         }
 
         // Create parent directories
@@ -287,10 +310,12 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| DateTime::from_timestamp(
-                t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                0
-            ))
+            .and_then(|t| {
+                DateTime::from_timestamp(
+                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
+                    0,
+                )
+            })
             .unwrap_or_else(Utc::now);
 
         Ok(FileContent {
@@ -301,21 +326,53 @@ impl FileService {
         })
     }
 
-    /// Delete a file
+    /// Delete a file (move to trash)
     pub fn delete_file(vault_path: &str, file_path: &str) -> AppResult<()> {
+        Self::move_to_trash(vault_path, file_path)
+    }
+
+    /// Move file to .trash folder
+    pub fn move_to_trash(vault_path: &str, file_path: &str) -> AppResult<()> {
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
         if !full_path.exists() {
             return Err(AppError::NotFound(format!("File not found: {}", file_path)));
         }
 
-        if full_path.is_dir() {
-            fs::remove_dir_all(&full_path)?;
-        } else {
-            fs::remove_file(&full_path)?;
+        let trash_dir = Path::new(vault_path).join(".trash");
+        if !trash_dir.exists() {
+            fs::create_dir(&trash_dir)?;
         }
 
+        // Preserve original structure in trash or flat structure?
+        // Flat structure with timestamp is easier to implement for simple restoration logic
+        // But for true restore, we need original path.
+        // Let's implement flat structure with encoded original path for now
+
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let file_name = full_path.file_name().unwrap_or_default().to_string_lossy();
+        let trash_name = format!("{}_{}", timestamp, file_name);
+
+        // We could store metadata about original path in a sidecar file or DB,
+        // but for now let's just move it.
+        // NOTE: This simple implementation doesn't support full "restore" to original location
+        // without more state.
+        //
+        // Improvement: Move to .trash/original_path structure
+
+        let dest_path = trash_dir.join(&trash_name);
+
+        fs::rename(&full_path, &dest_path)?;
+
         Ok(())
+    }
+
+    /// Restore file from trash (Placeholder - requires ID/Path lookup)
+    pub fn restore_file(_vault_path: &str, _trash_id: &str) -> AppResult<()> {
+        // Implementation would require tracking original paths
+        Err(AppError::InternalError(
+            "Restore not fully implemented yet".to_string(),
+        ))
     }
 
     /// Create a directory
@@ -323,24 +380,110 @@ impl FileService {
         let full_path = Self::resolve_path(vault_path, dir_path)?;
 
         if full_path.exists() {
-            return Err(AppError::Conflict(format!("Directory already exists: {}", dir_path)));
+            return Err(AppError::Conflict(format!(
+                "Directory already exists: {}",
+                dir_path
+            )));
         }
 
         fs::create_dir_all(&full_path)?;
         Ok(())
     }
 
-    /// Rename/move a file or directory
-    pub fn rename(vault_path: &str, from: &str, to: &str) -> AppResult<()> {
+    /// Rename/move a file or directory with conflict handling strategy
+    pub fn rename(
+        vault_path: &str,
+        from: &str,
+        to: &str,
+        strategy: RenameStrategy,
+    ) -> AppResult<String> {
         let from_path = Self::resolve_path(vault_path, from)?;
-        let to_path = Self::resolve_path(vault_path, to)?;
+        let mut to_path = Self::resolve_path(vault_path, to)?;
+        let mut final_to = to.to_string();
 
         if !from_path.exists() {
             return Err(AppError::NotFound(format!("Source not found: {}", from)));
         }
 
+        if from_path == to_path {
+            return Ok(final_to);
+        }
+
         if to_path.exists() {
-            return Err(AppError::Conflict(format!("Destination already exists: {}", to)));
+            match strategy {
+                RenameStrategy::Fail => {
+                    return Err(AppError::Conflict(format!(
+                        "Destination already exists: {}",
+                        to
+                    )));
+                }
+                RenameStrategy::Overwrite => {
+                    // If overwrite, we might need to remove destination first if it's a directory
+                    // or if type mismatch (file vs dir)
+                    if to_path.is_dir() {
+                        if from_path.is_file() {
+                            return Err(AppError::Conflict(
+                                "Cannot overwrite directory with file".to_string(),
+                            ));
+                        }
+                        // If both are directories, overwrite usually means merge or replace?
+                        // Replace is dangerous. Let's stick to file overwrite or empty dir overwrite.
+                        fs::remove_dir_all(&to_path)?;
+                    } else {
+                        // Destination is file
+                        if from_path.is_dir() {
+                            return Err(AppError::Conflict(
+                                "Cannot overwrite file with directory".to_string(),
+                            ));
+                        }
+                        // File overwriting file - remove dest first to be clean or just rename over
+                        // fs::rename overwrites on *nix, but windows might have issues?
+                        // Rust std::fs::rename says "This will replace the destination path if it already exists" on Unix,
+                        // but on Windows "It will fail if a file or directory at the destination path already exists".
+                        // So we MUST delete destination on Windows (and safe on Unix too).
+                        if to_path.exists() {
+                            fs::remove_file(&to_path)?;
+                        }
+                    }
+                }
+                RenameStrategy::AutoRename => {
+                    // Generate new name: name (1).ext, name (2).ext
+                    let mut counter = 1;
+                    let stem = to_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("file");
+                    let ext = to_path.extension().and_then(|s| s.to_str());
+                    let parent = to_path
+                        .parent()
+                        .ok_or(AppError::InternalError("Invalid path".to_string()))?;
+
+                    loop {
+                        let new_name = if let Some(extension) = ext {
+                            format!("{} ({}) .{}", stem, counter, extension)
+                        } else {
+                            format!("{} ({})", stem, counter)
+                        };
+
+                        let new_path = parent.join(&new_name);
+                        if !new_path.exists() {
+                            to_path = new_path;
+                            // Update final_to relative path
+                            // We need to reconstruct relative path manually or extract from params
+                            // Simplest is to take 'to' parent and join new name
+                            let to_parent = Path::new(to).parent().unwrap_or(Path::new(""));
+                            final_to = to_parent.join(&new_name).to_string_lossy().to_string();
+                            break;
+                        }
+                        counter += 1;
+                        if counter > 1000 {
+                            return Err(AppError::Conflict(
+                                "Could not find unique name".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
         }
 
         // Create parent directory for destination
@@ -349,12 +492,13 @@ impl FileService {
         }
 
         fs::rename(from_path, to_path)?;
-        Ok(())
+        Ok(final_to)
     }
 
     /// Resolve and validate a path within the vault
     pub fn resolve_path(vault_path: &str, file_path: &str) -> AppResult<PathBuf> {
-        let vault = Path::new(vault_path).canonicalize()
+        let vault = Path::new(vault_path)
+            .canonicalize()
             .map_err(|_| AppError::NotFound(format!("Vault not found: {}", vault_path)))?;
 
         let full_path = vault.join(file_path);
@@ -367,8 +511,9 @@ impl FileService {
             if let Some(parent) = full_path.parent() {
                 if parent.exists() {
                     parent.canonicalize()?.join(
-                        full_path.file_name()
-                            .ok_or(AppError::InvalidInput("Invalid file path".to_string()))?
+                        full_path
+                            .file_name()
+                            .ok_or(AppError::InvalidInput("Invalid file path".to_string()))?,
                     )
                 } else {
                     full_path
@@ -380,7 +525,7 @@ impl FileService {
 
         if !canonical.starts_with(&vault) {
             return Err(AppError::InvalidInput(
-                "Path is outside vault directory".to_string()
+                "Path is outside vault directory".to_string(),
             ));
         }
 

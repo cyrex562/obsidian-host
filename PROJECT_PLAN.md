@@ -3,176 +3,176 @@
 ## Feature 1: Project Setup & Infrastructure
 
 ### Task 1.1: Initialize Rust backend project
-- [ ] Create new Rust project with cargo
-- [ ] Add actix-web, tokio, and other core dependencies
-- [ ] Set up project structure (modules for routes, services, models)
-- [ ] Configure logging (env_logger or tracing)
-- [ ] Verify successful compilation
-- [ ] Set up basic linting with clippy
-- [ ] Fix any initial lint warnings
+- [x] Create new Rust project with cargo
+- [x] Add actix-web, tokio, and other core dependencies
+- [x] Set up project structure (modules for routes, services, models)
+- [x] Configure logging (env_logger or tracing)
+- [x] Verify successful compilation
+- [x] Set up basic linting with clippy
+- [x] Fix any initial lint warnings
 
 ### Task 1.2: Initialize frontend structure
-- [ ] Create frontend directory structure
-- [ ] Set up TypeScript configuration (tsconfig.json)
-- [ ] Add HTMX via CDN or npm
-- [ ] Create basic HTML template structure
-- [ ] Set up build tooling (esbuild or similar for TS compilation)
-- [ ] Verify TypeScript compilation works
-- [ ] Test basic HTMX functionality
+- [x] Create frontend directory structure
+- [x] Set up TypeScript configuration (tsconfig.json)
+- [x] Add HTMX via CDN or npm
+- [x] Create basic HTML template structure
+- [x] Set up build tooling (esbuild or similar for TS compilation)
+- [x] Verify TypeScript compilation works
+- [x] Test basic HTMX functionality
 
 ### Task 1.3: Database setup
-- [ ] Add SQLite dependencies (rusqlite or sqlx)
-- [ ] Create database schema for vault configs and metadata
-- [ ] Write migration system or initial schema setup
-- [ ] Create database connection pool
-- [ ] Test database connectivity
-- [ ] Verify schema creation works
-- [ ] Add database integration tests
+- [x] Add SQLite dependencies (rusqlite or sqlx)
+- [x] Create database schema for vault configs and metadata
+- [x] Write migration system or initial schema setup
+- [x] Create database connection pool
+- [x] Test database connectivity
+- [x] Verify schema creation works
+- [x] Add database integration tests
 
 ### Task 1.4: Development environment
-- [ ] Create .gitignore file
-- [ ] Set up cargo watch for development
-- [ ] Configure CORS for local development
-- [ ] Create README with setup instructions
-- [ ] Add example configuration file
-- [ ] Document environment variables
-- [ ] Test fresh setup on clean environment
+- [x] Create .gitignore file
+- [x] Set up cargo watch for development
+- [x] Configure CORS for local development
+- [x] Create README with setup instructions
+- [x] Add example configuration file
+- [x] Document environment variables
+- [x] Test fresh setup on clean environment
 
 ## Feature 2: Core File System Operations
 
 ### Task 2.1: Vault configuration and management
-- [ ] Create vault configuration model
-- [ ] Implement vault registration endpoint (add new vault)
-- [ ] Implement vault listing endpoint
-- [ ] Implement vault deletion/unregistration
-- [ ] Store vault configs in SQLite
-- [ ] Validate vault paths exist and are accessible
-- [ ] Test vault CRUD operations
-- [ ] Add error handling for invalid paths
+- [x] Create vault configuration model
+- [x] Implement vault registration endpoint (add new vault)
+- [x] Implement vault listing endpoint
+- [x] Implement vault deletion/unregistration
+- [x] Store vault configs in SQLite
+- [x] Validate vault paths exist and are accessible
+- [x] Test vault CRUD operations
+- [x] Add error handling for invalid paths
 
 ### Task 2.2: File tree browsing
-- [ ] Create recursive directory traversal function
-- [ ] Build file tree data structure
-- [ ] Implement API endpoint for getting vault file tree
-- [ ] Filter and categorize files (markdown vs other)
-- [ ] Sort files and folders appropriately
-- [ ] Handle symlinks and special files safely
-- [ ] Test with various directory structures
-- [ ] Add performance tests for large vaults
+- [x] Create recursive directory traversal function
+- [x] Build file tree data structure
+- [x] Implement API endpoint for getting vault file tree
+- [x] Filter and categorize files (markdown vs other)
+- [x] Sort files and folders appropriately
+- [x] Handle symlinks and special files safely
+- [x] Test with various directory structures
+- [x] Add performance tests for large vaults
 
 ### Task 2.3: File reading
-- [ ] Implement file read endpoint
-- [ ] Handle different file encodings (UTF-8 primarily)
-- [ ] Return appropriate content-type headers
-- [ ] Add file size limits for safety
-- [ ] Test reading various file types
-- [ ] Handle permission errors gracefully
-- [ ] Add integration tests
+- [x] Implement file read endpoint
+- [x] Handle different file encodings (UTF-8 primarily)
+- [x] Return appropriate content-type headers
+- [x] Add file size limits for safety
+- [x] Test reading various file types
+- [x] Handle permission errors gracefully
+- [x] Add integration tests
 
 ### Task 2.4: File creation
-- [ ] Implement file creation endpoint
-- [ ] Validate file paths and names
-- [ ] Handle directory creation if needed
-- [ ] Support creating markdown templates
-- [ ] Prevent path traversal attacks
-- [ ] Test file creation edge cases
-- [ ] Verify proper error responses
+- [x] Implement file creation endpoint
+- [x] Validate file paths and names
+- [x] Handle directory creation if needed
+- [x] Support creating markdown templates
+- [x] Prevent path traversal attacks
+- [x] Test file creation edge cases
+- [x] Verify proper error responses
 
 ### Task 2.5: File editing
-- [ ] Implement file update endpoint
-- [ ] Add file locking or version checking
-- [ ] Handle concurrent edit detection
-- [ ] Validate file content before writing
-- [ ] Test various edit scenarios
-- [ ] Verify atomic writes
-- [ ] Add rollback on failure
+- [x] Implement file update endpoint
+- [x] Add file locking or version checking
+- [x] Handle concurrent edit detection
+- [x] Validate file content before writing
+- [x] Test various edit scenarios
+- [x] Verify atomic writes
+- [x] Add rollback on failure
 
 ### Task 2.6: File deletion
-- [ ] Implement file deletion endpoint
-- [ ] Add confirmation/safety checks
-- [ ] Support moving to trash vs permanent delete
-- [ ] Handle deletion of non-empty directories
-- [ ] Test deletion permissions
-- [ ] Verify cleanup of metadata
-- [ ] Add restoration capability (optional)
+- [x] Implement file deletion endpoint
+- [x] Add confirmation/safety checks
+- [x] Support moving to trash vs permanent delete
+- [x] Handle deletion of non-empty directories
+- [x] Test deletion permissions
+- [x] Verify cleanup of metadata
+- [x] Add restoration capability (optional)
 
 ### Task 2.7: Folder operations
-- [ ] Implement folder creation endpoint
-- [ ] Implement folder rename/move endpoint
-- [ ] Implement folder deletion (recursive)
-- [ ] Validate folder operations
-- [ ] Test nested folder operations
-- [ ] Handle move conflicts
+- [x] Implement folder creation endpoint
+- [x] Implement folder rename/move endpoint
+- [x] Implement folder deletion (recursive)
+- [x] Validate folder operations
+- [x] Test nested folder operations
+- [x] Handle move conflicts
 - [ ] Add integration tests
 
 ## Feature 3: File Watching & Synchronization
 
 ### Task 3.1: File system watcher setup
-- [ ] Add notify crate dependency
-- [ ] Create file watcher service
-- [ ] Configure recursive watching for vault paths
-- [ ] Handle watcher errors and restarts
-- [ ] Test watcher initialization
-- [ ] Verify cross-platform compatibility
-- [ ] Add logging for watch events
+- [x] Add notify crate dependency
+- [x] Create file watcher service
+- [x] Configure recursive watching for vault paths
+- [x] Handle watcher errors and restarts
+- [x] Test watcher initialization
+- [x] Verify cross-platform compatibility
+- [x] Add logging for watch events
 
 ### Task 3.2: Change detection and processing
-- [ ] Detect file creation events
-- [ ] Detect file modification events
-- [ ] Detect file deletion events
-- [ ] Detect file rename/move events
-- [ ] Debounce rapid changes (avoid duplicate events)
-- [ ] Test all event types
-- [ ] Handle batch operations efficiently
+- [x] Detect file creation events
+- [x] Detect file modification events
+- [x] Detect file deletion events
+- [x] Detect file rename/move events
+- [x] Debounce rapid changes (avoid duplicate events)
+- [x] Test all event types
+- [x] Handle batch operations efficiently
 
 ### Task 3.3: Web UI notification system
-- [ ] Create WebSocket or SSE connection for real-time updates
-- [ ] Send file change notifications to connected clients
-- [ ] Implement client-side event handlers
-- [ ] Update UI file tree on external changes
-- [ ] Reload open files when changed externally
-- [ ] Test notification delivery
-- [ ] Handle connection drops gracefully
+- [x] Create WebSocket or SSE connection for real-time updates
+- [x] Send file change notifications to connected clients
+- [x] Implement client-side event handlers
+- [x] Update UI file tree on external changes
+- [x] Reload open files when changed externally
+- [x] Test notification delivery
+- [x] Handle connection drops gracefully
 
 ### Task 3.4: Conflict detection and resolution
-- [ ] Track file modification timestamps
-- [ ] Detect when web edit conflicts with disk change
-- [ ] Create conflict backup files with naming convention
-- [ ] Notify user of conflicts
-- [ ] Allow user to choose resolution (optional UI)
-- [ ] Test conflict scenarios
+- [x] Track file modification timestamps
+- [x] Detect when web edit conflicts with disk change
+- [x] Create conflict backup files with naming convention
+- [x] Notify user of conflicts
+- [x] Allow user to choose resolution (optional UI)
+- [x] Test conflict scenarios
 - [ ] Verify backup file creation
 
 ## Feature 4: Markdown Rendering & Editing
 
 ### Task 4.1: Markdown parsing and rendering
-- [ ] Add markdown parsing library (pulldown-cmark or similar)
-- [ ] Implement basic markdown to HTML conversion
-- [ ] Add syntax highlighting for code blocks
-- [ ] Support CommonMark specification
-- [ ] Test various markdown features
-- [ ] Verify rendering correctness
-- [ ] Optimize rendering performance
+- [x] Add markdown parsing library (pulldown-cmark or similar)
+- [x] Implement basic markdown to HTML conversion
+- [x] Add syntax highlighting for code blocks
+- [x] Support CommonMark specification
+- [x] Test various markdown features
+- [x] Verify rendering correctness
+- [x] Optimize rendering performance
 
 ### Task 4.2: Obsidian-specific syntax support
-- [ ] Parse wiki-style links [[note]]
-- [ ] Parse embed syntax ![[file]]
-- [ ] Support block references [[note#^block]]
-- [ ] Support header links [[note#header]]
-- [ ] Parse tags #tag
-- [ ] Support frontmatter (YAML)
-- [ ] Test all Obsidian syntax variants
-- [ ] Handle malformed syntax gracefully
+- [x] Parse wiki-style links [[note]]
+- [x] Parse embed syntax ![[file]]
+- [x] Support block references [[note#^block]]
+- [x] Support header links [[note#header]]
+- [x] Parse tags #tag
+- [x] Support frontmatter (YAML)
+- [x] Test all Obsidian syntax variants
+- [x] Handle malformed syntax gracefully
 
 ### Task 4.3: Editor modes implementation
-- [ ] Create raw markdown editor (textarea)
-- [ ] Implement side-by-side mode (editor + preview)
-- [ ] Implement formatted raw mode (syntax highlighting)
-- [ ] Implement fully rendered mode (WYSIWYG-like)
-- [ ] Add mode switching UI controls
-- [ ] Persist user's mode preference
-- [ ] Test all modes work correctly
-- [ ] Optimize performance for large files
+- [x] Create raw markdown editor (textarea)
+- [x] Implement side-by-side mode (editor + preview)
+- [x] Implement formatted raw mode (syntax highlighting)
+- [x] Implement fully rendered mode (WYSIWYG-like)
+- [x] Add mode switching UI controls
+- [x] Persist user's mode preference
+- [x] Test all modes work correctly
+- [x] Optimize performance for large files
 
 ### Task 4.4: Editor features
 - [ ] Add auto-save functionality
@@ -196,63 +196,63 @@
 ## Feature 5: Search Functionality
 
 ### Task 5.1: Search indexing
-- [ ] Create full-text search index structure
-- [ ] Index markdown file content
-- [ ] Index file and folder names
-- [ ] Update index on file changes
-- [ ] Implement incremental indexing
-- [ ] Test indexing performance
-- [ ] Add index rebuild capability
+- [x] Create full-text search index structure
+- [x] Index markdown file content
+- [x] Index file and folder names
+- [x] Update index on file changes
+- [x] Implement incremental indexing
+- [x] Test indexing performance
+- [x] Add index rebuild capability
 
 ### Task 5.2: Search API
-- [ ] Implement search endpoint
-- [ ] Support full-text search
-- [ ] Support file name search
-- [ ] Add search result ranking
-- [ ] Implement search filters (by folder, date, etc.)
+- [x] Implement search endpoint
+- [x] Support full-text search
+- [x] Support file name search
+- [x] Add search result ranking
+- [x] Implement search filters (by folder, date, etc.)
 - [ ] Test search accuracy
 - [ ] Optimize search performance
 - [ ] Add pagination for results
 
 ### Task 5.3: Search UI
-- [ ] Create search input component
-- [ ] Display search results with context
-- [ ] Highlight matching terms
-- [ ] Add click to open from results
-- [ ] Show search result count
-- [ ] Test search UX
-- [ ] Add keyboard navigation
+- [x] Create search input component
+- [x] Display search results with context
+- [x] Highlight matching terms
+- [x] Add click to open from results
+- [x] Show search result count
+- [x] Test search UX
+- [x] Add keyboard navigation
 
 ## Feature 6: User Interface
 
 ### Task 6.1: Layout and structure
-- [ ] Create main application layout
-- [ ] Implement resizable sidebar
-- [ ] Create tab bar component
-- [ ] Implement editor pane areas
-- [ ] Add vault switcher UI
-- [ ] Test responsive layout
-- [ ] Verify accessibility
+- [x] Create main application layout
+- [x] Implement resizable sidebar
+- [x] Create tab bar component
+- [x] Implement editor pane areas
+- [x] Add vault switcher UI
+- [x] Test responsive layout
+- [x] Verify accessibility
 
 ### Task 6.2: File tree sidebar
-- [ ] Display hierarchical file tree
-- [ ] Support expand/collapse folders
-- [ ] Add file/folder icons
-- [ ] Implement right-click context menu
-- [ ] Support file/folder selection
-- [ ] Add new file/folder buttons
-- [ ] Test tree interactions
-- [ ] Optimize rendering for large trees
+- [x] Display hierarchical file tree
+- [x] Support expand/collapse folders
+- [x] Add file/folder icons
+- [x] Implement right-click context menu
+- [x] Support file/folder selection
+- [x] Add new file/folder buttons
+- [x] Test tree interactions
+- [x] Optimize rendering for large trees
 
 ### Task 6.3: Tab management
-- [ ] Create tab component
-- [ ] Support opening multiple files
-- [ ] Implement tab switching
-- [ ] Add tab close functionality
-- [ ] Show unsaved changes indicator
-- [ ] Persist open tabs
-- [ ] Test tab lifecycle
-- [ ] Handle edge cases (deleted files, etc.)
+- [x] Create tab component
+- [x] Support opening multiple files
+- [x] Implement tab switching
+- [x] Add tab close functionality
+- [x] Show unsaved changes indicator
+- [x] Persist open tabs
+- [x] Test tab lifecycle
+- [x] Handle edge cases (deleted files, etc.)
 
 ### Task 6.4: Split view functionality
 - [ ] Implement split pane creation
@@ -266,12 +266,12 @@
 
 ### Task 6.5: Styling and theming
 - [ ] Create base CSS styles
-- [ ] Implement light theme
-- [ ] Implement dark theme
-- [ ] Add theme switcher
-- [ ] Ensure consistent styling
-- [ ] Test color contrast (accessibility)
-- [ ] Optimize CSS bundle size
+- [x] Implement light theme
+- [x] Implement dark theme
+- [x] Add theme switcher
+- [x] Ensure consistent styling
+- [x] Test color contrast (accessibility)
+- [x] Optimize CSS bundle size
 
 ### Task 6.6: HTMX integration
 - [ ] Set up HTMX for dynamic updates
@@ -441,28 +441,28 @@
 ## Feature 13: Multi-Media File Support
 
 ### Task 13.1: Image viewing and handling
-- [ ] Add image file detection (png, jpg, jpeg, gif, svg, webp)
-- [ ] Create image viewer component in UI
+- [x] Add image file detection (png, jpg, jpeg, gif, svg, webp)
+- [x] Create image viewer component in UI
 - [ ] Implement image thumbnail generation
-- [ ] Add image lazy loading for performance
-- [ ] Support image zoom and pan
-- [ ] Display image metadata (dimensions, size, type)
-- [ ] Test with various image formats
+- [x] Add image lazy loading for performance
+- [x] Support image zoom and pan
+- [x] Display image metadata (dimensions, size, type)
+- [x] Test with various image formats
 
 ### Task 13.2: PDF viewing
-- [ ] Add PDF file detection
-- [ ] Integrate PDF.js or similar viewer
-- [ ] Implement PDF page navigation
+- [x] Add PDF file detection
+- [x] Integrate PDF.js or similar viewer
+- [x] Implement PDF page navigation
 - [ ] Add PDF search functionality
 - [ ] Support PDF zoom controls
 - [ ] Display PDF metadata
-- [ ] Test with various PDF files
+- [x] Test with various PDF files
 
 ### Task 13.3: Other file type support
-- [ ] Add audio file playback (mp3, wav, ogg)
-- [ ] Add video file playback (mp4, webm)
-- [ ] Support code file syntax highlighting (js, py, rs, etc)
-- [ ] Add text file viewing for non-markdown
+- [x] Add audio file playback (mp3, wav, ogg)
+- [x] Add video file playback (mp4, webm)
+- [x] Support code file syntax highlighting (js, py, rs, etc)
+- [x] Add text file viewing for non-markdown
 - [ ] Create fallback download option for unsupported types
 - [ ] Test with various file types
 - [ ] Document supported file types
@@ -479,39 +479,39 @@
 ## Feature 14: File Upload & Download
 
 ### Task 14.1: Single file upload
-- [ ] Create upload API endpoint
-- [ ] Add drag-and-drop upload to UI
-- [ ] Implement file upload button
-- [ ] Add upload progress indicator
-- [ ] Validate file types and sizes
-- [ ] Handle upload errors gracefully
+- [x] Create upload API endpoint
+- [x] Add drag-and-drop upload to UI
+- [x] Implement file upload button
+- [x] Add upload progress indicator
+- [x] Validate file types and sizes
+- [x] Handle upload errors gracefully
 - [ ] Test with various file types and sizes
 
 ### Task 14.2: Multiple file upload
-- [ ] Support multiple file selection
-- [ ] Implement batch upload queue
-- [ ] Add individual file progress indicators
-- [ ] Support drag-and-drop multiple files
-- [ ] Handle partial upload failures
+- [x] Support multiple file selection
+- [x] Implement batch upload queue
+- [x] Add individual file progress indicators
+- [x] Support drag-and-drop multiple files
+- [x] Handle partial upload failures
 - [ ] Add upload resume capability
 - [ ] Test with large batches
 
 ### Task 14.3: Folder upload
-- [ ] Add folder upload support
-- [ ] Preserve directory structure
-- [ ] Show folder upload progress
-- [ ] Handle nested folders
-- [ ] Validate total upload size
+- [x] Add folder upload support
+- [x] Preserve directory structure
+- [x] Show folder upload progress
+- [x] Handle nested folders
+- [x] Validate total upload size
 - [ ] Test with complex folder structures
 - [ ] Add folder upload UI
 
 ### Task 14.4: Download functionality
-- [ ] Implement single file download
-- [ ] Add folder download as zip
-- [ ] Support multiple file selection download
-- [ ] Create zip compression service
-- [ ] Add download progress for large files
-- [ ] Include metadata in downloads
+- [x] Implement single file download
+- [x] Add folder download as zip
+- [x] Support multiple file selection download
+- [x] Create zip compression service
+- [x] Add download progress for large files
+- [x] Include metadata in downloads
 - [ ] Test download performance
 
 ### Task 14.5: Bulk operations UI
@@ -573,22 +573,22 @@
 ## Feature 16: Obsidian-Native Features
 
 ### Task 16.1: Daily Notes
-- [ ] Implement daily note creation logic
+- [x] Implement daily note creation logic
 - [ ] Add configurable daily note template
 - [ ] Create daily note naming convention settings
 - [ ] Add calendar picker for date selection
-- [ ] Implement "Open today's note" command
+- [x] Implement "Open today's note" command
 - [ ] Support custom date formats
 - [ ] Test daily note workflow
 
 ### Task 16.2: Random Note
-- [ ] Implement random note selection algorithm
-- [ ] Add "Random Note" button to UI
+- [x] Implement random note selection algorithm
+- [x] Add "Random Note" button to UI
 - [ ] Support filtering (e.g., only certain folders)
 - [ ] Add keyboard shortcut
 - [ ] Weight by recent edits or tags
 - [ ] Test randomization fairness
-- [ ] Add random note API endpoint
+- [x] Add random note API endpoint
 
 ### Task 16.3: Calendar integration
 - [ ] Create calendar view component
@@ -600,21 +600,21 @@
 - [ ] Test calendar performance
 
 ### Task 16.4: Templates system
-- [ ] Create template storage location
-- [ ] Implement template variable substitution
-- [ ] Add template insertion UI
+- [x] Create template storage location
+- [x] Implement template variable substitution
+- [x] Add template insertion UI
 - [ ] Support template snippets
-- [ ] Create default templates
+- [x] Create default templates
 - [ ] Add template creation from note
 - [ ] Test template functionality
 
 ### Task 16.5: Quick switcher
-- [ ] Implement fuzzy file search
-- [ ] Create quick switcher modal (Cmd/Ctrl+O)
-- [ ] Add recent files list
-- [ ] Support file creation from switcher
-- [ ] Show file path and preview
-- [ ] Add keyboard navigation
+- [x] Implement fuzzy file search
+- [x] Create quick switcher modal (Cmd/Ctrl+O)
+- [x] Add recent files list
+- [x] Support file creation from switcher
+- [x] Show file path and preview
+- [x] Add keyboard navigation
 - [ ] Test switcher performance
 
 ## Feature 17: Canvas View
@@ -667,13 +667,13 @@
 ## Feature 18: Metadata Management
 
 ### Task 18.1: Frontmatter editing
-- [ ] Parse YAML frontmatter
-- [ ] Create frontmatter editor UI
-- [ ] Support key-value pair editing
+- [x] Parse YAML frontmatter
+- [x] Create frontmatter editor UI
+- [x] Support key-value pair editing
 - [ ] Add frontmatter templates
-- [ ] Validate frontmatter syntax
-- [ ] Support arrays and nested objects
-- [ ] Test frontmatter parsing
+- [x] Validate frontmatter syntax
+- [x] Support arrays and nested objects
+- [x] Test frontmatter parsing
 
 ### Task 18.2: Property types
 - [ ] Support text properties
@@ -685,13 +685,13 @@
 - [ ] Test all property types
 
 ### Task 18.3: Metadata views
-- [ ] Create properties panel in UI
-- [ ] Show all properties for current note
-- [ ] Add inline property editing
+- [x] Create properties panel in UI
+- [x] Show all properties for current note
+- [x] Add inline property editing
 - [ ] Support property search/filter
 - [ ] Display property statistics
 - [ ] Create property auto-complete
-- [ ] Test metadata display
+- [x] Test metadata display
 
 ### Task 18.4: Property-based features
 - [ ] Implement property-based search
@@ -703,7 +703,7 @@
 - [ ] Test property queries
 
 ### Task 18.5: Tags system
-- [ ] Implement tag parsing from content
+- [x] Implement tag parsing from content
 - [ ] Create tag browser/explorer
 - [ ] Add tag auto-complete
 - [ ] Support nested tags (tag/subtag)

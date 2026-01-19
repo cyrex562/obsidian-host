@@ -59,7 +59,9 @@ impl SearchIndex {
             }
         }
 
-        let mut indices = self.indices.write()
+        let mut indices = self
+            .indices
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
         indices.insert(vault_id.to_string(), index);
 
@@ -68,7 +70,9 @@ impl SearchIndex {
 
     /// Update a single file in the index
     pub fn update_file(&self, vault_id: &str, file_path: &str, content: String) -> AppResult<()> {
-        let mut indices = self.indices.write()
+        let mut indices = self
+            .indices
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
 
         let vault_index = indices
@@ -81,7 +85,9 @@ impl SearchIndex {
 
     /// Remove a file from the index
     pub fn remove_file(&self, vault_id: &str, file_path: &str) -> AppResult<()> {
-        let mut indices = self.indices.write()
+        let mut indices = self
+            .indices
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
 
         if let Some(vault_index) = indices.get_mut(vault_id) {
@@ -92,12 +98,21 @@ impl SearchIndex {
     }
 
     /// Search for a query in a vault
-    pub fn search(&self, vault_id: &str, query: &str, limit: usize) -> AppResult<Vec<SearchResult>> {
-        let indices = self.indices.read()
+    pub fn search(
+        &self,
+        vault_id: &str,
+        query: &str,
+        limit: usize,
+    ) -> AppResult<Vec<SearchResult>> {
+        let indices = self
+            .indices
+            .read()
             .map_err(|_| AppError::InternalError("Failed to acquire read lock".to_string()))?;
 
-        let vault_index = indices.get(vault_id)
-            .ok_or(AppError::NotFound(format!("Vault index not found: {}", vault_id)))?;
+        let vault_index = indices.get(vault_id).ok_or(AppError::NotFound(format!(
+            "Vault index not found: {}",
+            vault_id
+        )))?;
 
         let query_lower = query.to_lowercase();
         let mut results = Vec::new();
@@ -146,7 +161,11 @@ impl SearchIndex {
         }
 
         // Sort by score (descending)
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Limit results
         results.truncate(limit);
@@ -156,11 +175,41 @@ impl SearchIndex {
 
     /// Remove entire vault index
     pub fn remove_vault(&self, vault_id: &str) -> AppResult<()> {
-        let mut indices = self.indices.write()
+        let mut indices = self
+            .indices
+            .write()
             .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
 
         indices.remove(vault_id);
         Ok(())
+    }
+
+    /// Get a random markdown file from the vault
+    pub fn get_random_file(&self, vault_id: &str) -> AppResult<Option<String>> {
+        let indices = self
+            .indices
+            .read()
+            .map_err(|_| AppError::InternalError("Failed to acquire read lock".to_string()))?;
+
+        if let Some(vault_index) = indices.get(vault_id) {
+            if vault_index.is_empty() {
+                return Ok(None);
+            }
+
+            // Collect keys into a vector to pick a random one
+            // Note: This is O(n), but for reasonable vault sizes it's fine.
+            // Optimization: Maintain a separate Vec of keys if performance becomes an issue.
+            let keys: Vec<&String> = vault_index.keys().collect();
+
+            use rand::seq::IndexedRandom;
+            let mut rng = rand::rng();
+
+            if let Some(random_key) = keys.choose(&mut rng) {
+                return Ok(Some(random_key.to_string()));
+            }
+        }
+
+        Ok(None)
     }
 }
 
