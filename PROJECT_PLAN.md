@@ -175,7 +175,7 @@
 - [x] Optimize performance for large files
 
 ### Task 4.4: Editor features
-- [ ] Add auto-save functionality
+- [x] Add auto-save functionality
 - [ ] Implement undo/redo
 - [ ] Add keyboard shortcuts
 - [ ] Support drag-and-drop for images/files

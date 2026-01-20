@@ -49,13 +49,13 @@ interface Tab {
     modified: string;
     isDirty: boolean;
     pane: number;
-    fileType: 'markdown' | 'image' | 'pdf' | 'text' | 'other';
+    fileType: 'markdown' | 'image' | 'pdf' | 'text' | 'audio' | 'video' | 'other';
     frontmatter?: any;
     autoSaveInterval?: number;
 }
 
 // File type detection helpers
-function getFileType(filePath: string): 'markdown' | 'image' | 'pdf' | 'text' | 'other' {
+function getFileType(filePath: string): 'markdown' | 'image' | 'pdf' | 'text' | 'audio' | 'video' | 'other' {
     const ext = filePath.split('.').pop()?.toLowerCase();
     if (!ext) return 'other';
 
@@ -578,6 +578,12 @@ class UIManager {
         const tab = this.state.getTab(tabId);
         if (!tab || !this.state.currentVaultId) return;
 
+        const saveStatus = document.getElementById('save-status');
+        if (saveStatus) {
+            saveStatus.textContent = 'Saving...';
+            saveStatus.className = 'save-status saving';
+        }
+
         try {
             const updated = await this.api.writeFile(
                 this.state.currentVaultId,
@@ -590,9 +596,24 @@ class UIManager {
             tab.modified = updated.modified;
             tab.isDirty = false;
             this.renderTabs();
+
+            if (saveStatus) {
+                saveStatus.textContent = 'Saved';
+                saveStatus.className = 'save-status';
+                setTimeout(() => {
+                    if (saveStatus.textContent === 'Saved') {
+                        saveStatus.textContent = '';
+                    }
+                }, 2000);
+            }
         } catch (error) {
             console.error('Failed to save file:', error);
-            alert('Failed to save file: ' + error);
+            if (saveStatus) {
+                saveStatus.textContent = 'Save Failed';
+                saveStatus.className = 'save-status error';
+            }
+            // Don't alert on auto-save errors to avoid disrupting user
+            console.error('Auto-save failed: ' + error);
         }
     }
 
@@ -655,6 +676,11 @@ class UIManager {
     }
 
     closeAllTabs() {
+        for (const [_, tab] of this.state.openTabs) {
+            if (tab.autoSaveInterval) {
+                clearInterval(tab.autoSaveInterval);
+            }
+        }
         this.state.openTabs.clear();
         this.state.setActiveTab(null);
         this.renderTabs();
@@ -785,11 +811,11 @@ class UIManager {
             });
         }
     }
-}
-    }
 
-renderSideBySideEditor(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+
+
+    renderSideBySideEditor(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="editor-side-by-side">
                 <div>
                     <textarea class="editor-raw" id="editor-textarea">${tab.content}</textarea>
@@ -798,117 +824,117 @@ renderSideBySideEditor(container: HTMLElement, tab: Tab) {
             </div>
         `;
 
-    const textarea = container.querySelector('#editor-textarea') as HTMLTextAreaElement;
-    const preview = container.querySelector('#preview-pane') as HTMLElement;
+        const textarea = container.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        const preview = container.querySelector('#preview-pane') as HTMLElement;
 
-    if (textarea && preview) {
-        const updatePreview = debounce(async () => {
-            preview.innerHTML = await this.renderMarkdown(textarea.value);
-        }, 300);
+        if (textarea && preview) {
+            const updatePreview = debounce(async () => {
+                preview.innerHTML = await this.renderMarkdown(textarea.value);
+            }, 300);
 
-        textarea.addEventListener('input', () => {
-            tab.content = textarea.value;
-            tab.isDirty = true;
+            textarea.addEventListener('input', () => {
+                tab.content = textarea.value;
+                tab.isDirty = true;
+                updatePreview();
+                this.renderTabs();
+            });
+
             updatePreview();
-            this.renderTabs();
-        });
-
-        updatePreview();
+        }
     }
-}
 
-renderFormattedEditor(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `<div class="editor-formatted language-markdown" id="editor-formatted"></div>`;
+    renderFormattedEditor(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `<div class="editor-formatted language-markdown" id="editor-formatted"></div>`;
 
-    const editor = container.querySelector('#editor-formatted') as HTMLElement;
-    if (editor) {
-        const jar = CodeJar(editor, (editor: HTMLElement) => {
-            hljs.highlightElement(editor);
-        });
+        const editor = container.querySelector('#editor-formatted') as HTMLElement;
+        if (editor) {
+            const jar = CodeJar(editor, (editor: HTMLElement) => {
+                hljs.highlightElement(editor);
+            });
 
-        jar.updateCode(tab.content, false);
-        jar.onUpdate((code: string) => {
-            tab.content = code;
-            tab.isDirty = true;
-            this.renderTabs();
-        });
+            jar.updateCode(tab.content, false);
+            jar.onUpdate((code: string) => {
+                tab.content = code;
+                tab.isDirty = true;
+                this.renderTabs();
+            });
 
-        this.currentJar = jar;
+            this.currentJar = jar;
+        }
     }
-}
 
     async renderRenderedEditor(container: HTMLElement, tab: Tab) {
-    container.innerHTML = '<div class="loading">Loading WYSIWYG Editor...</div>';
+        container.innerHTML = '<div class="loading">Loading WYSIWYG Editor...</div>';
 
-    // Render markdown to HTML via backend
-    const html = await this.renderMarkdown(tab.content);
-    if (this.state.activeTabId !== tab.id) return;
+        // Render markdown to HTML via backend
+        const html = await this.renderMarkdown(tab.content);
+        if (this.state.activeTabId !== tab.id) return;
 
-    // Setup container
-    container.innerHTML = `<div id="editor-wysiwyg" class="editor-wysiwyg"></div>`;
-    const editorEl = container.querySelector('#editor-wysiwyg');
+        // Setup container
+        container.innerHTML = `<div id="editor-wysiwyg" class="editor-wysiwyg"></div>`;
+        const editorEl = container.querySelector('#editor-wysiwyg');
 
-    if (editorEl) {
+        if (editorEl) {
+            // @ts-ignore
+            const quill = new Quill(editorEl, {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike', 'blockquote', 'code-block'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+
+            // Set content
+            // @ts-ignore
+            quill.clipboard.dangerouslyPasteHTML(html);
+
+            // Track changes
+            // @ts-ignore
+            // Track changes
+            // @ts-ignore
+            quill.on('text-change', debounce((delta, oldDelta, source) => {
+                if (source !== 'user') return;
+                // @ts-ignore
+                const newHtml = quill.root.innerHTML;
+                const markdown = this.htmlToMarkdown(newHtml);
+                tab.content = markdown;
+                tab.isDirty = true;
+                this.renderTabs();
+            }, 500));
+
+            this.currentQuill = quill;
+        }
+    }
+
+    htmlToMarkdown(html: string): string {
         // @ts-ignore
-        const quill = new Quill(editorEl, {
-            theme: 'snow',
-            modules: {
-                toolbar: [
-                    [{ 'header': [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike', 'blockquote', 'code-block'],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    ['link', 'image'],
-                    ['clean']
-                ]
+        const turndownService = new TurndownService({
+            headingStyle: 'atx',
+            codeBlockStyle: 'fenced'
+        });
+
+        // Add rule for wiki links (heuristic: internal links don't start with http)
+        turndownService.addRule('wikiLink', {
+            filter: function (node: any) {
+                return node.nodeName === 'A' && node.getAttribute('href') && !node.getAttribute('href').startsWith('http');
+            },
+            replacement: function (content: any, node: any) {
+                const href = node.getAttribute('href');
+                if (href === content) return `[[${href}]]`;
+                return `[[${href}|${content}]]`;
             }
         });
 
-        // Set content
-        // @ts-ignore
-        quill.clipboard.dangerouslyPasteHTML(html);
-
-        // Track changes
-        // @ts-ignore
-        // Track changes
-        // @ts-ignore
-        quill.on('text-change', debounce((delta, oldDelta, source) => {
-            if (source !== 'user') return;
-            // @ts-ignore
-            const newHtml = quill.root.innerHTML;
-            const markdown = this.htmlToMarkdown(newHtml);
-            tab.content = markdown;
-            tab.isDirty = true;
-            this.renderTabs();
-        }, 500));
-
-        this.currentQuill = quill;
+        return turndownService.turndown(html);
     }
-}
 
-htmlToMarkdown(html: string): string {
-    // @ts-ignore
-    const turndownService = new TurndownService({
-        headingStyle: 'atx',
-        codeBlockStyle: 'fenced'
-    });
-
-    // Add rule for wiki links (heuristic: internal links don't start with http)
-    turndownService.addRule('wikiLink', {
-        filter: function (node: any) {
-            return node.nodeName === 'A' && node.getAttribute('href') && !node.getAttribute('href').startsWith('http');
-        },
-        replacement: function (content: any, node: any) {
-            const href = node.getAttribute('href');
-            if (href === content) return `[[${href}]]`;
-            return `[[${href}|${content}]]`;
-        }
-    });
-
-    return turndownService.turndown(html);
-}
-
-renderImageViewer(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+    renderImageViewer(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="image-viewer">
                 <div class="image-controls">
                     <button class="btn btn-icon" id="zoom-in" title="Zoom In">+</button>
@@ -922,81 +948,81 @@ renderImageViewer(container: HTMLElement, tab: Tab) {
             </div>
         `;
 
-    let zoom = 1.0;
-    const img = container.querySelector('#image-display') as HTMLImageElement;
-    const zoomLevel = container.querySelector('#zoom-level') as HTMLSpanElement;
-    const imageContainer = container.querySelector('#image-container') as HTMLDivElement;
+        let zoom = 1.0;
+        const img = container.querySelector('#image-display') as HTMLImageElement;
+        const zoomLevel = container.querySelector('#zoom-level') as HTMLSpanElement;
+        const imageContainer = container.querySelector('#image-container') as HTMLDivElement;
 
-    const updateZoom = () => {
-        if (img) {
-            img.style.transform = `scale(${zoom})`;
-            zoomLevel.textContent = `${Math.round(zoom * 100)}%`;
-        }
-    };
+        const updateZoom = () => {
+            if (img) {
+                img.style.transform = `scale(${zoom})`;
+                zoomLevel.textContent = `${Math.round(zoom * 100)}%`;
+            }
+        };
 
-    container.querySelector('#zoom-in')?.addEventListener('click', () => {
-        zoom = Math.min(zoom + 0.25, 5);
-        updateZoom();
-    });
+        container.querySelector('#zoom-in')?.addEventListener('click', () => {
+            zoom = Math.min(zoom + 0.25, 5);
+            updateZoom();
+        });
 
-    container.querySelector('#zoom-out')?.addEventListener('click', () => {
-        zoom = Math.max(zoom - 0.25, 0.25);
-        updateZoom();
-    });
+        container.querySelector('#zoom-out')?.addEventListener('click', () => {
+            zoom = Math.max(zoom - 0.25, 0.25);
+            updateZoom();
+        });
 
-    container.querySelector('#zoom-reset')?.addEventListener('click', () => {
-        zoom = 1.0;
-        updateZoom();
-    });
+        container.querySelector('#zoom-reset')?.addEventListener('click', () => {
+            zoom = 1.0;
+            updateZoom();
+        });
 
-    // Pan functionality
-    let isPanning = false;
-    let startX = 0;
-    let startY = 0;
-    let scrollLeft = 0;
-    let scrollTop = 0;
+        // Pan functionality
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let scrollLeft = 0;
+        let scrollTop = 0;
 
-    imageContainer.addEventListener('mousedown', (e) => {
-        isPanning = true;
-        startX = e.pageX - imageContainer.offsetLeft;
-        startY = e.pageY - imageContainer.offsetTop;
-        scrollLeft = imageContainer.scrollLeft;
-        scrollTop = imageContainer.scrollTop;
-        imageContainer.style.cursor = 'grabbing';
-    });
+        imageContainer.addEventListener('mousedown', (e) => {
+            isPanning = true;
+            startX = e.pageX - imageContainer.offsetLeft;
+            startY = e.pageY - imageContainer.offsetTop;
+            scrollLeft = imageContainer.scrollLeft;
+            scrollTop = imageContainer.scrollTop;
+            imageContainer.style.cursor = 'grabbing';
+        });
 
-    imageContainer.addEventListener('mouseleave', () => {
-        isPanning = false;
-        imageContainer.style.cursor = 'grab';
-    });
+        imageContainer.addEventListener('mouseleave', () => {
+            isPanning = false;
+            imageContainer.style.cursor = 'grab';
+        });
 
-    imageContainer.addEventListener('mouseup', () => {
-        isPanning = false;
-        imageContainer.style.cursor = 'grab';
-    });
+        imageContainer.addEventListener('mouseup', () => {
+            isPanning = false;
+            imageContainer.style.cursor = 'grab';
+        });
 
-    imageContainer.addEventListener('mousemove', (e) => {
-        if (!isPanning) return;
-        e.preventDefault();
-        const x = e.pageX - imageContainer.offsetLeft;
-        const y = e.pageY - imageContainer.offsetTop;
-        const walkX = (x - startX) * 2;
-        const walkY = (y - startY) * 2;
-        imageContainer.scrollLeft = scrollLeft - walkX;
-        imageContainer.scrollTop = scrollTop - walkY;
-    });
-}
+        imageContainer.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const x = e.pageX - imageContainer.offsetLeft;
+            const y = e.pageY - imageContainer.offsetTop;
+            const walkX = (x - startX) * 2;
+            const walkY = (y - startY) * 2;
+            imageContainer.scrollLeft = scrollLeft - walkX;
+            imageContainer.scrollTop = scrollTop - walkY;
+        });
+    }
 
-renderPdfViewer(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+    renderPdfViewer(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="pdf-viewer">
                 <iframe src="${tab.content}" width="100%" height="100%" style="border: none;"></iframe>
             </div>
         `;
-}
+    }
 
-renderAudioViewer(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+    renderAudioViewer(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="media-viewer">
                 <div class="media-container">
                     <div class="media-icon">🎵</div>
@@ -1007,10 +1033,10 @@ renderAudioViewer(container: HTMLElement, tab: Tab) {
                 </div>
             </div>
         `;
-}
+    }
 
-renderVideoViewer(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+    renderVideoViewer(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="media-viewer">
                 <div class="media-container">
                     <h3>${tab.fileName}</h3>
@@ -1020,10 +1046,10 @@ renderVideoViewer(container: HTMLElement, tab: Tab) {
                 </div>
             </div>
         `;
-}
+    }
 
-renderUnsupportedFile(container: HTMLElement, tab: Tab) {
-    container.innerHTML = `
+    renderUnsupportedFile(container: HTMLElement, tab: Tab) {
+        container.innerHTML = `
             <div class="unsupported-file">
                 <h2>Unsupported File Type</h2>
                 <p>This file type cannot be previewed in the browser.</p>
@@ -1031,410 +1057,409 @@ renderUnsupportedFile(container: HTMLElement, tab: Tab) {
                 <a href="${tab.content}" download="${tab.fileName}" class="btn btn-primary">Download File</a>
             </div>
         `;
-}
-
-    async renderMarkdown(content: string): Promise < string > {
-    try {
-        return await this.api.renderMarkdown(content);
-    } catch(e) {
-        console.error('Markdown render error:', e);
-        return `<p class="error">Failed to render markdown: ${e}</p>`;
     }
-}
 
-setupEventListeners() {
-    // Vault selector
-    const vaultSelect = document.getElementById('vault-select') as HTMLSelectElement;
-    vaultSelect?.addEventListener('change', (e) => {
-        const target = e.target as HTMLSelectElement;
-        this.switchVault(target.value);
-    });
-
-    // Add vault button
-    const addVaultBtn = document.getElementById('add-vault-btn');
-    addVaultBtn?.addEventListener('click', () => {
-        this.showModal('add-vault-modal');
-    });
-
-    // Add vault form
-    const addVaultForm = document.getElementById('add-vault-form') as HTMLFormElement;
-    addVaultForm?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(addVaultForm);
-        const name = formData.get('name') as string;
-        const path = formData.get('path') as string;
-
+    async renderMarkdown(content: string): Promise<string> {
         try {
-            await this.api.createVault(name, path);
-            await this.loadVaults();
-            this.hideModal('add-vault-modal');
-            addVaultForm.reset();
-        } catch (error) {
-            alert('Failed to create vault: ' + error);
+            return await this.api.renderMarkdown(content);
+        } catch (e) {
+            console.error('Markdown render error:', e);
+            return `<p class="error">Failed to render markdown: ${e}</p>`;
         }
-    });
+    }
 
-    // Modal close buttons
-    document.querySelectorAll('[data-close-modal]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const modalId = target.getAttribute('data-close-modal');
-            if (modalId) this.hideModal(modalId);
+    setupEventListeners() {
+        // Vault selector
+        const vaultSelect = document.getElementById('vault-select') as HTMLSelectElement;
+        vaultSelect?.addEventListener('change', (e) => {
+            const target = e.target as HTMLSelectElement;
+            this.switchVault(target.value);
         });
-    });
 
-    // Search
-    const searchInput = document.getElementById('search-input') as HTMLInputElement;
-    searchInput?.addEventListener('input', (e) => {
-        if (this.state.searchDebounce) {
-            clearTimeout(this.state.searchDebounce);
-        }
+        // Add vault button
+        const addVaultBtn = document.getElementById('add-vault-btn');
+        addVaultBtn?.addEventListener('click', () => {
+            this.showModal('add-vault-modal');
+        });
 
-        const target = e.target as HTMLInputElement;
-        const query = target.value.trim();
+        // Add vault form
+        const addVaultForm = document.getElementById('add-vault-form') as HTMLFormElement;
+        addVaultForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(addVaultForm);
+            const name = formData.get('name') as string;
+            const path = formData.get('path') as string;
 
-        if (query.length < 2) return;
-
-        this.state.searchDebounce = window.setTimeout(() => {
-            this.performSearch(query);
-        }, 300);
-    });
-
-    // Theme toggle
-    const themeToggleBtn = document.getElementById('theme-toggle-btn');
-    themeToggleBtn?.addEventListener('click', () => {
-        document.body.classList.toggle('theme-dark');
-    });
-
-    // Editor mode buttons
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const mode = target.getAttribute('data-mode') as any;
-            if (mode) {
-                this.state.editorMode = mode;
-
-                // Update active state
-                target.parentElement?.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                target.classList.add('active');
-
-                this.renderEditor();
+            try {
+                await this.api.createVault(name, path);
+                await this.loadVaults();
+                this.hideModal('add-vault-modal');
+                addVaultForm.reset();
+            } catch (error) {
+                alert('Failed to create vault: ' + error);
             }
         });
-    });
 
-    // Download button
-    const downloadBtn = document.getElementById('download-btn');
-    downloadBtn?.addEventListener('click', async () => {
-        if (!this.state.activeTabId || !this.state.currentVaultId) {
-            alert('No file is currently open');
-            return;
+        // Modal close buttons
+        document.querySelectorAll('[data-close-modal]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const modalId = target.getAttribute('data-close-modal');
+                if (modalId) this.hideModal(modalId);
+            });
+        });
+
+        // Search
+        const searchInput = document.getElementById('search-input') as HTMLInputElement;
+        searchInput?.addEventListener('input', (e) => {
+            if (this.state.searchDebounce) {
+                clearTimeout(this.state.searchDebounce);
+            }
+
+            const target = e.target as HTMLInputElement;
+            const query = target.value.trim();
+
+            if (query.length < 2) return;
+
+            this.state.searchDebounce = window.setTimeout(() => {
+                this.performSearch(query);
+            }, 300);
+        });
+
+        // Theme toggle
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        themeToggleBtn?.addEventListener('click', () => {
+            document.body.classList.toggle('theme-dark');
+        });
+
+        // Editor mode buttons
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const mode = target.getAttribute('data-mode') as any;
+                if (mode) {
+                    this.state.editorMode = mode;
+
+                    // Update active state
+                    target.parentElement?.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                    target.classList.add('active');
+
+                    this.renderEditor();
+                }
+            });
+        });
+
+        // Download button
+        const downloadBtn = document.getElementById('download-btn');
+        downloadBtn?.addEventListener('click', async () => {
+            if (!this.state.activeTabId || !this.state.currentVaultId) {
+                alert('No file is currently open');
+                return;
+            }
+
+            const tab = this.state.getTab(this.state.activeTabId);
+            if (!tab) return;
+
+            try {
+                await this.api.downloadFile(this.state.currentVaultId, tab.filePath);
+            } catch (error) {
+                console.error('Download failed:', error);
+                alert('Failed to download file: ' + error);
+            }
+        });
+
+        // Properties panel toggle
+        const propertiesToggleBtn = document.getElementById('properties-toggle-btn');
+        propertiesToggleBtn?.addEventListener('click', () => {
+            this.togglePropertiesPanel();
+        });
+
+        const closePropertiesBtn = document.getElementById('close-properties');
+        closePropertiesBtn?.addEventListener('click', () => {
+            this.hidePropertiesPanel();
+        });
+
+        // Properties panel actions
+        const addPropertyBtn = document.getElementById('add-property-btn');
+        addPropertyBtn?.addEventListener('click', () => {
+            this.addProperty();
+        });
+
+        const savePropertiesBtn = document.getElementById('save-properties-btn');
+        savePropertiesBtn?.addEventListener('click', async () => {
+            await this.saveProperties();
+        });
+
+        // Random Note
+        const randomNoteBtn = document.getElementById('random-note-btn');
+        randomNoteBtn?.addEventListener('click', async () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+
+            try {
+                const result = await this.api.getRandomNote(this.state.currentVaultId);
+                if (result.path) {
+                    this.openFile(result.path);
+                }
+            } catch (error) {
+                console.error('Failed to get random note:', error);
+                // Don't alert if it's just a 404/not found which might happen in empty vaults
+                alert('No markdown files found in this vault');
+            }
+        });
+
+        // Daily Note
+        const dailyNoteBtn = document.getElementById('daily-note-btn');
+        dailyNoteBtn?.addEventListener('click', async () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+
+            try {
+                // Get today's date in YYYY-MM-DD format
+                const today = new Date().toISOString().split('T')[0];
+                const file = await this.api.getDailyNote(this.state.currentVaultId, today);
+                this.openFile(file.path);
+
+                // Refresh file tree in case file was created
+                await this.loadFileTree();
+            } catch (error) {
+                console.error('Failed to get daily note:', error);
+                alert('Failed to get daily note: ' + error);
+            }
+        });
+
+
+        // Upload functionality
+        this.setupUploadHandlers();
+        this.setupDragAndDrop();
+    }
+
+    setupUploadHandlers() {
+        const uploadBtn = document.getElementById('upload-btn');
+        const browseBtn = document.getElementById('browse-btn');
+        const fileInput = document.getElementById('file-input') as HTMLInputElement;
+        const uploadArea = document.getElementById('upload-area');
+
+        uploadBtn?.addEventListener('click', () => {
+            this.showModal('upload-modal');
+        });
+
+        browseBtn?.addEventListener('click', () => {
+            fileInput?.click();
+        });
+
+        uploadArea?.addEventListener('click', (e) => {
+            if (e.target === uploadArea || (e.target as HTMLElement).closest('.upload-prompt')) {
+                fileInput?.click();
+            }
+        });
+
+        fileInput?.addEventListener('change', (e) => {
+            const files = (e.target as HTMLInputElement).files;
+            if (files && files.length > 0) {
+                this.displaySelectedFiles(files);
+            }
+        });
+
+        // Upload area drag and drop
+        uploadArea?.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea?.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea?.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0) {
+                this.displaySelectedFiles(files);
+            }
+        });
+    }
+
+    setupDragAndDrop() {
+        const dragOverlay = document.getElementById('drag-overlay');
+        let dragCounter = 0;
+
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            if (this.state.currentVaultId) {
+                dragOverlay?.classList.remove('hidden');
+            }
+        });
+
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) {
+                dragOverlay?.classList.add('hidden');
+            }
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        document.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dragOverlay?.classList.add('hidden');
+
+            if (!this.state.currentVaultId) return;
+
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0) {
+                await this.handleUpload(files);
+            }
+        });
+    }
+
+    displaySelectedFiles(files: FileList) {
+        const uploadList = document.getElementById('upload-list');
+        if (!uploadList) return;
+
+        uploadList.innerHTML = '';
+
+        const filesArray = Array.from(files);
+        for (const file of filesArray) {
+            const item = document.createElement('div');
+            item.className = 'upload-item';
+            item.innerHTML = `
+                <span class="upload-item-name">${file.name}</span>
+                <span class="upload-item-size">${this.formatFileSize(file.size)}</span>
+                <button class="upload-item-remove" data-file="${file.name}">✕</button>
+            `;
+            uploadList.appendChild(item);
         }
 
-        const tab = this.state.getTab(this.state.activeTabId);
-        if (!tab) return;
+        // Add upload button
+        const uploadButton = document.createElement('button');
+        uploadButton.className = 'btn btn-primary';
+        uploadButton.textContent = `Upload ${filesArray.length} file(s)`;
+        uploadButton.style.marginTop = '1rem';
+        uploadButton.addEventListener('click', () => this.handleUpload(files));
+        uploadList.appendChild(uploadButton);
+    }
 
-        try {
-            await this.api.downloadFile(this.state.currentVaultId, tab.filePath);
-        } catch (error) {
-            console.error('Download failed:', error);
-            alert('Failed to download file: ' + error);
-        }
-    });
-
-    // Properties panel toggle
-    const propertiesToggleBtn = document.getElementById('properties-toggle-btn');
-    propertiesToggleBtn?.addEventListener('click', () => {
-        this.togglePropertiesPanel();
-    });
-
-    const closePropertiesBtn = document.getElementById('close-properties');
-    closePropertiesBtn?.addEventListener('click', () => {
-        this.hidePropertiesPanel();
-    });
-
-    // Properties panel actions
-    const addPropertyBtn = document.getElementById('add-property-btn');
-    addPropertyBtn?.addEventListener('click', () => {
-        this.addProperty();
-    });
-
-    const savePropertiesBtn = document.getElementById('save-properties-btn');
-    savePropertiesBtn?.addEventListener('click', async () => {
-        await this.saveProperties();
-    });
-
-    // Random Note
-    const randomNoteBtn = document.getElementById('random-note-btn');
-    randomNoteBtn?.addEventListener('click', async () => {
+    async handleUpload(files: FileList) {
         if (!this.state.currentVaultId) {
             alert('Please select a vault first');
             return;
         }
 
+        const progressContainer = document.getElementById('upload-progress');
+        const progressBar = document.getElementById('progress-bar') as HTMLElement;
+        const progressText = document.getElementById('progress-text');
+
+        progressContainer?.classList.remove('hidden');
+
         try {
-            const result = await this.api.getRandomNote(this.state.currentVaultId);
-            if (result.path) {
-                this.openFile(result.path);
-            }
+            await this.api.uploadFiles(
+                this.state.currentVaultId,
+                files,
+                '',
+                (loaded, total) => {
+                    const percentage = Math.round((loaded / total) * 100);
+                    if (progressBar) progressBar.style.width = `${percentage}%`;
+                    if (progressText) progressText.textContent = `Uploading... ${percentage}%`;
+                }
+            );
+
+            if (progressText) progressText.textContent = 'Upload complete!';
+            setTimeout(() => {
+                this.hideModal('upload-modal');
+                progressContainer?.classList.add('hidden');
+                this.loadFileTree();
+            }, 1000);
         } catch (error) {
-            console.error('Failed to get random note:', error);
-            // Don't alert if it's just a 404/not found which might happen in empty vaults
-        } else {
-            alert('No markdown files found in this vault');
-        }
-    }
-        });
-
-// Daily Note
-const dailyNoteBtn = document.getElementById('daily-note-btn');
-dailyNoteBtn?.addEventListener('click', async () => {
-    if (!this.state.currentVaultId) {
-        alert('Please select a vault first');
-        return;
-    }
-
-    try {
-        // Get today's date in YYYY-MM-DD format
-        const today = new Date().toISOString().split('T')[0];
-        const file = await this.api.getDailyNote(this.state.currentVaultId, today);
-        this.openFile(file.path);
-
-        // Refresh file tree in case file was created
-        await this.loadFileTree();
-    } catch (error) {
-        console.error('Failed to get daily note:', error);
-        alert('Failed to get daily note: ' + error);
-    }
-});
-
-// Upload functionality
-this.setupUploadHandlers();
-this.setupDragAndDrop();
-    }
-
-setupUploadHandlers() {
-    const uploadBtn = document.getElementById('upload-btn');
-    const browseBtn = document.getElementById('browse-btn');
-    const fileInput = document.getElementById('file-input') as HTMLInputElement;
-    const uploadArea = document.getElementById('upload-area');
-
-    uploadBtn?.addEventListener('click', () => {
-        this.showModal('upload-modal');
-    });
-
-    browseBtn?.addEventListener('click', () => {
-        fileInput?.click();
-    });
-
-    uploadArea?.addEventListener('click', (e) => {
-        if (e.target === uploadArea || (e.target as HTMLElement).closest('.upload-prompt')) {
-            fileInput?.click();
-        }
-    });
-
-    fileInput?.addEventListener('change', (e) => {
-        const files = (e.target as HTMLInputElement).files;
-        if (files && files.length > 0) {
-            this.displaySelectedFiles(files);
-        }
-    });
-
-    // Upload area drag and drop
-    uploadArea?.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('drag-over');
-    });
-
-    uploadArea?.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('drag-over');
-    });
-
-    uploadArea?.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('drag-over');
-        const files = e.dataTransfer?.files;
-        if (files && files.length > 0) {
-            this.displaySelectedFiles(files);
-        }
-    });
-}
-
-setupDragAndDrop() {
-    const dragOverlay = document.getElementById('drag-overlay');
-    let dragCounter = 0;
-
-    document.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        dragCounter++;
-        if (this.state.currentVaultId) {
-            dragOverlay?.classList.remove('hidden');
-        }
-    });
-
-    document.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        dragCounter--;
-        if (dragCounter === 0) {
-            dragOverlay?.classList.add('hidden');
-        }
-    });
-
-    document.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-
-    document.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        dragCounter = 0;
-        dragOverlay?.classList.add('hidden');
-
-        if (!this.state.currentVaultId) return;
-
-        const files = e.dataTransfer?.files;
-        if (files && files.length > 0) {
-            await this.handleUpload(files);
-        }
-    });
-}
-
-displaySelectedFiles(files: FileList) {
-    const uploadList = document.getElementById('upload-list');
-    if (!uploadList) return;
-
-    uploadList.innerHTML = '';
-
-    const filesArray = Array.from(files);
-    for (const file of filesArray) {
-        const item = document.createElement('div');
-        item.className = 'upload-item';
-        item.innerHTML = `
-                <span class="upload-item-name">${file.name}</span>
-                <span class="upload-item-size">${this.formatFileSize(file.size)}</span>
-                <button class="upload-item-remove" data-file="${file.name}">✕</button>
-            `;
-        uploadList.appendChild(item);
-    }
-
-    // Add upload button
-    const uploadButton = document.createElement('button');
-    uploadButton.className = 'btn btn-primary';
-    uploadButton.textContent = `Upload ${filesArray.length} file(s)`;
-    uploadButton.style.marginTop = '1rem';
-    uploadButton.addEventListener('click', () => this.handleUpload(files));
-    uploadList.appendChild(uploadButton);
-}
-
-    async handleUpload(files: FileList) {
-    if (!this.state.currentVaultId) {
-        alert('Please select a vault first');
-        return;
-    }
-
-    const progressContainer = document.getElementById('upload-progress');
-    const progressBar = document.getElementById('progress-bar') as HTMLElement;
-    const progressText = document.getElementById('progress-text');
-
-    progressContainer?.classList.remove('hidden');
-
-    try {
-        await this.api.uploadFiles(
-            this.state.currentVaultId,
-            files,
-            '',
-            (loaded, total) => {
-                const percentage = Math.round((loaded / total) * 100);
-                if (progressBar) progressBar.style.width = `${percentage}%`;
-                if (progressText) progressText.textContent = `Uploading... ${percentage}%`;
-            }
-        );
-
-        if (progressText) progressText.textContent = 'Upload complete!';
-        setTimeout(() => {
-            this.hideModal('upload-modal');
+            console.error('Upload failed:', error);
+            alert('Upload failed: ' + error);
             progressContainer?.classList.add('hidden');
-            this.loadFileTree();
-        }, 1000);
-    } catch (error) {
-        console.error('Upload failed:', error);
-        alert('Upload failed: ' + error);
-        progressContainer?.classList.add('hidden');
-    }
-}
-
-formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-togglePropertiesPanel() {
-    const panel = document.getElementById('properties-panel');
-    if (!panel) return;
-
-    if (panel.classList.contains('hidden')) {
-        this.showPropertiesPanel();
-    } else {
-        this.hidePropertiesPanel();
-    }
-}
-
-showPropertiesPanel() {
-    const panel = document.getElementById('properties-panel');
-    if (!panel) return;
-
-    panel.classList.remove('hidden');
-    this.renderProperties();
-}
-
-hidePropertiesPanel() {
-    const panel = document.getElementById('properties-panel');
-    panel?.classList.add('hidden');
-}
-
-renderProperties() {
-    const content = document.getElementById('properties-content');
-    if (!content || !this.state.activeTabId) return;
-
-    const tab = this.state.getTab(this.state.activeTabId);
-    if (!tab || tab.fileType !== 'markdown') {
-        content.innerHTML = '<div class="empty-state"><p>No properties available for this file</p></div>';
-        return;
+        }
     }
 
-    const frontmatter = tab.frontmatter || {};
-    content.innerHTML = '';
-
-    // Render each property
-    for (const [key, value] of Object.entries(frontmatter)) {
-        const propertyItem = this.createPropertyItem(key, value);
-        content.appendChild(propertyItem);
+    formatFileSize(bytes: number): string {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
-    if (Object.keys(frontmatter).length === 0) {
-        content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
-    }
-}
+    togglePropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        if (!panel) return;
 
-createPropertyItem(key: string, value: any): HTMLElement {
-    const item = document.createElement('div');
-    item.className = 'property-item';
-    item.dataset.key = key;
-
-    const valueType = Array.isArray(value) ? 'array' : typeof value;
-    let valueStr = '';
-
-    if (Array.isArray(value)) {
-        valueStr = value.join(', ');
-    } else if (typeof value === 'object' && value !== null) {
-        valueStr = JSON.stringify(value);
-    } else {
-        valueStr = String(value);
+        if (panel.classList.contains('hidden')) {
+            this.showPropertiesPanel();
+        } else {
+            this.hidePropertiesPanel();
+        }
     }
 
-    item.innerHTML = `
+    showPropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        if (!panel) return;
+
+        panel.classList.remove('hidden');
+        this.renderProperties();
+    }
+
+    hidePropertiesPanel() {
+        const panel = document.getElementById('properties-panel');
+        panel?.classList.add('hidden');
+    }
+
+    renderProperties() {
+        const content = document.getElementById('properties-content');
+        if (!content || !this.state.activeTabId) return;
+
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            content.innerHTML = '<div class="empty-state"><p>No properties available for this file</p></div>';
+            return;
+        }
+
+        const frontmatter = tab.frontmatter || {};
+        content.innerHTML = '';
+
+        // Render each property
+        for (const [key, value] of Object.entries(frontmatter)) {
+            const propertyItem = this.createPropertyItem(key, value);
+            content.appendChild(propertyItem);
+        }
+
+        if (Object.keys(frontmatter).length === 0) {
+            content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
+        }
+    }
+
+    createPropertyItem(key: string, value: any): HTMLElement {
+        const item = document.createElement('div');
+        item.className = 'property-item';
+        item.dataset.key = key;
+
+        const valueType = Array.isArray(value) ? 'array' : typeof value;
+        let valueStr = '';
+
+        if (Array.isArray(value)) {
+            valueStr = value.join(', ');
+        } else if (typeof value === 'object' && value !== null) {
+            valueStr = JSON.stringify(value);
+        } else {
+            valueStr = String(value);
+        }
+
+        item.innerHTML = `
             <div class="property-item-header">
                 <input type="text" class="property-key" value="${key}" placeholder="Property name">
                 <button class="property-remove-btn">Remove</button>
@@ -1450,132 +1475,132 @@ createPropertyItem(key: string, value: any): HTMLElement {
             <textarea class="property-value" placeholder="Value">${valueStr}</textarea>
         `;
 
-    // Add remove button handler
-    const removeBtn = item.querySelector('.property-remove-btn');
-    removeBtn?.addEventListener('click', () => {
-        item.remove();
-        if (document.querySelectorAll('.property-item').length === 0) {
-            const content = document.getElementById('properties-content');
-            if (content) {
-                content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
+        // Add remove button handler
+        const removeBtn = item.querySelector('.property-remove-btn');
+        removeBtn?.addEventListener('click', () => {
+            item.remove();
+            if (document.querySelectorAll('.property-item').length === 0) {
+                const content = document.getElementById('properties-content');
+                if (content) {
+                    content.innerHTML = '<div class="empty-state"><p>No properties defined</p></div>';
+                }
             }
-        }
-    });
+        });
 
-    return item;
-}
-
-addProperty() {
-    const content = document.getElementById('properties-content');
-    if (!content) return;
-
-    // Remove empty state if present
-    const emptyState = content.querySelector('.empty-state');
-    if (emptyState) {
-        emptyState.remove();
+        return item;
     }
 
-    const propertyItem = this.createPropertyItem('', '');
-    content.appendChild(propertyItem);
+    addProperty() {
+        const content = document.getElementById('properties-content');
+        if (!content) return;
 
-    // Focus the key input
-    const keyInput = propertyItem.querySelector('.property-key') as HTMLInputElement;
-    keyInput?.focus();
-}
+        // Remove empty state if present
+        const emptyState = content.querySelector('.empty-state');
+        if (emptyState) {
+            emptyState.remove();
+        }
+
+        const propertyItem = this.createPropertyItem('', '');
+        content.appendChild(propertyItem);
+
+        // Focus the key input
+        const keyInput = propertyItem.querySelector('.property-key') as HTMLInputElement;
+        keyInput?.focus();
+    }
 
     async saveProperties() {
-    if (!this.state.activeTabId || !this.state.currentVaultId) {
-        alert('No file is currently open');
-        return;
-    }
-
-    const tab = this.state.getTab(this.state.activeTabId);
-    if (!tab || tab.fileType !== 'markdown') {
-        alert('Properties can only be saved for markdown files');
-        return;
-    }
-
-    // Collect properties from UI
-    const properties: any = {};
-    const propertyItems = document.querySelectorAll('.property-item');
-
-    for (const item of Array.from(propertyItems)) {
-        const keyInput = item.querySelector('.property-key') as HTMLInputElement;
-        const valueTextarea = item.querySelector('.property-value') as HTMLTextAreaElement;
-        const typeSelect = item.querySelector('.property-type') as HTMLSelectElement;
-
-        const key = keyInput.value.trim();
-        const valueStr = valueTextarea.value.trim();
-        const type = typeSelect.value;
-
-        if (!key) continue; // Skip empty keys
-
-        let value: any;
-        switch (type) {
-            case 'array':
-                value = valueStr.split(',').map(v => v.trim()).filter(v => v);
-                break;
-            case 'number':
-                value = parseFloat(valueStr) || 0;
-                break;
-            case 'boolean':
-                value = valueStr.toLowerCase() === 'true';
-                break;
-            default:
-                value = valueStr;
+        if (!this.state.activeTabId || !this.state.currentVaultId) {
+            alert('No file is currently open');
+            return;
         }
 
-        properties[key] = value;
-    }
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            alert('Properties can only be saved for markdown files');
+            return;
+        }
 
-    // Update tab frontmatter
-    tab.frontmatter = Object.keys(properties).length > 0 ? properties : undefined;
-    tab.isDirty = true;
+        // Collect properties from UI
+        const properties: any = {};
+        const propertyItems = document.querySelectorAll('.property-item');
 
-    // Save the file
-    try {
-        await this.api.writeFile(
-            this.state.currentVaultId,
-            tab.filePath,
-            tab.content,
-            tab.modified,
-            tab.frontmatter
-        );
-        tab.isDirty = false;
-        this.renderTabs();
-        alert('Properties saved successfully');
-    } catch (error) {
-        console.error('Failed to save properties:', error);
-        alert('Failed to save properties: ' + error);
+        for (const item of Array.from(propertyItems)) {
+            const keyInput = item.querySelector('.property-key') as HTMLInputElement;
+            const valueTextarea = item.querySelector('.property-value') as HTMLTextAreaElement;
+            const typeSelect = item.querySelector('.property-type') as HTMLSelectElement;
+
+            const key = keyInput.value.trim();
+            const valueStr = valueTextarea.value.trim();
+            const type = typeSelect.value;
+
+            if (!key) continue; // Skip empty keys
+
+            let value: any;
+            switch (type) {
+                case 'array':
+                    value = valueStr.split(',').map(v => v.trim()).filter(v => v);
+                    break;
+                case 'number':
+                    value = parseFloat(valueStr) || 0;
+                    break;
+                case 'boolean':
+                    value = valueStr.toLowerCase() === 'true';
+                    break;
+                default:
+                    value = valueStr;
+            }
+
+            properties[key] = value;
+        }
+
+        // Update tab frontmatter
+        tab.frontmatter = Object.keys(properties).length > 0 ? properties : undefined;
+        tab.isDirty = true;
+
+        // Save the file
+        try {
+            await this.api.writeFile(
+                this.state.currentVaultId,
+                tab.filePath,
+                tab.content,
+                tab.modified,
+                tab.frontmatter
+            );
+            tab.isDirty = false;
+            this.renderTabs();
+            alert('Properties saved successfully');
+        } catch (error) {
+            console.error('Failed to save properties:', error);
+            alert('Failed to save properties: ' + error);
+        }
     }
-}
 
     async performSearch(query: string) {
-    if (!this.state.currentVaultId) return;
+        if (!this.state.currentVaultId) return;
 
-    try {
-        const results = await this.api.search(this.state.currentVaultId, query);
-        this.renderSearchResults(results);
-        this.showModal('search-modal');
-    } catch (error) {
-        console.error('Search failed:', error);
-    }
-}
-
-renderSearchResults(results: SearchResult[]) {
-    const container = document.getElementById('search-results');
-    if (!container) return;
-
-    if (results.length === 0) {
-        container.innerHTML = '<p>No results found</p>';
-        return;
+        try {
+            const results = await this.api.search(this.state.currentVaultId, query);
+            this.renderSearchResults(results);
+            this.showModal('search-modal');
+        } catch (error) {
+            console.error('Search failed:', error);
+        }
     }
 
-    container.innerHTML = '';
-    for (const result of results) {
-        const item = document.createElement('div');
-        item.className = 'search-result-item';
-        item.innerHTML = `
+    renderSearchResults(results: SearchResult[]) {
+        const container = document.getElementById('search-results');
+        if (!container) return;
+
+        if (results.length === 0) {
+            container.innerHTML = '<p>No results found</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+        for (const result of results) {
+            const item = document.createElement('div');
+            item.className = 'search-result-item';
+            item.innerHTML = `
                 <div class="search-result-title">${result.title}</div>
                 <div class="search-result-path">${result.path}</div>
                 <div class="search-result-matches">
@@ -1588,368 +1613,368 @@ renderSearchResults(results: SearchResult[]) {
                 </div>
             `;
 
-        item.addEventListener('click', () => {
-            this.openFile(result.path);
-            this.hideModal('search-modal');
+            item.addEventListener('click', () => {
+                this.openFile(result.path);
+                this.hideModal('search-modal');
+            });
+
+            container.appendChild(item);
+        }
+    }
+
+    highlightMatch(text: string, start: number, end: number): string {
+        return text.substring(0, start) +
+            '<mark>' + text.substring(start, end) + '</mark>' +
+            text.substring(end);
+    }
+
+    escapeHtml(unsafe: string): string {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    showModal(modalId: string) {
+        const modal = document.getElementById(modalId);
+        modal?.classList.remove('hidden');
+    }
+
+    hideModal(modalId: string) {
+        const modal = document.getElementById(modalId);
+        modal?.classList.add('hidden');
+    }
+
+    setupWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+
+        ws.onmessage = async (event) => {
+            try {
+                const changeEvent = JSON.parse(event.data);
+                console.log('File change event:', changeEvent);
+
+                // Only process events for current vault
+                if (!this.state.currentVaultId || changeEvent.vault_id !== this.state.currentVaultId) return;
+
+                const { event_type, path } = changeEvent;
+
+                // Handle file tree updates
+                if (event_type === 'Created' || event_type === 'Deleted' || 'Renamed' in event_type) {
+                    await this.loadFileTree();
+                }
+
+                // Handle open tabs
+                for (const [tabId, tab] of this.state.openTabs.entries()) {
+                    if (tab.filePath === path) {
+                        if (event_type === 'Modified') {
+                            // Reload content if not dirty, otherwise notify
+                            if (!tab.isDirty) {
+                                // If it's the active tab, we might want to refresh immediately or show a toast
+                                // For now, let's just reload content in background if we can, or just re-fetch on focus?
+                                // Simple approach: reload content
+                                const fileData = await this.api.readFile(this.state.currentVaultId, path);
+                                tab.content = fileData.content;
+                                tab.modified = fileData.modified;
+                                if (tab.id === this.state.activeTabId) {
+                                    this.renderEditor(); // Refresh editor
+                                }
+                            } else {
+                                // Notify user of conflict?
+                                console.warn('External modification on dirty file:', path);
+                            }
+                        } else if (event_type === 'Deleted') {
+                            // Close tab or warn?
+                            // Let's close it for now or show it as deleted
+                            alert(`File ${path} was deleted externally.`);
+                            this.state.removeTab(tabId);
+                            if (this.state.activeTabId === tabId) {
+                                this.state.activeTabId = null;
+                            }
+                            this.renderTabs();
+                            this.renderEditor();
+                        }
+                    }
+
+                    // Handle Renamed
+                    if (typeof event_type === 'object' && 'Renamed' in event_type) {
+                        const renamedEvent = event_type as any;
+                        if (renamedEvent.from === tab.filePath) {
+                            tab.filePath = renamedEvent.to;
+                            tab.fileName = renamedEvent.to.split('/').pop() || renamedEvent.to;
+                            this.renderTabs();
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error);
+            }
+        };
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.state.wsReconnectAttempts = 0;
+            this.updateConnectionStatus('connected');
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            this.updateConnectionStatus('error');
+        };
+
+        ws.onclose = (event) => {
+            console.log('WebSocket closed:', event.code, event.reason);
+            this.state.ws = null;
+            this.updateConnectionStatus('disconnected');
+
+            // Clear any existing reconnect timeout
+            if (this.state.wsReconnectTimeout) {
+                clearTimeout(this.state.wsReconnectTimeout);
+            }
+
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+            this.state.wsReconnectAttempts++;
+            const delay = Math.min(
+                1000 * Math.pow(2, this.state.wsReconnectAttempts - 1),
+                this.state.wsMaxReconnectDelay
+            );
+
+            console.log(`Reconnecting in ${delay / 1000}s (attempt ${this.state.wsReconnectAttempts})...`);
+            this.updateConnectionStatus('reconnecting', delay);
+
+            this.state.wsReconnectTimeout = window.setTimeout(() => {
+                this.setupWebSocket();
+            }, delay);
+        };
+
+        this.state.ws = ws;
+    }
+
+    updateConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'error', delay?: number) {
+        // Update UI to show connection status
+        // This could be a status indicator in the header
+        const statusElement = document.getElementById('connection-status');
+        if (!statusElement) return;
+
+        statusElement.className = `connection-status connection-${status}`;
+
+        switch (status) {
+            case 'connected':
+                statusElement.textContent = '●';
+                statusElement.title = 'Connected';
+                statusElement.style.color = '#4ade80'; // green
+                break;
+            case 'disconnected':
+                statusElement.textContent = '●';
+                statusElement.title = 'Disconnected';
+                statusElement.style.color = '#ef4444'; // red
+                break;
+            case 'reconnecting':
+                statusElement.textContent = '●';
+                statusElement.title = `Reconnecting${delay ? ` in ${delay / 1000}s` : '...'}`;
+                statusElement.style.color = '#fbbf24'; // yellow
+                break;
+            case 'error':
+                statusElement.textContent = '●';
+                statusElement.title = 'Connection error';
+                statusElement.style.color = '#f87171'; // light red
+                break;
+        }
+    }
+
+    setupQuickSwitcher() {
+        const modal = document.getElementById('quick-switcher-modal');
+        const input = document.getElementById('quick-switcher-input') as HTMLInputElement;
+        const resultsContainer = document.getElementById('quick-switcher-results');
+
+        // Global keyboard shortcut (Ctrl+O or Cmd+O not working well in browser, usually opens files)
+        // Using Ctrl+K or Cmd+K
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                this.showModal('quick-switcher-modal');
+                input?.focus();
+                input.value = '';
+                if (resultsContainer) resultsContainer.innerHTML = '';
+                // Pre-load recent files or all files could be implemented here
+                this.performQuickSwitcherSearch('');
+            }
         });
 
-        container.appendChild(item);
+        // Close on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal?.classList.contains('hidden')) {
+                this.hideModal('quick-switcher-modal');
+            }
+        });
+
+        // Search input handler
+        input?.addEventListener('input', (e) => {
+            const query = (e.target as HTMLInputElement).value;
+
+            if (this.state.quickSwitcherDebounce) {
+                clearTimeout(this.state.quickSwitcherDebounce);
+            }
+
+            this.state.quickSwitcherDebounce = window.setTimeout(() => {
+                this.performQuickSwitcherSearch(query);
+            }, 200);
+        });
+
+        // Keyboard navigation in list
+        input?.addEventListener('keydown', (e) => {
+            if (!resultsContainer) return;
+
+            const items = resultsContainer.querySelectorAll('.search-result-item');
+            const activeItem = resultsContainer.querySelector('.search-result-item.active');
+            let index = Array.from(items).indexOf(activeItem as Element);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                index = index < items.length - 1 ? index + 1 : 0;
+                this.highlightQuickSwitcherItem(items, index);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                index = index > 0 ? index - 1 : items.length - 1;
+                this.highlightQuickSwitcherItem(items, index);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeItem) {
+                    (activeItem as HTMLElement).click();
+                } else if (items.length > 0) {
+                    // Default to first item if none active
+                    (items[0] as HTMLElement).click();
+                }
+            }
+        });
     }
-}
 
-highlightMatch(text: string, start: number, end: number): string {
-    return text.substring(0, start) +
-        '<mark>' + text.substring(start, end) + '</mark>' +
-        text.substring(end);
-}
+    highlightQuickSwitcherItem(items: NodeListOf<Element>, index: number) {
+        items.forEach(item => item.classList.remove('active'));
+        if (items[index]) {
+            items[index].classList.add('active');
+            (items[index] as HTMLElement).scrollIntoView({ block: 'nearest' });
+        }
+    }
 
-escapeHtml(unsafe: string): string {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+    async performQuickSwitcherSearch(query: string) {
+        if (!this.state.currentVaultId) return;
 
-showModal(modalId: string) {
-    const modal = document.getElementById(modalId);
-    modal?.classList.remove('hidden');
-}
-
-hideModal(modalId: string) {
-    const modal = document.getElementById(modalId);
-    modal?.classList.add('hidden');
-}
-
-setupWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
-
-    ws.onmessage = async (event) => {
         try {
-            const changeEvent = JSON.parse(event.data);
-            console.log('File change event:', changeEvent);
+            // Reuse the search API but with a different limit or params if needed
+            // For quick switcher, we mostly care about file paths/names
+            // If query is empty, maybe show recent files? For now just show nothing or all files
+            let results: SearchResult[] = [];
 
-            // Only process events for current vault
-            if (changeEvent.vault_id !== this.state.currentVaultId) return;
-
-            const { event_type, path } = changeEvent;
-
-            // Handle file tree updates
-            if (event_type === 'Created' || event_type === 'Deleted' || 'Renamed' in event_type) {
-                await this.loadFileTree();
+            if (query.trim() === '') {
+                // Show recent files
+                results = this.state.recentFiles.map(path => ({
+                    title: path.split('/').pop() || path,
+                    path: path,
+                    score: 0,
+                    matches: []
+                }));
+            } else {
+                results = await this.api.search(this.state.currentVaultId, query, 20);
             }
 
-            // Handle open tabs
-            for (const [tabId, tab] of this.state.openTabs.entries()) {
-                if (tab.filePath === path) {
-                    if (event_type === 'Modified') {
-                        // Reload content if not dirty, otherwise notify
-                        if (!tab.isDirty) {
-                            // If it's the active tab, we might want to refresh immediately or show a toast
-                            // For now, let's just reload content in background if we can, or just re-fetch on focus?
-                            // Simple approach: reload content
-                            const fileData = await this.api.readFile(this.state.currentVaultId, path);
-                            tab.content = fileData.content;
-                            tab.modified = fileData.modified;
-                            if (tab.id === this.state.activeTabId) {
-                                this.renderEditor(); // Refresh editor
-                            }
-                        } else {
-                            // Notify user of conflict?
-                            console.warn('External modification on dirty file:', path);
-                        }
-                    } else if (event_type === 'Deleted') {
-                        // Close tab or warn?
-                        // Let's close it for now or show it as deleted
-                        alert(`File ${path} was deleted externally.`);
-                        this.state.removeTab(tabId);
-                        if (this.state.activeTabId === tabId) {
-                            this.state.activeTabId = null;
-                        }
-                        this.renderTabs();
-                        this.renderEditor();
-                    }
-                }
-
-                // Handle Renamed
-                if (typeof event_type === 'object' && 'Renamed' in event_type) {
-                    const renamedEvent = event_type as any;
-                    if (renamedEvent.from === tab.filePath) {
-                        tab.filePath = renamedEvent.to;
-                        tab.fileName = renamedEvent.to.split('/').pop() || renamedEvent.to;
-                        this.renderTabs();
-                    }
-                }
-            }
-
+            this.renderQuickSwitcherResults(results);
         } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+            console.error('Quick switcher search failed:', error);
         }
-    };
-
-    ws.onopen = () => {
-        console.log('WebSocket connected');
-        this.state.wsReconnectAttempts = 0;
-        this.updateConnectionStatus('connected');
-    };
-
-    ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.updateConnectionStatus('error');
-    };
-
-    ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
-        this.state.ws = null;
-        this.updateConnectionStatus('disconnected');
-
-        // Clear any existing reconnect timeout
-        if (this.state.wsReconnectTimeout) {
-            clearTimeout(this.state.wsReconnectTimeout);
-        }
-
-        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
-        this.state.wsReconnectAttempts++;
-        const delay = Math.min(
-            1000 * Math.pow(2, this.state.wsReconnectAttempts - 1),
-            this.state.wsMaxReconnectDelay
-        );
-
-        console.log(`Reconnecting in ${delay / 1000}s (attempt ${this.state.wsReconnectAttempts})...`);
-        this.updateConnectionStatus('reconnecting', delay);
-
-        this.state.wsReconnectTimeout = window.setTimeout(() => {
-            this.setupWebSocket();
-        }, delay);
-    };
-
-    this.state.ws = ws;
-}
-
-updateConnectionStatus(status: 'connected' | 'disconnected' | 'reconnecting' | 'error', delay ?: number) {
-    // Update UI to show connection status
-    // This could be a status indicator in the header
-    const statusElement = document.getElementById('connection-status');
-    if (!statusElement) return;
-
-    statusElement.className = `connection-status connection-${status}`;
-
-    switch (status) {
-        case 'connected':
-            statusElement.textContent = '●';
-            statusElement.title = 'Connected';
-            statusElement.style.color = '#4ade80'; // green
-            break;
-        case 'disconnected':
-            statusElement.textContent = '●';
-            statusElement.title = 'Disconnected';
-            statusElement.style.color = '#ef4444'; // red
-            break;
-        case 'reconnecting':
-            statusElement.textContent = '●';
-            statusElement.title = `Reconnecting${delay ? ` in ${delay / 1000}s` : '...'}`;
-            statusElement.style.color = '#fbbf24'; // yellow
-            break;
-        case 'error':
-            statusElement.textContent = '●';
-            statusElement.title = 'Connection error';
-            statusElement.style.color = '#f87171'; // light red
-            break;
-    }
-}
-
-setupQuickSwitcher() {
-    const modal = document.getElementById('quick-switcher-modal');
-    const input = document.getElementById('quick-switcher-input') as HTMLInputElement;
-    const resultsContainer = document.getElementById('quick-switcher-results');
-
-    // Global keyboard shortcut (Ctrl+O or Cmd+O not working well in browser, usually opens files)
-    // Using Ctrl+K or Cmd+K
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            this.showModal('quick-switcher-modal');
-            input?.focus();
-            input.value = '';
-            if (resultsContainer) resultsContainer.innerHTML = '';
-            // Pre-load recent files or all files could be implemented here
-            this.performQuickSwitcherSearch('');
-        }
-    });
-
-    // Close on Escape
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !modal?.classList.contains('hidden')) {
-            this.hideModal('quick-switcher-modal');
-        }
-    });
-
-    // Search input handler
-    input?.addEventListener('input', (e) => {
-        const query = (e.target as HTMLInputElement).value;
-
-        if (this.state.quickSwitcherDebounce) {
-            clearTimeout(this.state.quickSwitcherDebounce);
-        }
-
-        this.state.quickSwitcherDebounce = window.setTimeout(() => {
-            this.performQuickSwitcherSearch(query);
-        }, 200);
-    });
-
-    // Keyboard navigation in list
-    input?.addEventListener('keydown', (e) => {
-        if (!resultsContainer) return;
-
-        const items = resultsContainer.querySelectorAll('.search-result-item');
-        const activeItem = resultsContainer.querySelector('.search-result-item.active');
-        let index = Array.from(items).indexOf(activeItem as Element);
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            index = index < items.length - 1 ? index + 1 : 0;
-            this.highlightQuickSwitcherItem(items, index);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            index = index > 0 ? index - 1 : items.length - 1;
-            this.highlightQuickSwitcherItem(items, index);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (activeItem) {
-                (activeItem as HTMLElement).click();
-            } else if (items.length > 0) {
-                // Default to first item if none active
-                (items[0] as HTMLElement).click();
-            }
-        }
-    });
-}
-
-highlightQuickSwitcherItem(items: NodeListOf<Element>, index: number) {
-    items.forEach(item => item.classList.remove('active'));
-    if (items[index]) {
-        items[index].classList.add('active');
-        (items[index] as HTMLElement).scrollIntoView({ block: 'nearest' });
-    }
-}
-
-async performQuickSwitcherSearch(query: string) {
-    if (!this.state.currentVaultId) return;
-
-    try {
-        // Reuse the search API but with a different limit or params if needed
-        // For quick switcher, we mostly care about file paths/names
-        // If query is empty, maybe show recent files? For now just show nothing or all files
-        let results: SearchResult[] = [];
-
-        if (query.trim() === '') {
-            // Show recent files
-            results = this.state.recentFiles.map(path => ({
-                title: path.split('/').pop() || path,
-                path: path,
-                score: 0,
-                matches: []
-            }));
-        } else {
-            results = await this.api.search(this.state.currentVaultId, query, 20);
-        }
-
-        this.renderQuickSwitcherResults(results);
-    } catch (error) {
-        console.error('Quick switcher search failed:', error);
-    }
-}
-
-renderQuickSwitcherResults(results: SearchResult[]) {
-    const container = document.getElementById('quick-switcher-results');
-    if (!container) return;
-
-    if (results.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>No matching files</p></div>';
-        return;
     }
 
-    container.innerHTML = '';
-    results.forEach((result, index) => {
-        const item = document.createElement('div');
-        item.className = 'search-result-item'; // Reusing search styles for now
-        if (index === 0) item.classList.add('active');
+    renderQuickSwitcherResults(results: SearchResult[]) {
+        const container = document.getElementById('quick-switcher-results');
+        if (!container) return;
 
-        item.innerHTML = `
+        if (results.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No matching files</p></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        results.forEach((result, index) => {
+            const item = document.createElement('div');
+            item.className = 'search-result-item'; // Reusing search styles for now
+            if (index === 0) item.classList.add('active');
+
+            item.innerHTML = `
             <div class="search-result-title">${result.title}</div>
             <div class="search-result-path">${result.path}</div>
         `;
 
-        item.addEventListener('click', () => {
-            this.openFile(result.path);
-            this.hideModal('quick-switcher-modal');
+            item.addEventListener('click', () => {
+                this.openFile(result.path);
+                this.hideModal('quick-switcher-modal');
+            });
+
+            // Hover effect
+            item.addEventListener('mouseenter', () => {
+                container.querySelectorAll('.search-result-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+            });
+
+            container.appendChild(item);
         });
+    }
+    setupTemplates() {
+        const btn = document.getElementById('insert-template-btn');
+        btn?.addEventListener('click', () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+            if (!this.state.activeTabId) {
+                alert('Please open a file first');
+                return;
+            }
+            // Check if file is editable
+            const tab = this.state.getTab(this.state.activeTabId);
+            if (tab?.fileType !== 'markdown') {
+                alert('Templates can only be inserted into markdown files');
+                return;
+            }
 
-        // Hover effect
-        item.addEventListener('mouseenter', () => {
-            container.querySelectorAll('.search-result-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
+            this.showModal('insert-template-modal');
+            this.loadTemplates();
         });
-
-        container.appendChild(item);
-    });
-}
-setupTemplates() {
-    const btn = document.getElementById('insert-template-btn');
-    btn?.addEventListener('click', () => {
-        if (!this.state.currentVaultId) {
-            alert('Please select a vault first');
-            return;
-        }
-        if (!this.state.activeTabId) {
-            alert('Please open a file first');
-            return;
-        }
-        // Check if file is editable
-        const tab = this.state.getTab(this.state.activeTabId);
-        if (tab?.fileType !== 'markdown') {
-            alert('Templates can only be inserted into markdown files');
-            return;
-        }
-
-        this.showModal('insert-template-modal');
-        this.loadTemplates();
-    });
-}
+    }
 
     async loadTemplates() {
-    if (!this.state.currentVaultId) return;
-    const listContainer = document.getElementById('template-list');
-    if (!listContainer) return;
+        if (!this.state.currentVaultId) return;
+        const listContainer = document.getElementById('template-list');
+        if (!listContainer) return;
 
-    listContainer.innerHTML = '<p>Loading templates...</p>';
+        listContainer.innerHTML = '<p>Loading templates...</p>';
 
-    try {
-        // Find "Templates" folder
-        // We'll search for a directory named "Templates" (case insensitive)
-        // Implementation detail: we fetch file tree and look for it
-        const tree = await this.api.getFileTree(this.state.currentVaultId);
+        try {
+            // Find "Templates" folder
+            // We'll search for a directory named "Templates" (case insensitive)
+            // Implementation detail: we fetch file tree and look for it
+            const tree = await this.api.getFileTree(this.state.currentVaultId);
 
-        // Helper to find folder
-        const findTemplatesFolder = (nodes: FileNode[]): FileNode | null => {
-            for (const node of nodes) {
-                if (node.is_directory && node.name.toLowerCase() === 'templates') {
-                    return node;
+            // Helper to find folder
+            const findTemplatesFolder = (nodes: FileNode[]): FileNode | null => {
+                for (const node of nodes) {
+                    if (node.is_directory && node.name.toLowerCase() === 'templates') {
+                        return node;
+                    }
+                    if (node.children) {
+                        const found = findTemplatesFolder(node.children);
+                        if (found) return found;
+                    }
                 }
-                if (node.children) {
-                    const found = findTemplatesFolder(node.children);
-                    if (found) return found;
-                }
-            }
-            return null;
-        };
+                return null;
+            };
 
-        const templatesFolder = findTemplatesFolder(tree);
+            const templatesFolder = findTemplatesFolder(tree);
 
-        if (!templatesFolder || !templatesFolder.children || templatesFolder.children.length === 0) {
-            listContainer.innerHTML = `
+            if (!templatesFolder || !templatesFolder.children || templatesFolder.children.length === 0) {
+                listContainer.innerHTML = `
                 <div class="empty-state">
                     <p>No templates found.</p>
                     <small>Create a folder named "Templates" and add some markdown files.</small>
@@ -1957,220 +1982,220 @@ setupTemplates() {
                 </div>
             `;
 
-            // Add listener
-            document.getElementById('create-default-templates-btn')?.addEventListener('click', () => {
-                this.createDefaultTemplates();
-            });
+                // Add listener
+                document.getElementById('create-default-templates-btn')?.addEventListener('click', () => {
+                    this.createDefaultTemplates();
+                });
+                return;
+            }
+
+            this.renderTemplates(templatesFolder.children);
+
+        } catch (error) {
+            console.error('Failed to load templates:', error);
+            listContainer.innerHTML = `<p class="error">Failed to load templates: ${error}</p>`;
+        }
+    }
+
+    renderTemplates(nodes: FileNode[]) {
+        const listContainer = document.getElementById('template-list');
+        if (!listContainer) return;
+
+        listContainer.innerHTML = '';
+
+        // Filter for markdown files only
+        const templateFiles = nodes.filter(n => !n.is_directory && n.name.endsWith('.md'));
+
+        if (templateFiles.length === 0) {
+            listContainer.innerHTML = '<p>No template files found in Templates folder.</p>';
             return;
         }
 
-        this.renderTemplates(templatesFolder.children);
-
-    } catch (error) {
-        console.error('Failed to load templates:', error);
-        listContainer.innerHTML = `<p class="error">Failed to load templates: ${error}</p>`;
-    }
-}
-
-renderTemplates(nodes: FileNode[]) {
-    const listContainer = document.getElementById('template-list');
-    if (!listContainer) return;
-
-    listContainer.innerHTML = '';
-
-    // Filter for markdown files only
-    const templateFiles = nodes.filter(n => !n.is_directory && n.name.endsWith('.md'));
-
-    if (templateFiles.length === 0) {
-        listContainer.innerHTML = '<p>No template files found in Templates folder.</p>';
-        return;
-    }
-
-    templateFiles.forEach(node => {
-        const item = document.createElement('div');
-        item.className = 'template-item';
-        item.innerHTML = `
+        templateFiles.forEach(node => {
+            const item = document.createElement('div');
+            item.className = 'template-item';
+            item.innerHTML = `
                 <span class="file-icon">📄</span>
                 <span class="file-name">${node.name}</span>
             `;
 
-        item.addEventListener('click', () => {
-            this.insertTemplate(node.path);
-            this.hideModal('insert-template-modal');
-        });
+            item.addEventListener('click', () => {
+                this.insertTemplate(node.path);
+                this.hideModal('insert-template-modal');
+            });
 
-        listContainer.appendChild(item);
-    });
-}
+            listContainer.appendChild(item);
+        });
+    }
 
     async insertTemplate(templatePath: string) {
-    if (!this.state.currentVaultId || !this.state.activeTabId) return;
+        if (!this.state.currentVaultId || !this.state.activeTabId) return;
 
-    try {
-        const templateContent = await this.api.readFile(this.state.currentVaultId, templatePath);
-        const processedContent = this.applyTemplateVariables(templateContent.content);
+        try {
+            const templateContent = await this.api.readFile(this.state.currentVaultId, templatePath);
+            const processedContent = this.applyTemplateVariables(templateContent.content);
 
-        // Insert into active editor
-        const pane1 = document.getElementById('pane-1');
-        const textarea = pane1?.querySelector('textarea');
+            // Insert into active editor
+            const pane1 = document.getElementById('pane-1');
+            const textarea = pane1?.querySelector('textarea');
 
-        if (textarea) {
-            // Insert at cursor position
-            const startPos = textarea.selectionStart;
-            const endPos = textarea.selectionEnd;
-            const currentVal = textarea.value;
+            if (textarea) {
+                // Insert at cursor position
+                const startPos = textarea.selectionStart;
+                const endPos = textarea.selectionEnd;
+                const currentVal = textarea.value;
 
-            const newVal = currentVal.substring(0, startPos) + processedContent + currentVal.substring(endPos);
+                const newVal = currentVal.substring(0, startPos) + processedContent + currentVal.substring(endPos);
 
-            textarea.value = newVal;
-            // Update cursor position
-            const newCursorPos = startPos + processedContent.length;
-            textarea.setSelectionRange(newCursorPos, newCursorPos);
-            textarea.focus();
+                textarea.value = newVal;
+                // Update cursor position
+                const newCursorPos = startPos + processedContent.length;
+                textarea.setSelectionRange(newCursorPos, newCursorPos);
+                textarea.focus();
 
-            // Trigger input event to update tab state
-            textarea.dispatchEvent(new Event('input'));
-        } else {
-            console.warn('Could not find textarea to insert template');
-            alert('Could not insert template: Editor not found or not in raw mode.');
+                // Trigger input event to update tab state
+                textarea.dispatchEvent(new Event('input'));
+            } else {
+                console.warn('Could not find textarea to insert template');
+                alert('Could not insert template: Editor not found or not in raw mode.');
+            }
+
+        } catch (error) {
+            console.error('Failed to insert template:', error);
+            alert('Failed to insert template: ' + error);
+        }
+    }
+
+    applyTemplateVariables(content: string): string {
+        const now = new Date();
+
+        // Format: YYYY-MM-DD
+        const dateStr = now.toISOString().split('T')[0];
+
+        // Format: HH:mm
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+        let processed = content;
+        processed = processed.replace(/{{date}}/g, dateStr);
+        processed = processed.replace(/{{time}}/g, timeStr);
+        processed = processed.replace(/{{datetime}}/g, `${dateStr} ${timeStr}`);
+
+        // {{title}} - Current file name
+        const tab = this.state.getTab(this.state.activeTabId!);
+        if (tab) {
+            const title = tab.fileName.replace(/\.md$/, '');
+            processed = processed.replace(/{{title}}/g, title);
         }
 
-    } catch (error) {
-        console.error('Failed to insert template:', error);
-        alert('Failed to insert template: ' + error);
+        return processed;
     }
-}
-
-applyTemplateVariables(content: string): string {
-    const now = new Date();
-
-    // Format: YYYY-MM-DD
-    const dateStr = now.toISOString().split('T')[0];
-
-    // Format: HH:mm
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-
-    let processed = content;
-    processed = processed.replace(/{{date}}/g, dateStr);
-    processed = processed.replace(/{{time}}/g, timeStr);
-    processed = processed.replace(/{{datetime}}/g, `${dateStr} ${timeStr}`);
-
-    // {{title}} - Current file name
-    const tab = this.state.getTab(this.state.activeTabId!);
-    if (tab) {
-        const title = tab.fileName.replace(/\.md$/, '');
-        processed = processed.replace(/{{title}}/g, title);
-    }
-
-    return processed;
-}
 
     async createDefaultTemplates() {
-    if (!this.state.currentVaultId) return;
-
-    try {
-        // Create Templates directory
-        // We use a try/catch here in case it already exists (api might error or succeed depending on implementation)
-        try {
-            await this.api.createDirectory(this.state.currentVaultId, 'Templates');
-        } catch (e: any) {
-            // Ignore if it already exists or handle specifically
-            if (!e.toString().includes('already exists')) {
-                // console.warn('Directory creation warning:', e);
-            }
-        }
-
-        // Create Daily Note Template
-        await this.api.createFile(
-            this.state.currentVaultId,
-            'Templates/Daily Note.md',
-            '# {{date}}\n\n## Tasks\n- [ ] \n\n## Notes\n'
-        );
-
-        // Create Meeting Note Template
-        await this.api.createFile(
-            this.state.currentVaultId,
-            'Templates/Meeting Note.md',
-            '# {{title}}\nDate: {{datetime}}\n\n## Attendees\n\n## Agenda\n\n## Notes\n'
-        );
-
-        // Reload templates
-        await this.loadTemplates();
-        alert('Default templates created successfully.');
-
-    } catch (error) {
-        console.error('Failed to create default templates:', error);
-        alert('Failed to create default templates: ' + error);
-    }
-}
-
-setupConflictResolution() {
-    const keepYoursBtn = document.getElementById('conflict-keep-yours');
-    const useServerBtn = document.getElementById('conflict-use-server');
-    const viewBothBtn = document.getElementById('conflict-view-both');
-    const cancelBtn = document.getElementById('conflict-cancel');
-
-    keepYoursBtn?.addEventListener('click', () => {
-        if (!this.state.conflictData) return;
-        console.log('User chose to keep their version');
-        this.hideModal('conflict-modal');
-        alert('Your changes will be saved (save functionality to be implemented)');
-    });
-
-    useServerBtn?.addEventListener('click', async () => {
-        if (!this.state.conflictData || !this.state.currentVaultId) return;
+        if (!this.state.currentVaultId) return;
 
         try {
-            const fileData = await this.api.readFile(
-                this.state.currentVaultId,
-                this.state.conflictData.filePath
-            );
-
-            for (const [_, tab] of this.state.openTabs.entries()) {
-                if (tab.filePath === this.state.conflictData.filePath) {
-                    tab.content = fileData.content;
-                    tab.modified = fileData.modified;
-                    tab.isDirty = false;
-                    if (tab.id === this.state.activeTabId) {
-                        this.renderEditor();
-                    }
-                    break;
+            // Create Templates directory
+            // We use a try/catch here in case it already exists (api might error or succeed depending on implementation)
+            try {
+                await this.api.createDirectory(this.state.currentVaultId, 'Templates');
+            } catch (e: any) {
+                // Ignore if it already exists or handle specifically
+                if (!e.toString().includes('already exists')) {
+                    // console.warn('Directory creation warning:', e);
                 }
             }
 
+            // Create Daily Note Template
+            await this.api.createFile(
+                this.state.currentVaultId,
+                'Templates/Daily Note.md',
+                '# {{date}}\n\n## Tasks\n- [ ] \n\n## Notes\n'
+            );
+
+            // Create Meeting Note Template
+            await this.api.createFile(
+                this.state.currentVaultId,
+                'Templates/Meeting Note.md',
+                '# {{title}}\nDate: {{datetime}}\n\n## Attendees\n\n## Agenda\n\n## Notes\n'
+            );
+
+            // Reload templates
+            await this.loadTemplates();
+            alert('Default templates created successfully.');
+
+        } catch (error) {
+            console.error('Failed to create default templates:', error);
+            alert('Failed to create default templates: ' + error);
+        }
+    }
+
+    setupConflictResolution() {
+        const keepYoursBtn = document.getElementById('conflict-keep-yours');
+        const useServerBtn = document.getElementById('conflict-use-server');
+        const viewBothBtn = document.getElementById('conflict-view-both');
+        const cancelBtn = document.getElementById('conflict-cancel');
+
+        keepYoursBtn?.addEventListener('click', () => {
+            if (!this.state.conflictData) return;
+            console.log('User chose to keep their version');
+            this.hideModal('conflict-modal');
+            alert('Your changes will be saved (save functionality to be implemented)');
+        });
+
+        useServerBtn?.addEventListener('click', async () => {
+            if (!this.state.conflictData || !this.state.currentVaultId) return;
+
+            try {
+                const fileData = await this.api.readFile(
+                    this.state.currentVaultId,
+                    this.state.conflictData.filePath
+                );
+
+                for (const [_, tab] of this.state.openTabs.entries()) {
+                    if (tab.filePath === this.state.conflictData.filePath) {
+                        tab.content = fileData.content;
+                        tab.modified = fileData.modified;
+                        tab.isDirty = false;
+                        if (tab.id === this.state.activeTabId) {
+                            this.renderEditor();
+                        }
+                        break;
+                    }
+                }
+
+                this.hideModal('conflict-modal');
+                this.state.conflictData = null;
+            } catch (error) {
+                console.error('Failed to load server version:', error);
+                alert('Failed to load server version: ' + error);
+            }
+        });
+
+        viewBothBtn?.addEventListener('click', () => {
+            if (!this.state.conflictData) return;
+            console.log('View both versions');
+            alert('Side-by-side comparison view (to be implemented)');
+        });
+
+        cancelBtn?.addEventListener('click', () => {
             this.hideModal('conflict-modal');
             this.state.conflictData = null;
-        } catch (error) {
-            console.error('Failed to load server version:', error);
-            alert('Failed to load server version: ' + error);
-        }
-    });
+        });
+    }
 
-    viewBothBtn?.addEventListener('click', () => {
-        if (!this.state.conflictData) return;
-        console.log('View both versions');
-        alert('Side-by-side comparison view (to be implemented)');
-    });
+    showConflictResolution(filePath: string, yourVersion: string, serverVersion: string) {
+        this.state.conflictData = { filePath, yourVersion, serverVersion };
 
-    cancelBtn?.addEventListener('click', () => {
-        this.hideModal('conflict-modal');
-        this.state.conflictData = null;
-    });
-}
+        const fileNameEl = document.getElementById('conflict-file-name');
+        const yourVersionEl = document.getElementById('conflict-your-version');
+        const serverVersionEl = document.getElementById('conflict-server-version');
 
-showConflictResolution(filePath: string, yourVersion: string, serverVersion: string) {
-    this.state.conflictData = { filePath, yourVersion, serverVersion };
+        if (fileNameEl) fileNameEl.textContent = filePath;
+        if (yourVersionEl) yourVersionEl.textContent = yourVersion.substring(0, 500) + (yourVersion.length > 500 ? '...' : '');
+        if (serverVersionEl) serverVersionEl.textContent = serverVersion.substring(0, 500) + (serverVersion.length > 500 ? '...' : '');
 
-    const fileNameEl = document.getElementById('conflict-file-name');
-    const yourVersionEl = document.getElementById('conflict-your-version');
-    const serverVersionEl = document.getElementById('conflict-server-version');
-
-    if (fileNameEl) fileNameEl.textContent = filePath;
-    if (yourVersionEl) yourVersionEl.textContent = yourVersion.substring(0, 500) + (yourVersion.length > 500 ? '...' : '');
-    if (serverVersionEl) serverVersionEl.textContent = serverVersion.substring(0, 500) + (serverVersion.length > 500 ? '...' : '');
-
-    this.showModal('conflict-modal');
-}
+        this.showModal('conflict-modal');
+    }
 }
 
 // Initialize the app
