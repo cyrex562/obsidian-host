@@ -93,11 +93,49 @@
                     </div>
                 </div>
 
+                <!-- In-File Search Bar -->
+                <div class="in-file-search hidden" id="in-file-search">
+                    <div class="in-file-search-content">
+                        <input type="text" id="in-file-search-input" class="in-file-search-input" placeholder="Find in file..." autocomplete="off">
+                        <div class="in-file-search-nav">
+                            <span id="in-file-search-count" class="in-file-search-count"></span>
+                            <button id="in-file-search-prev" class="btn btn-icon" title="Previous match (Shift+Enter)">
+                                <span class="icon">▲</span>
+                            </button>
+                            <button id="in-file-search-next" class="btn btn-icon" title="Next match (Enter)">
+                                <span class="icon">▼</span>
+                            </button>
+                        </div>
+                        <label class="in-file-search-option" title="Match case">
+                            <input type="checkbox" id="in-file-search-case">
+                            <span>Aa</span>
+                        </label>
+                        <button id="in-file-search-close" class="btn btn-icon" title="Close (Escape)">
+                            <span class="icon">✕</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Split Container -->
                 <div class="split-container" id="split-container">
                     <!-- Pane 1 -->
                     <div class="editor-pane" id="pane-1" data-pane="1">
                         <div class="editor-toolbar">
+                            <div class="editor-actions">
+                                <button id="undo-btn" class="btn btn-icon disabled" title="Undo (Ctrl+Z)">
+                                    <span class="icon">↶</span>
+                                </button>
+                                <button id="redo-btn" class="btn btn-icon disabled" title="Redo (Ctrl+Y)">
+                                    <span class="icon">↷</span>
+                                </button>
+                                <span class="toolbar-separator"></span>
+                                <button id="insert-link-btn" class="btn btn-icon" title="Insert Link (Ctrl+K)">
+                                    <span class="icon">🔗</span>
+                                </button>
+                                <button id="insert-image-btn" class="btn btn-icon" title="Insert Image">
+                                    <span class="icon">🖼️</span>
+                                </button>
+                            </div>
                             <div class="editor-mode-selector">
                                 <button class="mode-btn active" data-mode="raw">Raw</button>
                                 <button class="mode-btn" data-mode="side-by-side">Side by Side</button>
@@ -280,6 +318,111 @@
                 <div class="conflict-actions">
                     <button id="conflict-view-both" class="btn btn-secondary">View Both Versions</button>
                     <button id="conflict-cancel" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insert Link Modal -->
+    <div id="insert-link-modal" class="modal hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>Insert Link</h2>
+                <button class="modal-close" data-close-modal="insert-link-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="insert-link-form">
+                    <div class="form-group">
+                        <label for="link-text">Link Text</label>
+                        <input type="text" id="link-text" name="text" placeholder="Display text">
+                    </div>
+                    <div class="form-group">
+                        <label for="link-url">URL or Note</label>
+                        <input type="text" id="link-url" name="url" placeholder="https://... or [[Note Name]]" required>
+                        <small>Enter a URL for external links or use [[Note]] for internal links</small>
+                    </div>
+                    <div class="link-type-toggle">
+                        <label class="toggle-option">
+                            <input type="radio" name="link-type" value="external" checked>
+                            <span>External Link</span>
+                        </label>
+                        <label class="toggle-option">
+                            <input type="radio" name="link-type" value="internal">
+                            <span>Internal Wiki Link</span>
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" data-close-modal="insert-link-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Insert Link</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insert Image Modal -->
+    <div id="insert-image-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Insert Image</h2>
+                <button class="modal-close" data-close-modal="insert-image-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="image-insert-tabs">
+                    <button class="tab-btn active" data-tab="upload">Upload Image</button>
+                    <button class="tab-btn" data-tab="url">From URL</button>
+                    <button class="tab-btn" data-tab="vault">From Vault</button>
+                </div>
+
+                <!-- Upload Tab -->
+                <div class="image-tab-content" id="image-tab-upload">
+                    <div class="upload-area" id="image-upload-area">
+                        <input type="file" id="image-file-input" accept="image/*" hidden>
+                        <div class="upload-prompt">
+                            <span class="upload-icon">🖼️</span>
+                            <p>Drag and drop an image or click to browse</p>
+                            <button type="button" class="btn btn-primary" id="image-browse-btn">Browse Images</button>
+                        </div>
+                    </div>
+                    <div id="image-preview-container" class="image-preview-container hidden">
+                        <img id="image-preview" alt="Preview">
+                        <p id="image-preview-name"></p>
+                    </div>
+                </div>
+
+                <!-- URL Tab -->
+                <div class="image-tab-content hidden" id="image-tab-url">
+                    <div class="form-group">
+                        <label for="image-url">Image URL</label>
+                        <input type="url" id="image-url" placeholder="https://example.com/image.png">
+                    </div>
+                    <div id="url-image-preview-container" class="image-preview-container hidden">
+                        <img id="url-image-preview" alt="Preview">
+                    </div>
+                </div>
+
+                <!-- Vault Tab -->
+                <div class="image-tab-content hidden" id="image-tab-vault">
+                    <div class="form-group">
+                        <label for="vault-image-search">Search vault images</label>
+                        <input type="text" id="vault-image-search" placeholder="Search for images...">
+                    </div>
+                    <div id="vault-images-list" class="vault-images-list">
+                        <p>Loading images...</p>
+                    </div>
+                </div>
+
+                <!-- Common options -->
+                <div class="image-options">
+                    <div class="form-group">
+                        <label for="image-alt-text">Alt Text (optional)</label>
+                        <input type="text" id="image-alt-text" placeholder="Description of the image">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" data-close-modal="insert-image-modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="insert-image-submit">Insert Image</button>
                 </div>
             </div>
         </div>

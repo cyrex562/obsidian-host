@@ -328,6 +328,27 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Editor Actions (Undo/Redo buttons) */
+.editor-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.editor-actions .btn-icon {
+    font-size: 1.2rem;
+    padding: 0.4rem 0.6rem;
+}
+
+.editor-actions .btn-icon.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.editor-actions .btn-icon:not(.disabled):hover {
+    background-color: var(--bg-tertiary);
+}
+
 .editor-mode-selector {
     display: flex;
     gap: 0.25rem;
@@ -460,6 +481,10 @@ body {
 
 .modal-content.modal-large {
     max-width: 800px;
+}
+
+.modal-content.modal-small {
+    max-width: 400px;
 }
 
 .modal-header {
@@ -803,6 +828,40 @@ body {
 .drag-content p {
     font-size: 1.5rem;
     color: var(--text-primary);
+}
+
+/* Editor Drop Zone */
+.editor-pane.editor-drag-over,
+.editor-content.editor-drag-over {
+    position: relative;
+}
+
+.editor-pane.editor-drag-over::after,
+.editor-content.editor-drag-over::after {
+    content: 'Drop files here to upload';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(var(--accent-color-rgb, 138, 180, 248), 0.15);
+    border: 2px dashed var(--accent-color);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: var(--accent-color);
+    pointer-events: none;
+    z-index: 100;
+}
+
+.editor-raw.editor-drag-over,
+.editor-formatted.editor-drag-over,
+.editor-wysiwyg.editor-drag-over {
+    outline: 2px dashed var(--accent-color);
+    outline-offset: -2px;
+    background-color: rgba(var(--accent-color-rgb, 138, 180, 248), 0.1);
 }
 
 /* Context Menu */
@@ -1217,4 +1276,271 @@ body {
 
 .save-status.error {
     color: #ff4444;
+}
+
+/* Toolbar Separator */
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background-color: var(--border-color);
+    margin: 0 0.5rem;
+}
+
+/* Link Type Toggle */
+.link-type-toggle {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.toggle-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.toggle-option input[type="radio"] {
+    width: auto;
+    margin: 0;
+}
+
+/* Image Insert Tabs */
+.image-insert-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.image-insert-tabs .tab-btn {
+    background: none;
+    border: none;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.image-insert-tabs .tab-btn:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.image-insert-tabs .tab-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+/* Image Tab Content */
+.image-tab-content {
+    min-height: 200px;
+}
+
+.image-tab-content.hidden {
+    display: none;
+}
+
+/* Image Preview Container */
+.image-preview-container {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.image-preview-container img {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 4px;
+}
+
+.image-preview-container p {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+/* Image Options */
+.image-options {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Vault Images List */
+.vault-images-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.vault-image-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-color: var(--bg-secondary);
+}
+
+.vault-image-item:hover {
+    border-color: var(--border-color);
+}
+
+.vault-image-item.selected {
+    border-color: var(--accent-color);
+    background-color: var(--bg-tertiary);
+}
+
+.vault-image-item img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.vault-image-item .image-name {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: center;
+    word-break: break-all;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* In-File Search Bar */
+.in-file-search {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.in-file-search.hidden {
+    display: none;
+}
+
+.in-file-search-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: 600px;
+}
+
+.in-file-search-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    min-width: 200px;
+}
+
+.in-file-search-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.in-file-search-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.in-file-search-count {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 70px;
+    text-align: center;
+}
+
+.in-file-search-count.no-results {
+    color: #ff6b6b;
+}
+
+.in-file-search-option {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.in-file-search-option:hover {
+    background-color: var(--bg-primary);
+}
+
+.in-file-search-option:has(input:checked) {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.in-file-search-option input {
+    display: none;
+}
+
+/* Search match highlighting */
+.search-highlight {
+    background-color: rgba(255, 215, 0, 0.4);
+    border-radius: 2px;
+}
+
+.search-highlight.current {
+    background-color: rgba(255, 165, 0, 0.7);
+    box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+/* For textarea-based editors, we use a different approach */
+.editor-raw.has-search-highlight {
+    background-image: linear-gradient(to right, transparent, transparent);
+}
+
+/* Quick Switcher Results */
+.quick-switcher-results {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+}
+
+.quick-switcher-item {
+    padding: 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.quick-switcher-item:hover,
+.quick-switcher-item.selected {
+    background-color: var(--bg-tertiary);
+}
+
+.quick-switcher-item .file-name {
+    font-weight: 500;
+}
+
+.quick-switcher-item .file-path {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }

@@ -176,12 +176,12 @@
 
 ### Task 4.4: Editor features
 - [x] Add auto-save functionality
-- [ ] Implement undo/redo
-- [ ] Add keyboard shortcuts
-- [ ] Support drag-and-drop for images/files
-- [ ] Add insert link/image helpers
-- [ ] Implement search within file (Ctrl+F)
-- [ ] Test editor interactions
+- [x] Implement undo/redo
+- [x] Add keyboard shortcuts (Ctrl+Z undo, Ctrl+Y/Ctrl+Shift+Z redo)
+- [x] Support drag-and-drop for images/files
+- [x] Add insert link/image helpers
+- [x] Implement search within file (Ctrl+F)
+- [x] Test editor interactions
 - [ ] Add accessibility features
 
 ### Task 4.5: Link resolution

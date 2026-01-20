@@ -5,11 +5,17 @@
   "scripts": {
     "build": "tsc && cp -r public/* ../target/frontend/",
     "build:simple": "tsc",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/highlight.js": "^9.12.4",
-    "typescript": "^5.3.0"
+    "@types/node": "^25.0.9",
+    "happy-dom": "^20.3.4",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.17"
   },
   "dependencies": {
     "codejar": "^4.3.0",

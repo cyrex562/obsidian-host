@@ -52,6 +52,157 @@ interface Tab {
     fileType: 'markdown' | 'image' | 'pdf' | 'text' | 'audio' | 'video' | 'other';
     frontmatter?: any;
     autoSaveInterval?: number;
+    undoManager?: UndoRedoManager;
+}
+
+// Undo/Redo System - Command Pattern Implementation
+
+interface EditCommand {
+    execute(): string;  // Returns new content
+    undo(): string;     // Returns previous content
+    timestamp: number;
+}
+
+class TextChangeCommand implements EditCommand {
+    timestamp: number;
+
+    constructor(
+        private oldContent: string,
+        private newContent: string
+    ) {
+        this.timestamp = Date.now();
+    }
+
+    execute(): string {
+        return this.newContent;
+    }
+
+    undo(): string {
+        return this.oldContent;
+    }
+}
+
+class UndoRedoManager {
+    private undoStack: EditCommand[] = [];
+    private redoStack: EditCommand[] = [];
+    private maxStackSize: number = 100;
+    private lastContent: string;
+    private debounceTimeout: number | null = null;
+    private pendingOldContent: string | null = null;
+    private debounceMs: number = 300;
+
+    constructor(initialContent: string) {
+        this.lastContent = initialContent;
+    }
+
+    // Call this when content changes - handles debouncing for smoother UX
+    recordChange(newContent: string): void {
+        if (newContent === this.lastContent) return;
+
+        // Store the old content before any pending changes
+        if (this.pendingOldContent === null) {
+            this.pendingOldContent = this.lastContent;
+        }
+
+        // Clear any existing debounce timer
+        if (this.debounceTimeout !== null) {
+            clearTimeout(this.debounceTimeout);
+        }
+
+        // Set a new debounce timer
+        this.debounceTimeout = window.setTimeout(() => {
+            this.commitChange(newContent);
+        }, this.debounceMs);
+
+        // Update lastContent immediately for tracking
+        this.lastContent = newContent;
+    }
+
+    // Force commit any pending changes (e.g., before save or undo)
+    flushPendingChanges(): void {
+        if (this.debounceTimeout !== null) {
+            clearTimeout(this.debounceTimeout);
+            this.debounceTimeout = null;
+        }
+        if (this.pendingOldContent !== null && this.pendingOldContent !== this.lastContent) {
+            const command = new TextChangeCommand(this.pendingOldContent, this.lastContent);
+            this.pushCommand(command);
+        }
+        this.pendingOldContent = null;
+    }
+
+    private commitChange(newContent: string): void {
+        if (this.pendingOldContent === null || this.pendingOldContent === newContent) {
+            this.pendingOldContent = null;
+            return;
+        }
+
+        const command = new TextChangeCommand(this.pendingOldContent, newContent);
+        this.pushCommand(command);
+        this.pendingOldContent = null;
+        this.debounceTimeout = null;
+    }
+
+    private pushCommand(command: EditCommand): void {
+        this.undoStack.push(command);
+        this.redoStack = []; // Clear redo stack on new change
+
+        // Limit stack size
+        if (this.undoStack.length > this.maxStackSize) {
+            this.undoStack.shift();
+        }
+    }
+
+    undo(): string | null {
+        this.flushPendingChanges();
+
+        if (this.undoStack.length === 0) return null;
+
+        const command = this.undoStack.pop()!;
+        this.redoStack.push(command);
+
+        const content = command.undo();
+        this.lastContent = content;
+        return content;
+    }
+
+    redo(): string | null {
+        this.flushPendingChanges();
+
+        if (this.redoStack.length === 0) return null;
+
+        const command = this.redoStack.pop()!;
+        this.undoStack.push(command);
+
+        const content = command.execute();
+        this.lastContent = content;
+        return content;
+    }
+
+    canUndo(): boolean {
+        return this.undoStack.length > 0 || this.pendingOldContent !== null;
+    }
+
+    canRedo(): boolean {
+        return this.redoStack.length > 0;
+    }
+
+    // Reset the manager (e.g., after save or reload)
+    reset(content: string): void {
+        this.undoStack = [];
+        this.redoStack = [];
+        this.lastContent = content;
+        this.pendingOldContent = null;
+        if (this.debounceTimeout !== null) {
+            clearTimeout(this.debounceTimeout);
+            this.debounceTimeout = null;
+        }
+    }
+
+    // Get current content (for sync purposes)
+    getCurrentContent(): string {
+        return this.lastContent;
+    }
 }
 
 // File type detection helpers
@@ -563,6 +714,7 @@ class UIManager {
                 pane: 1,
                 fileType: fileType,
                 frontmatter: frontmatter,
+                undoManager: new UndoRedoManager(content),
             };
 
             this.state.addTab(tab);
@@ -805,10 +957,16 @@ class UIManager {
         const textarea = container.querySelector('#editor-textarea') as HTMLTextAreaElement;
         if (textarea) {
             textarea.addEventListener('input', () => {
-                tab.content = textarea.value;
+                const newContent = textarea.value;
+                tab.undoManager?.recordChange(newContent);
+                tab.content = newContent;
                 tab.isDirty = true;
                 this.renderTabs();
+                this.updateUndoRedoButtons();
             });
+
+            // Setup drag-and-drop for images/files
+            this.setupEditorDropZone(container, textarea);
         }
     }
 
@@ -833,13 +991,19 @@ class UIManager {
             }, 300);
 
             textarea.addEventListener('input', () => {
-                tab.content = textarea.value;
+                const newContent = textarea.value;
+                tab.undoManager?.recordChange(newContent);
+                tab.content = newContent;
                 tab.isDirty = true;
                 updatePreview();
                 this.renderTabs();
+                this.updateUndoRedoButtons();
             });
 
             updatePreview();
+
+            // Setup drag-and-drop for images/files
+            this.setupEditorDropZone(container, textarea);
         }
     }
 
@@ -854,12 +1018,17 @@ class UIManager {
 
             jar.updateCode(tab.content, false);
             jar.onUpdate((code: string) => {
+                tab.undoManager?.recordChange(code);
                 tab.content = code;
                 tab.isDirty = true;
                 this.renderTabs();
+                this.updateUndoRedoButtons();
             });
 
             this.currentJar = jar;
+
+            // Setup drag-and-drop for images/files
+            this.setupEditorDropZone(container);
         }
     }
 
@@ -895,19 +1064,22 @@ class UIManager {
 
             // Track changes
             // @ts-ignore
-            // Track changes
-            // @ts-ignore
-            quill.on('text-change', debounce((delta, oldDelta, source) => {
+            quill.on('text-change', debounce((_delta: any, _oldDelta: any, source: string) => {
                 if (source !== 'user') return;
                 // @ts-ignore
                 const newHtml = quill.root.innerHTML;
                 const markdown = this.htmlToMarkdown(newHtml);
+                tab.undoManager?.recordChange(markdown);
                 tab.content = markdown;
                 tab.isDirty = true;
                 this.renderTabs();
+                this.updateUndoRedoButtons();
             }, 500));
 
             this.currentQuill = quill;
+
+            // Setup drag-and-drop for images/files
+            this.setupEditorDropZone(container);
         }
     }
 
@@ -931,6 +1103,83 @@ class UIManager {
         });
 
         return turndownService.turndown(html);
+    }
+
+    // Undo/Redo functionality
+    undo(): void {
+        if (!this.state.activeTabId) return;
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || !tab.undoManager) return;
+
+        const content = tab.undoManager.undo();
+        if (content !== null) {
+            tab.content = content;
+            tab.isDirty = true;
+            this.renderTabs();
+            this.updateEditorContent(content);
+            this.updateUndoRedoButtons();
+        }
+    }
+
+    redo(): void {
+        if (!this.state.activeTabId) return;
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || !tab.undoManager) return;
+
+        const content = tab.undoManager.redo();
+        if (content !== null) {
+            tab.content = content;
+            tab.isDirty = true;
+            this.renderTabs();
+            this.updateEditorContent(content);
+            this.updateUndoRedoButtons();
+        }
+    }
+
+    private updateEditorContent(content: string): void {
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return;
+
+        // Update textarea if present (raw or side-by-side mode)
+        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        if (textarea) {
+            textarea.value = content;
+            // Also update preview in side-by-side mode
+            const preview = pane1.querySelector('#preview-pane') as HTMLElement;
+            if (preview) {
+                this.renderMarkdown(content).then(html => {
+                    preview.innerHTML = html;
+                });
+            }
+            return;
+        }
+
+        // Update CodeJar if present (formatted mode)
+        if (this.currentJar) {
+            this.currentJar.updateCode(content, false);
+            return;
+        }
+
+        // Update Quill if present (rendered mode)
+        if (this.currentQuill) {
+            this.renderMarkdown(content).then(html => {
+                this.currentQuill.clipboard.dangerouslyPasteHTML(html);
+            });
+            return;
+        }
+    }
+
+    updateUndoRedoButtons(): void {
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        const undoBtn = document.getElementById('undo-btn');
+        const redoBtn = document.getElementById('redo-btn');
+
+        if (undoBtn) {
+            undoBtn.classList.toggle('disabled', !tab?.undoManager?.canUndo());
+        }
+        if (redoBtn) {
+            redoBtn.classList.toggle('disabled', !tab?.undoManager?.canRedo());
+        }
     }
 
     renderImageViewer(container: HTMLElement, tab: Tab) {
@@ -1321,6 +1570,161 @@ class UIManager {
                 await this.handleUpload(files);
             }
         });
+    }
+
+    // Editor-specific drag and drop for images/files
+    setupEditorDropZone(container: HTMLElement, textarea?: HTMLTextAreaElement) {
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            container.classList.add('editor-drag-over');
+        });
+
+        container.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Only remove class if leaving the container entirely
+            const relatedTarget = e.relatedTarget as HTMLElement;
+            if (!container.contains(relatedTarget)) {
+                container.classList.remove('editor-drag-over');
+            }
+        });
+
+        container.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            container.classList.remove('editor-drag-over');
+
+            const files = e.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+
+            await this.handleEditorDrop(files, textarea);
+        });
+    }
+
+    async handleEditorDrop(files: FileList, textarea?: HTMLTextAreaElement) {
+        if (!this.state.currentVaultId || !this.state.activeTabId) return;
+
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') return;
+
+        // Upload files and get paths
+        const uploadedPaths = await this.uploadFilesForEditor(files);
+        if (uploadedPaths.length === 0) return;
+
+        // Generate markdown for the uploaded files
+        const markdownText = uploadedPaths
+            .map(file => this.generateFileMarkdown(file.path, file.filename))
+            .join('\n');
+
+        // Insert into editor based on mode
+        this.insertIntoEditor(markdownText, textarea);
+    }
+
+    async uploadFilesForEditor(files: FileList): Promise<Array<{path: string, filename: string}>> {
+        if (!this.state.currentVaultId) return [];
+
+        const uploadedFiles: Array<{path: string, filename: string}> = [];
+
+        try {
+            // Upload to attachments folder for organization
+            const result = await this.api.uploadFiles(
+                this.state.currentVaultId,
+                files,
+                'attachments'
+            );
+
+            if (result.uploaded && Array.isArray(result.uploaded)) {
+                for (const file of result.uploaded) {
+                    uploadedFiles.push({
+                        path: file.path,
+                        filename: file.filename
+                    });
+                }
+            }
+
+            // Refresh file tree to show new files
+            this.loadFileTree();
+        } catch (error) {
+            console.error('Failed to upload files for editor:', error);
+            alert('Failed to upload files: ' + error);
+        }
+
+        return uploadedFiles;
+    }
+
+    generateFileMarkdown(filePath: string, filename: string): string {
+        const fileType = getFileType(filePath);
+
+        // Use Obsidian-style wiki links for internal files
+        switch (fileType) {
+            case 'image':
+                return `![[${filePath}]]`;
+            case 'audio':
+            case 'video':
+                return `![[${filePath}]]`;
+            case 'pdf':
+                return `![[${filePath}]]`;
+            default:
+                return `[[${filePath}]]`;
+        }
+    }
+
+    insertIntoEditor(text: string, textarea?: HTMLTextAreaElement) {
+        // For raw and side-by-side modes with textarea
+        if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const before = textarea.value.substring(0, start);
+            const after = textarea.value.substring(end);
+
+            // Add newlines if needed
+            const needsNewlineBefore = before.length > 0 && !before.endsWith('\n');
+            const needsNewlineAfter = after.length > 0 && !after.startsWith('\n');
+
+            const insertText = (needsNewlineBefore ? '\n' : '') + text + (needsNewlineAfter ? '\n' : '');
+
+            textarea.value = before + insertText + after;
+            textarea.selectionStart = textarea.selectionEnd = start + insertText.length;
+
+            // Trigger input event to update tab content
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.focus();
+            return;
+        }
+
+        // For formatted mode (CodeJar)
+        if (this.currentJar) {
+            const editor = document.querySelector('#editor-formatted') as HTMLElement;
+            if (editor) {
+                const currentContent = this.currentJar.toString();
+                const newContent = currentContent + (currentContent.endsWith('\n') ? '' : '\n') + text + '\n';
+                this.currentJar.updateCode(newContent);
+                return;
+            }
+        }
+
+        // For WYSIWYG mode (Quill)
+        if (this.currentQuill) {
+            const range = this.currentQuill.getSelection(true);
+            const index = range ? range.index : this.currentQuill.getLength();
+
+            // For images, insert as image embed; for other files, insert as link
+            const lines = text.split('\n');
+            for (const line of lines) {
+                // Check if it's an image embed (![[...]])
+                const imageMatch = line.match(/!\[\[([^\]]+)\]\]/);
+                if (imageMatch && this.state.currentVaultId) {
+                    const filePath = imageMatch[1];
+                    const imageUrl = `/api/vaults/${this.state.currentVaultId}/raw/${filePath}`;
+                    this.currentQuill.insertEmbed(index, 'image', imageUrl, 'user');
+                } else {
+                    // Insert as text for other file types
+                    this.currentQuill.insertText(index, line + '\n', 'user');
+                }
+            }
+            return;
+        }
     }
 
     displaySelectedFiles(files: FileList) {
@@ -2196,6 +2600,880 @@ class UIManager {
 
         this.showModal('conflict-modal');
     }
+
+    setupUndoRedo() {
+        // Keyboard shortcuts for undo/redo
+        document.addEventListener('keydown', (e) => {
+            // Check if we're in an input/textarea that handles its own undo
+            const target = e.target as HTMLElement;
+            const isInEditor = target.id === 'editor-textarea' ||
+                               target.id === 'editor-formatted' ||
+                               target.closest('#editor-wysiwyg') !== null;
+
+            // Only intercept if we're in one of our editors
+            if (!isInEditor) return;
+
+            // Undo: Ctrl+Z / Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+            }
+
+            // Redo: Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                this.redo();
+            }
+        });
+
+        // Undo button click handler
+        const undoBtn = document.getElementById('undo-btn');
+        undoBtn?.addEventListener('click', () => {
+            this.undo();
+        });
+
+        // Redo button click handler
+        const redoBtn = document.getElementById('redo-btn');
+        redoBtn?.addEventListener('click', () => {
+            this.redo();
+        });
+    }
+
+    setupInsertHelpers() {
+        // Insert Link Button
+        const insertLinkBtn = document.getElementById('insert-link-btn');
+        insertLinkBtn?.addEventListener('click', () => {
+            this.showInsertLinkModal();
+        });
+
+        // Insert Image Button
+        const insertImageBtn = document.getElementById('insert-image-btn');
+        insertImageBtn?.addEventListener('click', () => {
+            this.showInsertImageModal();
+        });
+
+        // Insert Link Form
+        const insertLinkForm = document.getElementById('insert-link-form') as HTMLFormElement;
+        insertLinkForm?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleInsertLink();
+        });
+
+        // Link type toggle - update placeholder
+        const linkTypeRadios = document.querySelectorAll('input[name="link-type"]');
+        linkTypeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const target = e.target as HTMLInputElement;
+                const urlInput = document.getElementById('link-url') as HTMLInputElement;
+                if (target.value === 'internal') {
+                    urlInput.placeholder = 'Note Name';
+                } else {
+                    urlInput.placeholder = 'https://...';
+                }
+            });
+        });
+
+        // Image tab switching
+        const imageTabs = document.querySelectorAll('.image-insert-tabs .tab-btn');
+        imageTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const tabName = target.getAttribute('data-tab');
+                if (!tabName) return;
+
+                // Update active tab
+                imageTabs.forEach(t => t.classList.remove('active'));
+                target.classList.add('active');
+
+                // Show corresponding content
+                document.querySelectorAll('.image-tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(`image-tab-${tabName}`)?.classList.remove('hidden');
+
+                // Load vault images if switching to vault tab
+                if (tabName === 'vault') {
+                    this.loadVaultImages();
+                }
+            });
+        });
+
+        // Image upload handling
+        const imageUploadArea = document.getElementById('image-upload-area');
+        const imageFileInput = document.getElementById('image-file-input') as HTMLInputElement;
+        const imageBrowseBtn = document.getElementById('image-browse-btn');
+
+        imageBrowseBtn?.addEventListener('click', () => {
+            imageFileInput?.click();
+        });
+
+        imageUploadArea?.addEventListener('click', (e) => {
+            if (e.target === imageUploadArea || (e.target as HTMLElement).closest('.upload-prompt')) {
+                imageFileInput?.click();
+            }
+        });
+
+        imageFileInput?.addEventListener('change', (e) => {
+            const files = (e.target as HTMLInputElement).files;
+            if (files && files.length > 0) {
+                this.previewSelectedImage(files[0]);
+            }
+        });
+
+        // Drag and drop for image upload
+        imageUploadArea?.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            imageUploadArea.classList.add('drag-over');
+        });
+
+        imageUploadArea?.addEventListener('dragleave', () => {
+            imageUploadArea.classList.remove('drag-over');
+        });
+
+        imageUploadArea?.addEventListener('drop', (e) => {
+            e.preventDefault();
+            imageUploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+                this.previewSelectedImage(files[0]);
+            }
+        });
+
+        // URL image preview
+        const imageUrlInput = document.getElementById('image-url') as HTMLInputElement;
+        imageUrlInput?.addEventListener('input', debounce(() => {
+            const url = imageUrlInput.value.trim();
+            if (url) {
+                this.previewUrlImage(url);
+            } else {
+                document.getElementById('url-image-preview-container')?.classList.add('hidden');
+            }
+        }, 500));
+
+        // Vault image search
+        const vaultImageSearch = document.getElementById('vault-image-search') as HTMLInputElement;
+        vaultImageSearch?.addEventListener('input', debounce(() => {
+            this.loadVaultImages(vaultImageSearch.value);
+        }, 300));
+
+        // Insert Image Submit
+        const insertImageSubmit = document.getElementById('insert-image-submit');
+        insertImageSubmit?.addEventListener('click', () => {
+            this.handleInsertImage();
+        });
+
+        // Keyboard shortcut for insert link (Ctrl+Shift+K to avoid conflict with quick switcher)
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'k') {
+                e.preventDefault();
+                const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+                if (tab?.fileType === 'markdown') {
+                    this.showInsertLinkModal();
+                }
+            }
+        });
+    }
+
+    private selectedImageFile: File | null = null;
+    private selectedVaultImage: string | null = null;
+
+    showInsertLinkModal() {
+        if (!this.state.activeTabId) {
+            alert('Please open a file first');
+            return;
+        }
+
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            alert('Links can only be inserted into markdown files');
+            return;
+        }
+
+        // Get selected text from editor to use as link text
+        const selectedText = this.getSelectedText();
+
+        // Reset form
+        const linkTextInput = document.getElementById('link-text') as HTMLInputElement;
+        const linkUrlInput = document.getElementById('link-url') as HTMLInputElement;
+        const externalRadio = document.querySelector('input[name="link-type"][value="external"]') as HTMLInputElement;
+
+        if (linkTextInput) linkTextInput.value = selectedText || '';
+        if (linkUrlInput) {
+            linkUrlInput.value = '';
+            linkUrlInput.placeholder = 'https://...';
+        }
+        if (externalRadio) externalRadio.checked = true;
+
+        this.showModal('insert-link-modal');
+        linkUrlInput?.focus();
+    }
+
+    showInsertImageModal() {
+        if (!this.state.activeTabId) {
+            alert('Please open a file first');
+            return;
+        }
+
+        const tab = this.state.getTab(this.state.activeTabId);
+        if (!tab || tab.fileType !== 'markdown') {
+            alert('Images can only be inserted into markdown files');
+            return;
+        }
+
+        // Reset state
+        this.selectedImageFile = null;
+        this.selectedVaultImage = null;
+
+        // Reset UI
+        const imageFileInput = document.getElementById('image-file-input') as HTMLInputElement;
+        const imageUrlInput = document.getElementById('image-url') as HTMLInputElement;
+        const altTextInput = document.getElementById('image-alt-text') as HTMLInputElement;
+
+        if (imageFileInput) imageFileInput.value = '';
+        if (imageUrlInput) imageUrlInput.value = '';
+        if (altTextInput) altTextInput.value = '';
+
+        document.getElementById('image-preview-container')?.classList.add('hidden');
+        document.getElementById('url-image-preview-container')?.classList.add('hidden');
+
+        // Reset to upload tab
+        document.querySelectorAll('.image-insert-tabs .tab-btn').forEach(t => t.classList.remove('active'));
+        document.querySelector('.image-insert-tabs .tab-btn[data-tab="upload"]')?.classList.add('active');
+        document.querySelectorAll('.image-tab-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById('image-tab-upload')?.classList.remove('hidden');
+
+        this.showModal('insert-image-modal');
+    }
+
+    getSelectedText(): string {
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return '';
+
+        // Check textarea (raw or side-by-side mode)
+        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        if (textarea) {
+            return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+        }
+
+        // Check CodeJar (formatted mode)
+        if (this.currentJar) {
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount > 0) {
+                return selection.toString();
+            }
+        }
+
+        // Check Quill (rendered mode)
+        if (this.currentQuill) {
+            const range = this.currentQuill.getSelection();
+            if (range && range.length > 0) {
+                return this.currentQuill.getText(range.index, range.length);
+            }
+        }
+
+        return '';
+    }
+
+    handleInsertLink() {
+        const linkTextInput = document.getElementById('link-text') as HTMLInputElement;
+        const linkUrlInput = document.getElementById('link-url') as HTMLInputElement;
+        const linkType = (document.querySelector('input[name="link-type"]:checked') as HTMLInputElement)?.value;
+
+        const text = linkTextInput?.value.trim() || '';
+        const url = linkUrlInput?.value.trim() || '';
+
+        if (!url) {
+            alert('Please enter a URL or note name');
+            return;
+        }
+
+        let markdown: string;
+        if (linkType === 'internal') {
+            // Wiki-style internal link
+            if (text && text !== url) {
+                markdown = `[[${url}|${text}]]`;
+            } else {
+                markdown = `[[${url}]]`;
+            }
+        } else {
+            // Standard markdown external link
+            const displayText = text || url;
+            markdown = `[${displayText}](${url})`;
+        }
+
+        this.insertTextAtCursor(markdown);
+        this.hideModal('insert-link-modal');
+    }
+
+    previewSelectedImage(file: File) {
+        this.selectedImageFile = file;
+
+        const previewContainer = document.getElementById('image-preview-container');
+        const previewImg = document.getElementById('image-preview') as HTMLImageElement;
+        const previewName = document.getElementById('image-preview-name');
+
+        if (previewContainer && previewImg && previewName) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target?.result as string;
+                previewName.textContent = file.name;
+                previewContainer.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    previewUrlImage(url: string) {
+        const previewContainer = document.getElementById('url-image-preview-container');
+        const previewImg = document.getElementById('url-image-preview') as HTMLImageElement;
+
+        if (previewContainer && previewImg) {
+            previewImg.onload = () => {
+                previewContainer.classList.remove('hidden');
+            };
+            previewImg.onerror = () => {
+                previewContainer.classList.add('hidden');
+            };
+            previewImg.src = url;
+        }
+    }
+
+    async loadVaultImages(searchQuery: string = '') {
+        if (!this.state.currentVaultId) return;
+
+        const listContainer = document.getElementById('vault-images-list');
+        if (!listContainer) return;
+
+        listContainer.innerHTML = '<p>Loading images...</p>';
+
+        try {
+            const tree = await this.api.getFileTree(this.state.currentVaultId);
+            const images = this.findImagesInTree(tree, searchQuery.toLowerCase());
+
+            if (images.length === 0) {
+                listContainer.innerHTML = '<p class="empty-state">No images found in vault</p>';
+                return;
+            }
+
+            listContainer.innerHTML = '';
+            images.forEach(imagePath => {
+                const item = document.createElement('div');
+                item.className = 'vault-image-item' + (this.selectedVaultImage === imagePath ? ' selected' : '');
+
+                const fileName = imagePath.split('/').pop() || imagePath;
+                const imgUrl = `/api/vaults/${this.state.currentVaultId}/raw/${imagePath}`;
+
+                item.innerHTML = `
+                    <img src="${imgUrl}" alt="${fileName}" loading="lazy">
+                    <span class="image-name">${fileName}</span>
+                `;
+
+                item.addEventListener('click', () => {
+                    // Deselect others
+                    listContainer.querySelectorAll('.vault-image-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
+                    this.selectedVaultImage = imagePath;
+                });
+
+                listContainer.appendChild(item);
+            });
+        } catch (error) {
+            console.error('Failed to load vault images:', error);
+            listContainer.innerHTML = '<p class="error">Failed to load images</p>';
+        }
+    }
+
+    findImagesInTree(nodes: FileNode[], searchQuery: string = ''): string[] {
+        const images: string[] = [];
+        const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
+
+        const traverse = (nodeList: FileNode[]) => {
+            for (const node of nodeList) {
+                if (node.is_directory && node.children) {
+                    traverse(node.children);
+                } else {
+                    const ext = node.name.split('.').pop()?.toLowerCase();
+                    if (ext && imageExtensions.includes(ext)) {
+                        if (!searchQuery || node.name.toLowerCase().includes(searchQuery) || node.path.toLowerCase().includes(searchQuery)) {
+                            images.push(node.path);
+                        }
+                    }
+                }
+            }
+        };
+
+        traverse(nodes);
+        return images;
+    }
+
+    async handleInsertImage() {
+        const activeTab = document.querySelector('.image-insert-tabs .tab-btn.active');
+        const tabType = activeTab?.getAttribute('data-tab');
+        const altText = (document.getElementById('image-alt-text') as HTMLInputElement)?.value.trim() || '';
+
+        let markdown = '';
+
+        if (tabType === 'upload' && this.selectedImageFile) {
+            // Upload the image first
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+
+            try {
+                const fileList = this.createFileList([this.selectedImageFile]);
+                const result = await this.api.uploadFiles(
+                    this.state.currentVaultId,
+                    fileList,
+                    'attachments'
+                );
+
+                if (result.uploaded && result.uploaded.length > 0) {
+                    const uploadedPath = result.uploaded[0].path;
+                    markdown = altText ? `![[${uploadedPath}|${altText}]]` : `![[${uploadedPath}]]`;
+                    this.loadFileTree(); // Refresh to show new file
+                } else {
+                    alert('Upload failed');
+                    return;
+                }
+            } catch (error) {
+                console.error('Failed to upload image:', error);
+                alert('Failed to upload image: ' + error);
+                return;
+            }
+        } else if (tabType === 'url') {
+            const imageUrl = (document.getElementById('image-url') as HTMLInputElement)?.value.trim();
+            if (!imageUrl) {
+                alert('Please enter an image URL');
+                return;
+            }
+            // Standard markdown image syntax for external URLs
+            markdown = altText ? `![${altText}](${imageUrl})` : `![](${imageUrl})`;
+        } else if (tabType === 'vault' && this.selectedVaultImage) {
+            markdown = altText ? `![[${this.selectedVaultImage}|${altText}]]` : `![[${this.selectedVaultImage}]]`;
+        } else {
+            alert('Please select or upload an image');
+            return;
+        }
+
+        this.insertTextAtCursor(markdown);
+        this.hideModal('insert-image-modal');
+    }
+
+    createFileList(files: File[]): FileList {
+        const dataTransfer = new DataTransfer();
+        files.forEach(file => dataTransfer.items.add(file));
+        return dataTransfer.files;
+    }
+
+    insertTextAtCursor(text: string) {
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return;
+
+        // Check textarea (raw or side-by-side mode)
+        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const before = textarea.value.substring(0, start);
+            const after = textarea.value.substring(end);
+
+            textarea.value = before + text + after;
+            textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.focus();
+            return;
+        }
+
+        // Check CodeJar (formatted mode)
+        if (this.currentJar) {
+            const editor = document.querySelector('#editor-formatted') as HTMLElement;
+            if (editor) {
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(document.createTextNode(text));
+                    range.collapse(false);
+                } else {
+                    // Append at end
+                    const currentContent = this.currentJar.toString();
+                    this.currentJar.updateCode(currentContent + text);
+                }
+                return;
+            }
+        }
+
+        // Check Quill (rendered mode)
+        if (this.currentQuill) {
+            const range = this.currentQuill.getSelection(true);
+            const index = range ? range.index : this.currentQuill.getLength();
+
+            // Check if it's an image
+            const imageMatch = text.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+            if (imageMatch) {
+                const imageUrl = imageMatch[2];
+                this.currentQuill.insertEmbed(index, 'image', imageUrl, 'user');
+            } else {
+                this.currentQuill.insertText(index, text, 'user');
+            }
+            return;
+        }
+    }
+
+    // In-File Search (Ctrl+F) functionality
+    private inFileSearchMatches: { start: number; end: number }[] = [];
+    private inFileSearchCurrentIndex: number = -1;
+    private inFileSearchQuery: string = '';
+
+    setupInFileSearch() {
+        const searchBar = document.getElementById('in-file-search');
+        const searchInput = document.getElementById('in-file-search-input') as HTMLInputElement;
+        const searchCount = document.getElementById('in-file-search-count');
+        const prevBtn = document.getElementById('in-file-search-prev');
+        const nextBtn = document.getElementById('in-file-search-next');
+        const closeBtn = document.getElementById('in-file-search-close');
+        const caseCheckbox = document.getElementById('in-file-search-case') as HTMLInputElement;
+
+        if (!searchBar || !searchInput || !searchCount || !prevBtn || !nextBtn || !closeBtn) {
+            console.warn('In-file search elements not found');
+            return;
+        }
+
+        // Ctrl+F to open search
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                // Only handle if we have an active tab with text content
+                if (!this.state.activeTabId) return;
+                const tab = this.state.getTab(this.state.activeTabId);
+                if (!tab || (tab.fileType !== 'markdown' && tab.fileType !== 'text')) return;
+
+                e.preventDefault();
+                this.showInFileSearch();
+            }
+        });
+
+        // Escape to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !searchBar.classList.contains('hidden')) {
+                this.hideInFileSearch();
+            }
+        });
+
+        // Close button
+        closeBtn.addEventListener('click', () => {
+            this.hideInFileSearch();
+        });
+
+        // Search input handler
+        searchInput.addEventListener('input', () => {
+            this.performInFileSearch();
+        });
+
+        // Case sensitivity toggle
+        caseCheckbox.addEventListener('change', () => {
+            this.performInFileSearch();
+        });
+
+        // Enter to go to next, Shift+Enter to go to previous
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    this.goToPreviousMatch();
+                } else {
+                    this.goToNextMatch();
+                }
+            }
+        });
+
+        // Navigation buttons
+        prevBtn.addEventListener('click', () => this.goToPreviousMatch());
+        nextBtn.addEventListener('click', () => this.goToNextMatch());
+    }
+
+    showInFileSearch() {
+        const searchBar = document.getElementById('in-file-search');
+        const searchInput = document.getElementById('in-file-search-input') as HTMLInputElement;
+
+        if (searchBar && searchInput) {
+            searchBar.classList.remove('hidden');
+            searchInput.focus();
+            searchInput.select();
+
+            // If there's already a search query, perform search
+            if (searchInput.value) {
+                this.performInFileSearch();
+            }
+        }
+    }
+
+    hideInFileSearch() {
+        const searchBar = document.getElementById('in-file-search');
+        if (searchBar) {
+            searchBar.classList.add('hidden');
+        }
+        this.clearSearchHighlights();
+        this.inFileSearchMatches = [];
+        this.inFileSearchCurrentIndex = -1;
+    }
+
+    performInFileSearch() {
+        const searchInput = document.getElementById('in-file-search-input') as HTMLInputElement;
+        const caseCheckbox = document.getElementById('in-file-search-case') as HTMLInputElement;
+        const searchCount = document.getElementById('in-file-search-count');
+
+        if (!searchInput || !searchCount) return;
+
+        const query = searchInput.value;
+        const caseSensitive = caseCheckbox?.checked || false;
+
+        this.inFileSearchQuery = query;
+        this.inFileSearchMatches = [];
+        this.inFileSearchCurrentIndex = -1;
+
+        // Clear previous highlights
+        this.clearSearchHighlights();
+
+        if (!query) {
+            searchCount.textContent = '';
+            searchCount.classList.remove('no-results');
+            return;
+        }
+
+        // Get current content
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        if (!tab) return;
+
+        const content = tab.content;
+        const searchContent = caseSensitive ? content : content.toLowerCase();
+        const searchQuery = caseSensitive ? query : query.toLowerCase();
+
+        // Find all matches
+        let pos = 0;
+        while (pos < searchContent.length) {
+            const index = searchContent.indexOf(searchQuery, pos);
+            if (index === -1) break;
+            this.inFileSearchMatches.push({ start: index, end: index + query.length });
+            pos = index + 1;
+        }
+
+        // Update count display
+        if (this.inFileSearchMatches.length === 0) {
+            searchCount.textContent = 'No results';
+            searchCount.classList.add('no-results');
+        } else {
+            this.inFileSearchCurrentIndex = 0;
+            searchCount.textContent = `1 of ${this.inFileSearchMatches.length}`;
+            searchCount.classList.remove('no-results');
+            this.highlightMatches();
+            this.scrollToCurrentMatch();
+        }
+    }
+
+    goToNextMatch() {
+        if (this.inFileSearchMatches.length === 0) return;
+
+        this.inFileSearchCurrentIndex = (this.inFileSearchCurrentIndex + 1) % this.inFileSearchMatches.length;
+        this.updateSearchCountDisplay();
+        this.highlightMatches();
+        this.scrollToCurrentMatch();
+    }
+
+    goToPreviousMatch() {
+        if (this.inFileSearchMatches.length === 0) return;
+
+        this.inFileSearchCurrentIndex = this.inFileSearchCurrentIndex <= 0
+            ? this.inFileSearchMatches.length - 1
+            : this.inFileSearchCurrentIndex - 1;
+        this.updateSearchCountDisplay();
+        this.highlightMatches();
+        this.scrollToCurrentMatch();
+    }
+
+    updateSearchCountDisplay() {
+        const searchCount = document.getElementById('in-file-search-count');
+        if (searchCount && this.inFileSearchMatches.length > 0) {
+            searchCount.textContent = `${this.inFileSearchCurrentIndex + 1} of ${this.inFileSearchMatches.length}`;
+        }
+    }
+
+    highlightMatches() {
+        // Different highlighting strategies based on editor mode
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return;
+
+        // For textarea (raw or side-by-side mode)
+        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        if (textarea && this.inFileSearchMatches.length > 0) {
+            // Textareas can't have HTML highlights, so we just select the current match
+            const currentMatch = this.inFileSearchMatches[this.inFileSearchCurrentIndex];
+            if (currentMatch) {
+                textarea.setSelectionRange(currentMatch.start, currentMatch.end);
+            }
+            return;
+        }
+
+        // For CodeJar (formatted mode)
+        const formattedEditor = pane1.querySelector('#editor-formatted') as HTMLElement;
+        if (formattedEditor && this.currentJar) {
+            this.highlightInContentEditable(formattedEditor);
+            return;
+        }
+
+        // For Quill (rendered mode)
+        if (this.currentQuill) {
+            this.highlightInQuill();
+            return;
+        }
+
+        // For code viewer (read-only text files)
+        const codeViewer = pane1.querySelector('.code-viewer code') as HTMLElement;
+        if (codeViewer) {
+            this.highlightInCodeViewer(codeViewer);
+            return;
+        }
+    }
+
+    highlightInContentEditable(editor: HTMLElement) {
+        if (!this.inFileSearchQuery || this.inFileSearchMatches.length === 0) return;
+
+        // Get the text content and current code
+        const content = this.currentJar ? this.currentJar.toString() : editor.textContent || '';
+
+        // Escape HTML and add highlights
+        let highlightedContent = this.escapeHtml(content);
+
+        // Sort matches in reverse order to replace from end to start
+        const sortedMatches = [...this.inFileSearchMatches].sort((a, b) => b.start - a.start);
+
+        for (let i = sortedMatches.length - 1; i >= 0; i--) {
+            const match = sortedMatches[i];
+            const originalIndex = this.inFileSearchMatches.indexOf(match);
+            const isCurrent = originalIndex === this.inFileSearchCurrentIndex;
+            const className = isCurrent ? 'search-highlight current' : 'search-highlight';
+
+            const before = highlightedContent.substring(0, match.start);
+            const matchText = highlightedContent.substring(match.start, match.end);
+            const after = highlightedContent.substring(match.end);
+
+            highlightedContent = before + `<mark class="${className}">${matchText}</mark>` + after;
+        }
+
+        // Temporarily disable the CodeJar update listener
+        editor.innerHTML = highlightedContent;
+
+        // Re-apply syntax highlighting
+        hljs.highlightElement(editor);
+    }
+
+    highlightInQuill() {
+        if (!this.currentQuill || this.inFileSearchMatches.length === 0) return;
+
+        // Quill uses a different approach - we format the text
+        // First remove any existing search highlights
+        const length = this.currentQuill.getLength();
+        this.currentQuill.formatText(0, length, 'background', false, 'silent');
+
+        // Apply highlights
+        for (let i = 0; i < this.inFileSearchMatches.length; i++) {
+            const match = this.inFileSearchMatches[i];
+            const isCurrent = i === this.inFileSearchCurrentIndex;
+            const color = isCurrent ? 'rgba(255, 165, 0, 0.7)' : 'rgba(255, 215, 0, 0.4)';
+            this.currentQuill.formatText(match.start, match.end - match.start, 'background', color, 'silent');
+        }
+    }
+
+    highlightInCodeViewer(codeElement: HTMLElement) {
+        if (!this.inFileSearchQuery || this.inFileSearchMatches.length === 0) return;
+
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        if (!tab) return;
+
+        // Escape HTML and add highlights
+        let highlightedContent = this.escapeHtml(tab.content);
+
+        // Sort matches in reverse order
+        const sortedMatches = [...this.inFileSearchMatches].sort((a, b) => b.start - a.start);
+
+        for (const match of sortedMatches) {
+            const originalIndex = this.inFileSearchMatches.indexOf(match);
+            const isCurrent = originalIndex === this.inFileSearchCurrentIndex;
+            const className = isCurrent ? 'search-highlight current' : 'search-highlight';
+
+            const before = highlightedContent.substring(0, match.start);
+            const matchText = highlightedContent.substring(match.start, match.end);
+            const after = highlightedContent.substring(match.end);
+
+            highlightedContent = before + `<mark class="${className}">${matchText}</mark>` + after;
+        }
+
+        codeElement.innerHTML = highlightedContent;
+        hljs.highlightElement(codeElement);
+    }
+
+    scrollToCurrentMatch() {
+        if (this.inFileSearchCurrentIndex < 0 || this.inFileSearchMatches.length === 0) return;
+
+        const currentMatch = this.inFileSearchMatches[this.inFileSearchCurrentIndex];
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return;
+
+        // For textarea
+        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        if (textarea) {
+            textarea.focus();
+            // Calculate approximate scroll position based on line
+            const content = textarea.value.substring(0, currentMatch.start);
+            const lines = content.split('\n').length;
+            const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 20;
+            textarea.scrollTop = Math.max(0, (lines - 5) * lineHeight);
+            return;
+        }
+
+        // For formatted editor or code viewer - scroll to highlighted element
+        const currentHighlight = pane1.querySelector('.search-highlight.current');
+        if (currentHighlight) {
+            currentHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        // For Quill
+        if (this.currentQuill) {
+            this.currentQuill.setSelection(currentMatch.start, currentMatch.end - currentMatch.start);
+            return;
+        }
+    }
+
+    clearSearchHighlights() {
+        const pane1 = document.getElementById('pane-1');
+        if (!pane1) return;
+
+        // For CodeJar - restore original content
+        if (this.currentJar) {
+            const editor = pane1.querySelector('#editor-formatted') as HTMLElement;
+            if (editor) {
+                const content = this.currentJar.toString();
+                this.currentJar.updateCode(content, false);
+            }
+        }
+
+        // For Quill - remove background formatting
+        if (this.currentQuill) {
+            const length = this.currentQuill.getLength();
+            this.currentQuill.formatText(0, length, 'background', false, 'silent');
+        }
+
+        // For code viewer - re-render without highlights
+        const codeViewer = pane1.querySelector('.code-viewer code') as HTMLElement;
+        if (codeViewer) {
+            const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+            if (tab) {
+                codeViewer.textContent = tab.content;
+                hljs.highlightElement(codeViewer);
+            }
+        }
+    }
 }
 
 // Initialize the app
@@ -2210,4 +3488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     ui.setupQuickSwitcher();
     ui.setupTemplates();
     ui.setupConflictResolution();
+    ui.setupUndoRedo();
+    ui.setupInsertHelpers();
+    ui.setupInFileSearch();
 });
