@@ -288,6 +288,46 @@ body {
     color: var(--text-primary);
 }
 
+/* Tab dragging */
+.tab.dragging {
+    opacity: 0.5;
+}
+
+.tab.pane-2-tab {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.tab.pane-2-tab .tab-close {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.tab.pane-2-tab .tab-close:hover {
+    color: white;
+}
+
+/* Tab Context Menu */
+.tab-context-menu {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    min-width: 150px;
+    padding: 0.25rem 0;
+}
+
+.context-menu-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.context-menu-item:hover {
+    background-color: var(--accent-color);
+    color: white;
+}
+
 .tab-actions {
     padding: 0.5rem;
 }
@@ -299,16 +339,65 @@ body {
     overflow: hidden;
 }
 
+/* Vertical split (side by side - default) */
+.split-container.split-vertical {
+    flex-direction: row;
+}
+
+/* Horizontal split (stacked) */
+.split-container.split-horizontal {
+    flex-direction: column;
+}
+
 .editor-pane {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    min-width: 150px;
+    min-height: 150px;
 }
 
 .editor-pane.hidden {
     display: none;
+}
+
+.editor-pane.active {
+    border: 2px solid var(--accent-color);
+    border-radius: 4px;
+}
+
+/* Pane Resizer (divider between panes) */
+.pane-resizer {
+    background-color: var(--border-color);
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+    display: none;
+}
+
+/* Vertical resizer (for side-by-side split) */
+.split-container.split-vertical .pane-resizer {
+    width: 6px;
+    height: auto;
+    cursor: col-resize;
+}
+
+/* Horizontal resizer (for stacked split) */
+.split-container.split-horizontal .pane-resizer,
+.pane-resizer.horizontal {
+    width: auto;
+    height: 6px;
+    cursor: row-resize;
+}
+
+.pane-resizer:hover,
+.pane-resizer.dragging {
+    background-color: var(--accent-color);
+}
+
+.split-container.split-active .pane-resizer {
+    display: block;
 }
 
 .pane-close {
@@ -316,6 +405,36 @@ body {
     top: 0.5rem;
     right: 0.5rem;
     z-index: 10;
+}
+
+.pane-close .btn-icon {
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+}
+
+.pane-close .btn-icon:hover {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+/* Split view button active state */
+#split-view-btn.active {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+/* Toggle orientation button */
+#toggle-orientation-btn {
+    transition: background-color 0.2s;
+}
+
+#toggle-orientation-btn:hover {
+    background-color: var(--bg-tertiary);
+}
+
+#toggle-orientation-btn.hidden {
+    display: none;
 }
 
 /* Editor Toolbar */

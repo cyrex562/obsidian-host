@@ -240,10 +240,21 @@ class AppState {
     activeTabId: string | null = null;
     private _editorMode: 'raw' | 'side-by-side' | 'formatted' | 'rendered' = 'raw';
 
+    // Split pane state
+    splitViewActive: boolean = false;
+    activePane: 1 | 2 = 1;
+    pane2TabId: string | null = null;  // Tab displayed in pane 2
+    splitOrientation: 'vertical' | 'horizontal' = 'vertical';  // vertical = side-by-side, horizontal = stacked
+
     constructor() {
         const saved = localStorage.getItem('editor-mode');
         if (saved && ['raw', 'side-by-side', 'formatted', 'rendered'].includes(saved)) {
             this._editorMode = saved as any;
+        }
+        // Load split orientation preference
+        const savedOrientation = localStorage.getItem('split-orientation');
+        if (savedOrientation === 'horizontal' || savedOrientation === 'vertical') {
+            this.splitOrientation = savedOrientation;
         }
     }
 
@@ -533,6 +544,16 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to render markdown');
         return response.text();
     }
+
+    async resolveWikiLink(vaultId: string, link: string, currentFile?: string): Promise<{ path: string; exists: boolean; ambiguous: boolean; alternatives: string[] }> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/resolve-link`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ link, current_file: currentFile }),
+        });
+        if (!response.ok) throw new Error('Failed to resolve wiki link');
+        return response.json();
+    }
 }
 
 // UI Manager
@@ -778,10 +799,15 @@ class UIManager {
         for (const [tabId, tab] of this.state.openTabs) {
             const tabElement = document.createElement('div');
             tabElement.className = 'tab' + (tabId === this.state.activeTabId ? ' active' : '');
+            if (tab.pane === 2) {
+                tabElement.classList.add('pane-2-tab');
+            }
             tabElement.innerHTML = `
                 <span class="tab-name">${tab.isDirty ? '• ' : ''}${tab.fileName}</span>
                 <button class="tab-close">✕</button>
             `;
+            tabElement.setAttribute('data-tab-id', tabId);
+            tabElement.draggable = true;
 
             tabElement.querySelector('.tab-name')?.addEventListener('click', () => this.activateTab(tabId));
             tabElement.querySelector('.tab-close')?.addEventListener('click', (e) => {
@@ -789,8 +815,193 @@ class UIManager {
                 this.closeTab(tabId);
             });
 
+            // Context menu for split view
+            tabElement.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.showTabContextMenu(e as MouseEvent, tabId);
+            });
+
+            // Drag events for split view
+            tabElement.addEventListener('dragstart', (e) => {
+                e.dataTransfer?.setData('text/plain', tabId);
+                tabElement.classList.add('dragging');
+            });
+
+            tabElement.addEventListener('dragend', () => {
+                tabElement.classList.remove('dragging');
+            });
+
             tabsContainer.appendChild(tabElement);
         }
+
+        // Setup drop zones on panes
+        this.setupPaneDropZones();
+    }
+
+    showTabContextMenu(e: MouseEvent, tabId: string) {
+        // Remove any existing context menu
+        const existing = document.querySelector('.tab-context-menu');
+        if (existing) existing.remove();
+
+        const menu = document.createElement('div');
+        menu.className = 'tab-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top = `${e.clientY}px`;
+        menu.style.zIndex = '1000';
+
+        const tab = this.state.getTab(tabId);
+        const isInPane2 = tab?.pane === 2;
+
+        menu.innerHTML = `
+            <div class="context-menu-item" data-action="open-split">
+                ${isInPane2 ? 'Move to Main Pane' : 'Open in Split View'}
+            </div>
+            <div class="context-menu-item" data-action="close">Close Tab</div>
+            <div class="context-menu-item" data-action="close-others">Close Other Tabs</div>
+        `;
+
+        document.body.appendChild(menu);
+
+        // Handle menu item clicks
+        menu.querySelectorAll('.context-menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const action = item.getAttribute('data-action');
+                if (action === 'open-split') {
+                    if (isInPane2) {
+                        this.moveTabToPane1(tabId);
+                    } else {
+                        this.openInSplitView(tabId);
+                    }
+                } else if (action === 'close') {
+                    this.closeTab(tabId);
+                } else if (action === 'close-others') {
+                    this.closeOtherTabs(tabId);
+                }
+                menu.remove();
+            });
+        });
+
+        // Close menu on click outside
+        const closeMenu = (e: MouseEvent) => {
+            if (!menu.contains(e.target as Node)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    }
+
+    moveTabToPane1(tabId: string) {
+        const tab = this.state.getTab(tabId);
+        if (tab) {
+            tab.pane = 1;
+            if (this.state.pane2TabId === tabId) {
+                this.state.pane2TabId = null;
+                this.renderPane2();
+            }
+            this.state.setActiveTab(tabId);
+            this.renderTabs();
+            this.renderEditor();
+        }
+    }
+
+    closeOtherTabs(keepTabId: string) {
+        const tabsToClose: string[] = [];
+        for (const [tabId, tab] of this.state.openTabs) {
+            if (tabId !== keepTabId) {
+                if (tab.isDirty) {
+                    if (!confirm(`${tab.fileName} has unsaved changes. Close anyway?`)) {
+                        continue;
+                    }
+                }
+                tabsToClose.push(tabId);
+            }
+        }
+
+        for (const tabId of tabsToClose) {
+            const tab = this.state.getTab(tabId);
+            if (tab?.autoSaveInterval) {
+                clearInterval(tab.autoSaveInterval);
+            }
+            this.state.removeTab(tabId);
+            if (this.state.pane2TabId === tabId) {
+                this.state.pane2TabId = null;
+            }
+        }
+
+        this.state.setActiveTab(keepTabId);
+        this.renderTabs();
+        this.renderEditor();
+        this.renderPane2();
+    }
+
+    setupPaneDropZones() {
+        const pane1 = document.getElementById('pane-1');
+        const pane2 = document.getElementById('pane-2');
+
+        const handleDragOver = (e: DragEvent) => {
+            e.preventDefault();
+            e.dataTransfer!.dropEffect = 'move';
+        };
+
+        const handleDrop = (paneNum: 1 | 2) => (e: DragEvent) => {
+            e.preventDefault();
+            const tabId = e.dataTransfer?.getData('text/plain');
+            if (!tabId) return;
+
+            const tab = this.state.getTab(tabId);
+            if (!tab) return;
+
+            if (paneNum === 2) {
+                // Open split view if not active
+                if (!this.state.splitViewActive) {
+                    this.openSplitView();
+                }
+
+                // Move previous pane 2 tab back to pane 1
+                if (this.state.pane2TabId && this.state.pane2TabId !== tabId) {
+                    const prevTab = this.state.getTab(this.state.pane2TabId);
+                    if (prevTab) {
+                        prevTab.pane = 1;
+                    }
+                }
+
+                tab.pane = 2;
+                this.state.pane2TabId = tabId;
+                this.state.activePane = 2;
+                this.state.setActiveTab(tabId);
+                this.renderPane2();
+            } else {
+                // Moving to pane 1
+                if (tab.pane === 2) {
+                    tab.pane = 1;
+                    if (this.state.pane2TabId === tabId) {
+                        this.state.pane2TabId = null;
+                        this.renderPane2();
+                    }
+                }
+                this.state.activePane = 1;
+                this.state.setActiveTab(tabId);
+                this.renderEditor();
+            }
+
+            this.renderTabs();
+            this.updatePaneActiveState();
+        };
+
+        // Pane 1 drop zone
+        pane1?.addEventListener('dragover', handleDragOver);
+        pane1?.addEventListener('drop', handleDrop(1));
+
+        // Pane 2 drop zone
+        pane2?.addEventListener('dragover', handleDragOver);
+        pane2?.addEventListener('drop', handleDrop(2));
+
+        // Also allow drop on pane resizer to open split
+        const paneResizer = document.getElementById('pane-resizer');
+        paneResizer?.addEventListener('dragover', handleDragOver);
+        paneResizer?.addEventListener('drop', handleDrop(2));
     }
 
     activateTab(tabId: string) {
@@ -988,6 +1199,7 @@ class UIManager {
         if (textarea && preview) {
             const updatePreview = debounce(async () => {
                 preview.innerHTML = await this.renderMarkdown(textarea.value);
+                this.setupWikiLinkHandlers(preview, tab.filePath);
             }, 300);
 
             textarea.addEventListener('input', () => {
@@ -1004,6 +1216,138 @@ class UIManager {
 
             // Setup drag-and-drop for images/files
             this.setupEditorDropZone(container, textarea);
+        }
+    }
+
+    /**
+     * Setup click handlers for wiki links in a container element
+     */
+    setupWikiLinkHandlers(container: HTMLElement, currentFilePath: string) {
+        // Handle clicks on wiki links
+        container.querySelectorAll('a.wiki-link').forEach((link) => {
+            const anchor = link as HTMLAnchorElement;
+
+            // Prevent default link behavior and handle navigation
+            anchor.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const originalLink = anchor.getAttribute('data-original-link');
+                if (!originalLink || !this.state.currentVaultId) return;
+
+                // Extract the link target (without fragment)
+                const [linkTarget, fragment] = originalLink.split('#');
+
+                try {
+                    // Resolve the wiki link to get the actual file path
+                    const resolved = await this.api.resolveWikiLink(
+                        this.state.currentVaultId,
+                        linkTarget,
+                        currentFilePath
+                    );
+
+                    if (resolved.exists) {
+                        // Open the file
+                        await this.openFile(resolved.path);
+
+                        // If there's a fragment (header link), scroll to it after a brief delay
+                        if (fragment) {
+                            setTimeout(() => {
+                                this.scrollToFragment(fragment);
+                            }, 100);
+                        }
+                    } else {
+                        // File doesn't exist - offer to create it
+                        if (confirm(`"${linkTarget}" doesn't exist. Would you like to create it?`)) {
+                            await this.createAndOpenFile(resolved.path);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to navigate to wiki link:', error);
+                    alert('Failed to navigate to link: ' + error);
+                }
+            });
+
+            // Add visual feedback for hover
+            anchor.style.cursor = 'pointer';
+        });
+
+        // Also handle wiki embeds (images) that might need special handling
+        container.querySelectorAll('img.wiki-embed').forEach((img) => {
+            const imgEl = img as HTMLImageElement;
+            const originalLink = imgEl.getAttribute('data-original-link');
+
+            if (originalLink && this.state.currentVaultId) {
+                // Update the src to use the raw file endpoint with resolved path
+                this.api.resolveWikiLink(this.state.currentVaultId, originalLink, currentFilePath)
+                    .then(resolved => {
+                        if (resolved.exists) {
+                            imgEl.src = `/api/vaults/${this.state.currentVaultId}/raw/${resolved.path}`;
+                        }
+                    })
+                    .catch(err => console.error('Failed to resolve image path:', err));
+            }
+        });
+    }
+
+    /**
+     * Scroll to a heading or block reference in the current editor/preview
+     */
+    scrollToFragment(fragment: string) {
+        // Look for header with matching ID or text
+        const container = document.getElementById('pane-1');
+        if (!container) return;
+
+        // Try to find element by ID first (for explicit IDs)
+        let target = container.querySelector(`#${CSS.escape(fragment)}`);
+
+        // If not found, look for headings that match the fragment text
+        if (!target) {
+            const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            headings.forEach((heading) => {
+                if (target) return; // Already found
+                const headingText = heading.textContent?.toLowerCase().replace(/\s+/g, '-') || '';
+                if (headingText === fragment.toLowerCase() || heading.id === fragment) {
+                    target = heading;
+                }
+            });
+        }
+
+        // If still not found, look for block references
+        if (!target && fragment.startsWith('^')) {
+            target = container.querySelector(`[data-block-id="${fragment.substring(1)}"]`);
+        }
+
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Add a brief highlight effect
+            target.classList.add('highlight-target');
+            setTimeout(() => target?.classList.remove('highlight-target'), 2000);
+        }
+    }
+
+    /**
+     * Create a new file and open it
+     */
+    async createAndOpenFile(filePath: string) {
+        if (!this.state.currentVaultId) return;
+
+        try {
+            // Ensure the file has .md extension
+            const path = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+
+            // Create the file with a default header
+            const fileName = path.split('/').pop()?.replace('.md', '') || 'Untitled';
+            await this.api.createFile(this.state.currentVaultId, path, `# ${fileName}\n\n`);
+
+            // Refresh file tree
+            await this.loadFileTree();
+
+            // Open the new file
+            await this.openFile(path);
+        } catch (error) {
+            console.error('Failed to create file:', error);
+            alert('Failed to create file: ' + error);
         }
     }
 
@@ -1140,6 +1484,9 @@ class UIManager {
         const pane1 = document.getElementById('pane-1');
         if (!pane1) return;
 
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        const currentFilePath = tab?.filePath || '';
+
         // Update textarea if present (raw or side-by-side mode)
         const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
         if (textarea) {
@@ -1149,6 +1496,7 @@ class UIManager {
             if (preview) {
                 this.renderMarkdown(content).then(html => {
                     preview.innerHTML = html;
+                    this.setupWikiLinkHandlers(preview, currentFilePath);
                 });
             }
             return;
@@ -3121,6 +3469,284 @@ class UIManager {
         }
     }
 
+    // Split Pane functionality
+    setupSplitPane() {
+        const splitViewBtn = document.getElementById('split-view-btn');
+        const closePane2Btn = document.getElementById('close-pane-2');
+        const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
+        const paneResizer = document.getElementById('pane-resizer');
+        const splitContainer = document.getElementById('split-container');
+        const pane1 = document.getElementById('pane-1');
+        const pane2 = document.getElementById('pane-2');
+
+        // Toggle split view
+        splitViewBtn?.addEventListener('click', () => {
+            this.toggleSplitView();
+        });
+
+        // Close pane 2
+        closePane2Btn?.addEventListener('click', () => {
+            this.closeSplitView();
+        });
+
+        // Toggle orientation
+        toggleOrientationBtn?.addEventListener('click', () => {
+            this.toggleSplitOrientation();
+        });
+
+        // Pane click to set active pane
+        pane1?.addEventListener('click', () => {
+            this.setActivePane(1);
+        });
+
+        pane2?.addEventListener('click', () => {
+            this.setActivePane(2);
+        });
+
+        // Pane resizer drag functionality
+        if (paneResizer && splitContainer && pane1 && pane2) {
+            let isDragging = false;
+            let startPos = 0;
+            let startPane1Size = 0;
+
+            paneResizer.addEventListener('mousedown', (e) => {
+                if (!this.state.splitViewActive) return;
+                isDragging = true;
+
+                if (this.state.splitOrientation === 'vertical') {
+                    startPos = e.clientX;
+                    startPane1Size = pane1.offsetWidth;
+                    document.body.style.cursor = 'col-resize';
+                } else {
+                    startPos = e.clientY;
+                    startPane1Size = pane1.offsetHeight;
+                    document.body.style.cursor = 'row-resize';
+                }
+
+                paneResizer.classList.add('dragging');
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const isVertical = this.state.splitOrientation === 'vertical';
+                const currentPos = isVertical ? e.clientX : e.clientY;
+                const delta = currentPos - startPos;
+                const containerSize = isVertical ? splitContainer.offsetWidth : splitContainer.offsetHeight;
+                const newPane1Size = startPane1Size + delta;
+
+                // Enforce minimum sizes (150px each pane)
+                const minSize = 150;
+                const maxPane1Size = containerSize - minSize - 6; // 6px for resizer
+
+                if (newPane1Size >= minSize && newPane1Size <= maxPane1Size) {
+                    const pane1Flex = newPane1Size / containerSize;
+                    const pane2Flex = 1 - pane1Flex - (6 / containerSize);
+
+                    pane1.style.flex = `${pane1Flex}`;
+                    pane2.style.flex = `${pane2Flex}`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    paneResizer.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        }
+
+        // Apply initial orientation if saved
+        this.applySplitOrientation();
+    }
+
+    toggleSplitOrientation() {
+        this.state.splitOrientation = this.state.splitOrientation === 'vertical' ? 'horizontal' : 'vertical';
+        localStorage.setItem('split-orientation', this.state.splitOrientation);
+        this.applySplitOrientation();
+    }
+
+    applySplitOrientation() {
+        const splitContainer = document.getElementById('split-container');
+        const paneResizer = document.getElementById('pane-resizer');
+        const toggleBtn = document.getElementById('toggle-orientation-btn');
+        const pane1 = document.getElementById('pane-1');
+        const pane2 = document.getElementById('pane-2');
+
+        if (!splitContainer) return;
+
+        // Remove both classes first
+        splitContainer.classList.remove('split-vertical', 'split-horizontal');
+        paneResizer?.classList.remove('horizontal');
+
+        // Apply the current orientation
+        if (this.state.splitOrientation === 'vertical') {
+            splitContainer.classList.add('split-vertical');
+            if (toggleBtn) toggleBtn.title = 'Switch to horizontal split';
+        } else {
+            splitContainer.classList.add('split-horizontal');
+            paneResizer?.classList.add('horizontal');
+            if (toggleBtn) toggleBtn.title = 'Switch to vertical split';
+        }
+
+        // Reset flex sizes to 50-50
+        if (pane1) pane1.style.flex = '1';
+        if (pane2) pane2.style.flex = '1';
+
+        // Update button icon
+        if (toggleBtn) {
+            const icon = toggleBtn.querySelector('.icon');
+            if (icon) {
+                icon.textContent = this.state.splitOrientation === 'vertical' ? '⬍' : '⬌';
+            }
+        }
+    }
+
+    toggleSplitView() {
+        if (this.state.splitViewActive) {
+            this.closeSplitView();
+        } else {
+            this.openSplitView();
+        }
+    }
+
+    openSplitView() {
+        const splitContainer = document.getElementById('split-container');
+        const pane2 = document.getElementById('pane-2');
+        const splitViewBtn = document.getElementById('split-view-btn');
+        const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
+
+        this.state.splitViewActive = true;
+        splitContainer?.classList.add('split-active');
+        pane2?.classList.remove('hidden');
+        splitViewBtn?.classList.add('active');
+        toggleOrientationBtn?.classList.remove('hidden');
+
+        // Apply saved orientation and reset sizes
+        this.applySplitOrientation();
+
+        // If there's no tab in pane 2, show empty state
+        this.renderPane2();
+        this.updatePaneActiveState();
+    }
+
+    closeSplitView() {
+        const splitContainer = document.getElementById('split-container');
+        const pane2 = document.getElementById('pane-2');
+        const splitViewBtn = document.getElementById('split-view-btn');
+        const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
+
+        this.state.splitViewActive = false;
+        this.state.activePane = 1;
+        splitContainer?.classList.remove('split-active');
+        splitContainer?.classList.remove('split-vertical', 'split-horizontal');
+        pane2?.classList.add('hidden');
+        splitViewBtn?.classList.remove('active');
+        toggleOrientationBtn?.classList.add('hidden');
+
+        // Move pane 2 tab back to pane 1 if it exists
+        if (this.state.pane2TabId) {
+            const tab = this.state.getTab(this.state.pane2TabId);
+            if (tab) {
+                tab.pane = 1;
+            }
+            this.state.pane2TabId = null;
+        }
+
+        this.updatePaneActiveState();
+    }
+
+    setActivePane(pane: 1 | 2) {
+        if (!this.state.splitViewActive && pane === 2) return;
+
+        this.state.activePane = pane;
+        this.updatePaneActiveState();
+
+        // If clicking on pane 2, make its tab active
+        if (pane === 2 && this.state.pane2TabId) {
+            this.state.setActiveTab(this.state.pane2TabId);
+            this.renderTabs();
+        }
+    }
+
+    updatePaneActiveState() {
+        const pane1 = document.getElementById('pane-1');
+        const pane2 = document.getElementById('pane-2');
+
+        pane1?.classList.remove('active');
+        pane2?.classList.remove('active');
+
+        if (this.state.splitViewActive) {
+            if (this.state.activePane === 1) {
+                pane1?.classList.add('active');
+            } else {
+                pane2?.classList.add('active');
+            }
+        }
+    }
+
+    renderPane2() {
+        const pane2 = document.getElementById('pane-2');
+        if (!pane2) return;
+
+        const content = pane2.querySelector('.editor-content') as HTMLElement;
+        if (!content) return;
+
+        if (!this.state.pane2TabId) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <h2>No file open</h2>
+                    <p>Drag a tab here or use "Open in split" from context menu</p>
+                </div>
+            `;
+            return;
+        }
+
+        const tab = this.state.getTab(this.state.pane2TabId);
+        if (!tab) {
+            this.state.pane2TabId = null;
+            this.renderPane2();
+            return;
+        }
+
+        // Render the tab content in pane 2
+        // For now, just show basic content
+        if (tab.fileType === 'markdown') {
+            this.renderMarkdown(tab.content).then(html => {
+                content.innerHTML = `<div class="markdown-content">${html}</div>`;
+                this.setupWikiLinkHandlers(content, tab.filePath);
+            });
+        } else if (tab.fileType === 'image') {
+            content.innerHTML = `
+                <div class="image-viewer">
+                    <img src="/api/vaults/${this.state.currentVaultId}/raw/${tab.filePath}" alt="${tab.fileName}">
+                </div>
+            `;
+        } else {
+            content.innerHTML = `<pre><code>${this.escapeHtml(tab.content)}</code></pre>`;
+        }
+    }
+
+    openInSplitView(tabId: string) {
+        if (!this.state.splitViewActive) {
+            this.openSplitView();
+        }
+
+        const tab = this.state.getTab(tabId);
+        if (tab) {
+            tab.pane = 2;
+            this.state.pane2TabId = tabId;
+            this.state.activePane = 2;
+            this.renderPane2();
+            this.updatePaneActiveState();
+            this.renderTabs();
+        }
+    }
+
     // In-File Search (Ctrl+F) functionality
     private inFileSearchMatches: { start: number; end: number }[] = [];
     private inFileSearchCurrentIndex: number = -1;
@@ -3491,4 +4117,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     ui.setupUndoRedo();
     ui.setupInsertHelpers();
     ui.setupInFileSearch();
+    ui.setupSplitPane();
 });

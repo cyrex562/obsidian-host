@@ -1,8 +1,9 @@
-use pulldown_cmark::{html, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
+use crate::services::wiki_link_service::{FileIndex, WikiLinkResolver};
+use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Theme, ThemeSet};
+use syntect::highlighting::ThemeSet;
 use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
@@ -16,6 +17,29 @@ static TAG_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:\s|^)(#[a-zA-Z0-9_\-/]+)").unwrap());
 
 pub struct MarkdownService;
+
+/// Options for rendering markdown with wiki link resolution
+pub struct RenderOptions<'a> {
+    /// Vault path for resolving wiki links
+    pub vault_path: Option<&'a str>,
+    /// Current file path for relative link resolution
+    pub current_file: Option<&'a str>,
+    /// Pre-built file index for faster resolution
+    pub file_index: Option<&'a FileIndex>,
+    /// Whether to enable syntax highlighting
+    pub enable_highlighting: bool,
+}
+
+impl Default for RenderOptions<'_> {
+    fn default() -> Self {
+        Self {
+            vault_path: None,
+            current_file: None,
+            file_index: None,
+            enable_highlighting: true,
+        }
+    }
+}
 
 impl MarkdownService {
     /// Convert markdown to HTML with syntax highlighting
@@ -37,16 +61,35 @@ impl MarkdownService {
         if !enable_highlighting {
             // Simple rendering without syntax highlighting, but we still need wiki links
             // So we use the same logic but without highlighting
-            return Self::parse_with_wiki_links(markdown, options, false);
+            return Self::parse_with_wiki_links(markdown, options, false, None);
         }
 
-        Self::parse_with_wiki_links(markdown, options, true)
+        Self::parse_with_wiki_links(markdown, options, true, None)
+    }
+
+    /// Convert markdown to HTML with full link resolution
+    pub fn to_html_with_link_resolution(markdown: &str, render_opts: &RenderOptions) -> String {
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_TABLES);
+        options.insert(Options::ENABLE_FOOTNOTES);
+        options.insert(Options::ENABLE_STRIKETHROUGH);
+        options.insert(Options::ENABLE_TASKLISTS);
+        options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+        options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+
+        Self::parse_with_wiki_links(
+            markdown,
+            options,
+            render_opts.enable_highlighting,
+            Some(render_opts),
+        )
     }
 
     fn parse_with_wiki_links(
         markdown: &str,
         options: Options,
         enable_highlighting: bool,
+        render_opts: Option<&RenderOptions>,
     ) -> String {
         // Parse markdown and apply syntax highlighting to code blocks
         let parser = Parser::new_ext(markdown, options);
@@ -75,7 +118,7 @@ impl MarkdownService {
 
             // If we have a non-text event (or text in code block), flush the buffer first
             if !text_buffer.is_empty() {
-                Self::process_obsidian_syntax(&text_buffer, &mut html_output);
+                Self::process_obsidian_syntax(&text_buffer, &mut html_output, render_opts);
                 text_buffer.clear();
             }
 
@@ -123,13 +166,17 @@ impl MarkdownService {
 
         // Flush remaining buffer at end
         if !text_buffer.is_empty() {
-            Self::process_obsidian_syntax(&text_buffer, &mut html_output);
+            Self::process_obsidian_syntax(&text_buffer, &mut html_output, render_opts);
         }
 
         html_output
     }
 
-    fn process_obsidian_syntax(text: &str, html_output: &mut String) {
+    fn process_obsidian_syntax(
+        text: &str,
+        html_output: &mut String,
+        render_opts: Option<&RenderOptions>,
+    ) {
         if WIKI_LINK_REGEX.is_match(text) {
             let mut last_end = 0;
 
@@ -145,7 +192,6 @@ impl MarkdownService {
 
                 // The link itself
                 let is_embed = &cap[1] == "!";
-                // ... (rest of link logic) ...
                 let link_url = &cap[2];
                 let link_text = if let Some(alias) = cap.get(3) {
                     alias.as_str().to_string()
@@ -153,47 +199,38 @@ impl MarkdownService {
                     link_url.replace('#', " > ")
                 };
 
-                // Flush anything pushed by process_tags directly to html_output?
-                // Wait, process_tags pushes to html_output.
-                // But here I'm collecting `events` vector?
-                // Note: The previous implementation pushed to `events` vector then `push_html` at the end.
-                // If `process_tags` calls `push_html` directly, I have ordering issues if I mix `events` vector.
-                // Refactor: `process_obsidian_syntax` should prob NOT use `events` vector but push directly to avoid mixing strategies.
-                // Or `process_tags` can return events?
-                // simpler: `process_tags` pushes to html_output. Link logic pushes to html_output.
+                // Resolve the wiki link to an actual file path if render options are provided
+                let (resolved_url, link_exists) =
+                    Self::resolve_wiki_link_url(link_url, render_opts);
 
-                // Let's rewrite `process_obsidian_syntax` to push directly.
+                // Add CSS class based on whether link exists
+                let link_class = if link_exists {
+                    "wiki-link"
+                } else {
+                    "wiki-link broken-link"
+                };
 
                 if is_embed {
-                    html::push_html(
-                        html_output,
-                        vec![
-                            Event::Start(Tag::Image {
-                                link_type: LinkType::Inline,
-                                dest_url: link_url.to_string().into(),
-                                title: "".into(),
-                                id: "".into(),
-                            }),
-                            Event::Text(link_text.to_string().into()),
-                            Event::End(TagEnd::Image),
-                        ]
-                        .into_iter(),
+                    // For embeds (images), use raw HTML to include data attributes
+                    let escaped_url = Self::html_escape(&resolved_url);
+                    let escaped_text = Self::html_escape(&link_text);
+                    let html = format!(
+                        "<img src=\"{}\" alt=\"{}\" class=\"wiki-embed\" data-original-link=\"{}\" />",
+                        escaped_url, escaped_text, Self::html_escape(link_url)
                     );
+                    html::push_html(html_output, vec![Event::Html(html.into())].into_iter());
                 } else {
-                    html::push_html(
-                        html_output,
-                        vec![
-                            Event::Start(Tag::Link {
-                                link_type: LinkType::Inline,
-                                dest_url: link_url.to_string().into(),
-                                title: "".into(),
-                                id: "".into(),
-                            }),
-                            Event::Text(link_text.to_string().into()),
-                            Event::End(TagEnd::Link),
-                        ]
-                        .into_iter(),
+                    // For links, use raw HTML to include CSS class and data attributes
+                    let escaped_url = Self::html_escape(&resolved_url);
+                    let escaped_text = Self::html_escape(&link_text);
+                    let html = format!(
+                        "<a href=\"{}\" class=\"{}\" data-original-link=\"{}\">{}</a>",
+                        escaped_url,
+                        link_class,
+                        Self::html_escape(link_url),
+                        escaped_text
                     );
+                    html::push_html(html_output, vec![Event::Html(html.into())].into_iter());
                 }
 
                 last_end = match_end;
@@ -208,6 +245,93 @@ impl MarkdownService {
             // No wiki links, just process tags
             Self::process_tags(text, html_output);
         }
+    }
+
+    /// Resolve a wiki link to a URL, returning (url, exists)
+    fn resolve_wiki_link_url(link: &str, render_opts: Option<&RenderOptions>) -> (String, bool) {
+        // Extract fragment if present
+        let (base_link, fragment) = if let Some(hash_pos) = link.find('#') {
+            (&link[..hash_pos], Some(&link[hash_pos..]))
+        } else {
+            (link, None)
+        };
+
+        // If we have render options with vault path, try to resolve the link
+        if let Some(opts) = render_opts {
+            if let Some(vault_path) = opts.vault_path {
+                // Try using file index first (faster)
+                let resolved = if let Some(index) = opts.file_index {
+                    index.resolve(base_link)
+                } else if let Some(current_file) = opts.current_file {
+                    // Use relative resolution
+                    WikiLinkResolver::resolve_relative(vault_path, base_link, current_file)
+                        .unwrap_or_else(|_| crate::services::wiki_link_service::ResolvedLink {
+                            path: format!("{}.md", base_link),
+                            exists: false,
+                            alternatives: vec![],
+                        })
+                } else {
+                    // Use standard resolution
+                    WikiLinkResolver::resolve(vault_path, base_link).unwrap_or_else(|_| {
+                        crate::services::wiki_link_service::ResolvedLink {
+                            path: format!("{}.md", base_link),
+                            exists: false,
+                            alternatives: vec![],
+                        }
+                    })
+                };
+
+                // Build the URL with fragment
+                let url = if let Some(frag) = fragment {
+                    format!("{}{}", resolved.path, frag)
+                } else {
+                    resolved.path.clone()
+                };
+
+                return (Self::percent_encode_path(&url), resolved.exists);
+            }
+        }
+
+        // No resolution available, return the original link percent-encoded
+        let url = if let Some(frag) = fragment {
+            format!("{}{}", base_link, frag)
+        } else {
+            base_link.to_string()
+        };
+
+        (Self::percent_encode_path(&url), true) // Assume exists if we can't check
+    }
+
+    /// Percent-encode a path for use in URLs
+    fn percent_encode_path(path: &str) -> String {
+        let mut result = String::with_capacity(path.len() * 2);
+        for c in path.chars() {
+            match c {
+                ' ' => result.push_str("%20"),
+                '#' => result.push_str("%23"),
+                '?' => result.push_str("%3F"),
+                // Keep these characters as-is for path readability
+                '/' | '-' | '_' | '.' | '~' => result.push(c),
+                // Keep alphanumeric as-is
+                c if c.is_ascii_alphanumeric() => result.push(c),
+                // Encode everything else
+                c => {
+                    for byte in c.to_string().as_bytes() {
+                        result.push_str(&format!("%{:02X}", byte));
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    /// HTML escape special characters
+    fn html_escape(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;")
     }
 
     fn process_tags(text: &str, html_output: &mut String) {

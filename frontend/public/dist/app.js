@@ -421,6 +421,16 @@ class ApiClient {
             throw new Error('Failed to render markdown');
         return response.text();
     }
+    async resolveWikiLink(vaultId, link, currentFile) {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/resolve-link`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ link, current_file: currentFile }),
+        });
+        if (!response.ok)
+            throw new Error('Failed to resolve wiki link');
+        return response.json();
+    }
 }
 // UI Manager
 class UIManager {
@@ -836,6 +846,7 @@ class UIManager {
         if (textarea && preview) {
             const updatePreview = debounce(async () => {
                 preview.innerHTML = await this.renderMarkdown(textarea.value);
+                this.setupWikiLinkHandlers(preview, tab.filePath);
             }, 300);
             textarea.addEventListener('input', () => {
                 const newContent = textarea.value;
@@ -849,6 +860,121 @@ class UIManager {
             updatePreview();
             // Setup drag-and-drop for images/files
             this.setupEditorDropZone(container, textarea);
+        }
+    }
+    /**
+     * Setup click handlers for wiki links in a container element
+     */
+    setupWikiLinkHandlers(container, currentFilePath) {
+        // Handle clicks on wiki links
+        container.querySelectorAll('a.wiki-link').forEach((link) => {
+            const anchor = link;
+            // Prevent default link behavior and handle navigation
+            anchor.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const originalLink = anchor.getAttribute('data-original-link');
+                if (!originalLink || !this.state.currentVaultId)
+                    return;
+                // Extract the link target (without fragment)
+                const [linkTarget, fragment] = originalLink.split('#');
+                try {
+                    // Resolve the wiki link to get the actual file path
+                    const resolved = await this.api.resolveWikiLink(this.state.currentVaultId, linkTarget, currentFilePath);
+                    if (resolved.exists) {
+                        // Open the file
+                        await this.openFile(resolved.path);
+                        // If there's a fragment (header link), scroll to it after a brief delay
+                        if (fragment) {
+                            setTimeout(() => {
+                                this.scrollToFragment(fragment);
+                            }, 100);
+                        }
+                    }
+                    else {
+                        // File doesn't exist - offer to create it
+                        if (confirm(`"${linkTarget}" doesn't exist. Would you like to create it?`)) {
+                            await this.createAndOpenFile(resolved.path);
+                        }
+                    }
+                }
+                catch (error) {
+                    console.error('Failed to navigate to wiki link:', error);
+                    alert('Failed to navigate to link: ' + error);
+                }
+            });
+            // Add visual feedback for hover
+            anchor.style.cursor = 'pointer';
+        });
+        // Also handle wiki embeds (images) that might need special handling
+        container.querySelectorAll('img.wiki-embed').forEach((img) => {
+            const imgEl = img;
+            const originalLink = imgEl.getAttribute('data-original-link');
+            if (originalLink && this.state.currentVaultId) {
+                // Update the src to use the raw file endpoint with resolved path
+                this.api.resolveWikiLink(this.state.currentVaultId, originalLink, currentFilePath)
+                    .then(resolved => {
+                    if (resolved.exists) {
+                        imgEl.src = `/api/vaults/${this.state.currentVaultId}/raw/${resolved.path}`;
+                    }
+                })
+                    .catch(err => console.error('Failed to resolve image path:', err));
+            }
+        });
+    }
+    /**
+     * Scroll to a heading or block reference in the current editor/preview
+     */
+    scrollToFragment(fragment) {
+        // Look for header with matching ID or text
+        const container = document.getElementById('pane-1');
+        if (!container)
+            return;
+        // Try to find element by ID first (for explicit IDs)
+        let target = container.querySelector(`#${CSS.escape(fragment)}`);
+        // If not found, look for headings that match the fragment text
+        if (!target) {
+            const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            headings.forEach((heading) => {
+                if (target)
+                    return; // Already found
+                const headingText = heading.textContent?.toLowerCase().replace(/\s+/g, '-') || '';
+                if (headingText === fragment.toLowerCase() || heading.id === fragment) {
+                    target = heading;
+                }
+            });
+        }
+        // If still not found, look for block references
+        if (!target && fragment.startsWith('^')) {
+            target = container.querySelector(`[data-block-id="${fragment.substring(1)}"]`);
+        }
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Add a brief highlight effect
+            target.classList.add('highlight-target');
+            setTimeout(() => target?.classList.remove('highlight-target'), 2000);
+        }
+    }
+    /**
+     * Create a new file and open it
+     */
+    async createAndOpenFile(filePath) {
+        if (!this.state.currentVaultId)
+            return;
+        try {
+            // Ensure the file has .md extension
+            const path = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+            // Create the file with a default header
+            const fileName = path.split('/').pop()?.replace('.md', '') || 'Untitled';
+            await this.api.createFile(this.state.currentVaultId, path, `# ${fileName}\n\n`);
+            // Refresh file tree
+            await this.loadFileTree();
+            // Open the new file
+            await this.openFile(path);
+        }
+        catch (error) {
+            console.error('Failed to create file:', error);
+            alert('Failed to create file: ' + error);
         }
     }
     renderFormattedEditor(container, tab) {
@@ -971,6 +1097,8 @@ class UIManager {
         const pane1 = document.getElementById('pane-1');
         if (!pane1)
             return;
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        const currentFilePath = tab?.filePath || '';
         // Update textarea if present (raw or side-by-side mode)
         const textarea = pane1.querySelector('#editor-textarea');
         if (textarea) {
@@ -980,6 +1108,7 @@ class UIManager {
             if (preview) {
                 this.renderMarkdown(content).then(html => {
                     preview.innerHTML = html;
+                    this.setupWikiLinkHandlers(preview, currentFilePath);
                 });
             }
             return;

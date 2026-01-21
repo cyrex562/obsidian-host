@@ -1,8 +1,7 @@
-use crate::db::Database;
 use crate::error::{AppError, AppResult};
 use crate::models::{CreateFileRequest, UpdateFileRequest};
 use crate::routes::vaults::AppState;
-use crate::services::FileService;
+use crate::services::{FileService, WikiLinkResolver};
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, put, web, HttpResponse};
 use futures::{StreamExt, TryStreamExt};
@@ -489,6 +488,101 @@ async fn get_daily_note(
     }
 }
 
+/// Request to resolve a wiki link to a file path
+#[derive(serde::Deserialize)]
+pub struct ResolveWikiLinkRequest {
+    /// The wiki link to resolve (e.g., "Note", "folder/Note", "Note#header")
+    pub link: String,
+    /// Optional: current file path for relative resolution
+    pub current_file: Option<String>,
+}
+
+/// Response for wiki link resolution
+#[derive(serde::Serialize)]
+pub struct ResolveWikiLinkResponse {
+    /// The resolved file path relative to vault root
+    pub path: String,
+    /// Whether the link target exists
+    pub exists: bool,
+    /// If ambiguous, list of all matching paths
+    pub alternatives: Vec<String>,
+    /// Whether link resolution was ambiguous
+    pub ambiguous: bool,
+}
+
+/// Resolve a wiki link to an actual file path
+#[post("/api/vaults/{vault_id}/resolve-link")]
+async fn resolve_wiki_link(
+    state: web::Data<AppState>,
+    vault_id: web::Path<String>,
+    req: web::Json<ResolveWikiLinkRequest>,
+) -> AppResult<HttpResponse> {
+    let vault_id = vault_id.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let result = if let Some(current_file) = &req.current_file {
+        WikiLinkResolver::resolve_relative(&vault.path, &req.link, current_file)?
+    } else {
+        WikiLinkResolver::resolve(&vault.path, &req.link)?
+    };
+
+    let response = ResolveWikiLinkResponse {
+        path: result.path,
+        exists: result.exists,
+        ambiguous: !result.alternatives.is_empty(),
+        alternatives: result.alternatives,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Batch resolve multiple wiki links at once
+#[derive(serde::Deserialize)]
+pub struct BatchResolveRequest {
+    /// List of wiki links to resolve
+    pub links: Vec<String>,
+    /// Optional: current file path for relative resolution
+    pub current_file: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct BatchResolveResponse {
+    /// Map of original link to resolved result
+    pub resolved: std::collections::HashMap<String, ResolveWikiLinkResponse>,
+}
+
+#[post("/api/vaults/{vault_id}/resolve-links")]
+async fn batch_resolve_wiki_links(
+    state: web::Data<AppState>,
+    vault_id: web::Path<String>,
+    req: web::Json<BatchResolveRequest>,
+) -> AppResult<HttpResponse> {
+    let vault_id = vault_id.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let mut resolved = std::collections::HashMap::new();
+
+    for link in &req.links {
+        let result = if let Some(current_file) = &req.current_file {
+            WikiLinkResolver::resolve_relative(&vault.path, link, current_file)?
+        } else {
+            WikiLinkResolver::resolve(&vault.path, link)?
+        };
+
+        resolved.insert(
+            link.clone(),
+            ResolveWikiLinkResponse {
+                path: result.path,
+                exists: result.exists,
+                ambiguous: !result.alternatives.is_empty(),
+                alternatives: result.alternatives,
+            },
+        );
+    }
+
+    Ok(HttpResponse::Ok().json(BatchResolveResponse { resolved }))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(get_file_tree)
         .service(read_file)
@@ -502,5 +596,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(download_file)
         .service(download_zip)
         .service(get_random_file)
-        .service(get_daily_note);
+        .service(get_daily_note)
+        .service(resolve_wiki_link)
+        .service(batch_resolve_wiki_links);
 }

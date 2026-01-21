@@ -185,13 +185,13 @@
 - [ ] Add accessibility features
 
 ### Task 4.5: Link resolution
-- [ ] Resolve wiki links to actual file paths
-- [ ] Handle ambiguous link names
-- [ ] Support relative paths
-- [ ] Enable click-to-navigate on links
-- [ ] Show broken link indicators
-- [ ] Test link resolution logic
-- [ ] Handle special characters in links
+- [x] Resolve wiki links to actual file paths
+- [x] Handle ambiguous link names
+- [x] Support relative paths
+- [x] Enable click-to-navigate on links
+- [x] Show broken link indicators
+- [x] Test link resolution logic
+- [x] Handle special characters in links
 
 ## Feature 5: Search Functionality
 
@@ -210,7 +210,7 @@
 - [x] Support file name search
 - [x] Add search result ranking
 - [x] Implement search filters (by folder, date, etc.)
-- [ ] Test search accuracy
+- [x] Test search accuracy
 - [ ] Optimize search performance
 - [ ] Add pagination for results
 
@@ -255,14 +255,14 @@
 - [x] Handle edge cases (deleted files, etc.)
 
 ### Task 6.4: Split view functionality
-- [ ] Implement split pane creation
-- [ ] Support horizontal and vertical splits
-- [ ] Enable drag-and-drop between splits
-- [ ] Add split resizing
+- [x] Implement split pane creation
+- [x] Support horizontal and vertical splits
+- [x] Enable drag-and-drop between splits
+- [x] Add split resizing
 - [ ] Support up to 2+ panes
 - [ ] Test split interactions
-- [ ] Handle split close/merge
-- [ ] Save split layout state
+- [x] Handle split close/merge
+- [x] Save split layout state
 
 ### Task 6.5: Styling and theming
 - [ ] Create base CSS styles
