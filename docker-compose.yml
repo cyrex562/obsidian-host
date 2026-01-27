@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  obsidian-host:
+    build: .
+    image: obsidian-host:latest
+    container_name: obsidian-host
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the data volume for database persistence
+      - obsidian_data:/data
+      # Mount a local directory for vaults (optional, can be a volume too)
+      # - ./my-vaults:/data/vaults
+    environment:
+      - OBSIDIAN__SERVER__PORT=8080
+      - RUST_LOG=info
+    restart: unless-stopped
+
+volumes:
+  obsidian_data:

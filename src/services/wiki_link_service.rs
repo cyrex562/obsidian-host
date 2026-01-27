@@ -52,9 +52,7 @@ impl WikiLinkResolver {
 
         // If it's an explicit path starting with ./ or ../, resolve relative to current file
         if link_target.starts_with("./") || link_target.starts_with("../") {
-            let current_dir = Path::new(current_file)
-                .parent()
-                .unwrap_or(Path::new(""));
+            let current_dir = Path::new(current_file).parent().unwrap_or(Path::new(""));
 
             let resolved = current_dir.join(&link_target);
             let normalized = Self::normalize_path(&resolved);
@@ -107,10 +105,7 @@ impl WikiLinkResolver {
         let vault = Path::new(vault_path);
 
         // Try with .md extension first, then without
-        let candidates = vec![
-            format!("{}.md", link_target),
-            link_target.to_string(),
-        ];
+        let candidates = vec![format!("{}.md", link_target), link_target.to_string()];
 
         for candidate in &candidates {
             let full_path = vault.join(candidate);
@@ -201,9 +196,11 @@ impl WikiLinkResolver {
                             .strip_prefix(vault)
                             .unwrap_or(path)
                             .to_string_lossy()
-                            .to_string();
+                            .to_string()
+                            .replace('\\', "/");
 
                         let depth = relative.matches('/').count() + relative.matches('\\').count();
+                        // println!("Found match: {} (depth {})", relative, depth);
                         matches.push((relative, depth));
                     }
                 }
@@ -286,7 +283,7 @@ impl WikiLinkResolver {
             }
 
             if path.is_file() {
-                let relative_str = relative.to_string_lossy().to_string();
+                let relative_str = relative.to_string_lossy().to_string().replace('\\', "/");
 
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                     let stem = path
@@ -294,7 +291,8 @@ impl WikiLinkResolver {
                         .and_then(|s| s.to_str())
                         .unwrap_or(file_name);
 
-                    let depth = relative_str.matches('/').count() + relative_str.matches('\\').count();
+                    let depth =
+                        relative_str.matches('/').count() + relative_str.matches('\\').count();
 
                     index.add_file(stem, file_name, &relative_str, depth);
                 }

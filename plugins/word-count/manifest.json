@@ -1,0 +1,42 @@
+{
+    "id": "com.obsidian-host.word-count",
+    "name": "Word Count",
+    "version": "1.0.0",
+    "description": "Display word count, character count, and reading time for the current note",
+    "author": "Obsidian Host Team",
+    "license": "MIT",
+    "main": "main.js",
+    "plugin_type": "javascript",
+    "capabilities": [
+        "editor_access",
+        "modify_ui"
+    ],
+    "hooks": [
+        "on_load",
+        "on_editor_change",
+        "on_file_open"
+    ],
+    "config_schema": {
+        "type": "object",
+        "properties": {
+            "show_word_count": {
+                "type": "boolean",
+                "default": true
+            },
+            "show_char_count": {
+                "type": "boolean",
+                "default": true
+            },
+            "show_reading_time": {
+                "type": "boolean",
+                "default": true
+            },
+            "words_per_minute": {
+                "type": "integer",
+                "default": 200,
+                "minimum": 100,
+                "maximum": 500
+            }
+        }
+    }
+}

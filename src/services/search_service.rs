@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{SearchMatch, SearchResult};
+use crate::models::{PagedSearchResult, SearchMatch, SearchResult};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -97,12 +98,14 @@ impl SearchIndex {
     }
 
     /// Search for a query in a vault
+    /// Search for a query in a vault with pagination
     pub fn search(
         &self,
         vault_id: &str,
         query: &str,
-        limit: usize,
-    ) -> AppResult<Vec<SearchResult>> {
+        page: usize,
+        page_size: usize,
+    ) -> AppResult<PagedSearchResult> {
         let indices = self
             .indices
             .read()
@@ -114,62 +117,87 @@ impl SearchIndex {
         )))?;
 
         let query_lower = query.to_lowercase();
-        let mut results = Vec::new();
 
-        for (file_path, content) in vault_index.iter() {
-            let mut matches = Vec::new();
-            let mut score = 0.0f32;
+        // Use parallel iterator for searching files
+        let mut results: Vec<SearchResult> = vault_index
+            .par_iter()
+            .filter_map(|(file_path, content)| {
+                let mut matches = Vec::new();
+                let mut score = 0.0f32;
 
-            // Search in file name/title
-            let file_name = Path::new(file_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
+                // Search in file name/title
+                let file_name = Path::new(file_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
 
-            if file_name.to_lowercase().contains(&query_lower) {
-                score += 10.0;
-            }
+                if file_name.to_lowercase().contains(&query_lower) {
+                    score += 10.0;
+                }
 
-            // Search in content
-            for (line_num, line) in content.lines().enumerate() {
-                let line_lower = line.to_lowercase();
-                if let Some(pos) = line_lower.find(&query_lower) {
-                    matches.push(SearchMatch {
-                        line_number: line_num + 1,
-                        line_text: line.to_string(),
-                        match_start: pos,
-                        match_end: pos + query.len(),
-                    });
-                    score += 1.0;
+                // Search in content
+                for (line_num, line) in content.lines().enumerate() {
+                    let line_lower = line.to_lowercase();
+                    if let Some(pos) = line_lower.find(&query_lower) {
+                        matches.push(SearchMatch {
+                            line_number: line_num + 1,
+                            line_text: line.to_string(),
+                            match_start: pos,
+                            match_end: pos + query.len(),
+                        });
+                        score += 1.0;
 
-                    // Limit matches per file
-                    if matches.len() >= 10 {
-                        break;
+                        // Limit matches per file
+                        if matches.len() >= 10 {
+                            break;
+                        }
                     }
                 }
-            }
 
-            if !matches.is_empty() || score > 0.0 {
-                results.push(SearchResult {
-                    path: file_path.clone(),
-                    title: file_name.to_string(),
-                    matches,
-                    score,
-                });
-            }
-        }
+                if !matches.is_empty() || score > 0.0 {
+                    Some(SearchResult {
+                        path: file_path.clone(),
+                        title: file_name.to_string(),
+                        matches,
+                        score,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         // Sort by score (descending)
-        results.sort_by(|a, b| {
+        results.par_sort_unstable_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Limit results
-        results.truncate(limit);
+        let total_count = results.len();
 
-        Ok(results)
+        let page = if page < 1 { 1 } else { page };
+
+        // Pagination logic
+        let start = (page - 1) * page_size;
+        if start >= total_count {
+            return Ok(PagedSearchResult {
+                results: Vec::new(),
+                total_count,
+                page,
+                page_size,
+            });
+        }
+
+        let end = std::cmp::min(start + page_size, total_count);
+        let paged_results = results[start..end].to_vec();
+
+        Ok(PagedSearchResult {
+            results: paged_results,
+            total_count,
+            page,
+            page_size,
+        })
     }
 
     /// Remove entire vault index
@@ -258,7 +286,11 @@ mod tests {
         fs::write(vault.join("readme.txt"), "This is a text file.").unwrap();
 
         // Create hidden file (should be ignored)
-        fs::write(vault.join(".hidden.md"), "# Hidden\n\nThis should be ignored.").unwrap();
+        fs::write(
+            vault.join(".hidden.md"),
+            "# Hidden\n\nThis should be ignored.",
+        )
+        .unwrap();
 
         temp_dir
     }
@@ -283,7 +315,7 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "rust", 10).unwrap();
+        let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
 
         // Should find matches in Note.md, Another.md, CaseTest.md, and folder/Nested.md
         assert!(!results.is_empty());
@@ -298,9 +330,9 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         // Search with different cases should return same results
-        let results_lower = index.search("test-vault", "rust", 10).unwrap();
-        let results_upper = index.search("test-vault", "RUST", 10).unwrap();
-        let results_mixed = index.search("test-vault", "RuSt", 10).unwrap();
+        let results_lower = index.search("test-vault", "rust", 1, 10).unwrap().results;
+        let results_upper = index.search("test-vault", "RUST", 1, 10).unwrap().results;
+        let results_mixed = index.search("test-vault", "RuSt", 1, 10).unwrap().results;
 
         assert_eq!(results_lower.len(), results_upper.len());
         assert_eq!(results_lower.len(), results_mixed.len());
@@ -313,7 +345,7 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "note", 10).unwrap();
+        let results = index.search("test-vault", "note", 1, 10).unwrap().results;
 
         // Files with "Note" in the filename should have higher scores
         assert!(!results.is_empty());
@@ -336,7 +368,7 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         // CaseTest.md has multiple "rust" matches on one line
-        let results = index.search("test-vault", "rust", 10).unwrap();
+        let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
 
         // Find CaseTest result
         let case_test = results.iter().find(|r| r.path.contains("CaseTest"));
@@ -350,7 +382,10 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "programming", 10).unwrap();
+        let results = index
+            .search("test-vault", "programming", 1, 10)
+            .unwrap()
+            .results;
 
         // Should find "programming" in content
         assert!(!results.is_empty());
@@ -370,7 +405,7 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "", 10).unwrap();
+        let results = index.search("test-vault", "", 1, 10).unwrap().results;
 
         // Empty query matches everything (empty string is contained in all strings)
         // This is current behavior - might want to handle differently
@@ -384,7 +419,10 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "xyznonexistent123", 10).unwrap();
+        let results = index
+            .search("test-vault", "xyznonexistent123", 1, 10)
+            .unwrap()
+            .results;
 
         assert!(results.is_empty());
     }
@@ -396,10 +434,13 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Search for something that matches multiple files but limit to 2
-        let results = index.search("test-vault", "note", 2).unwrap();
+        // Search for something that matches multiple files but limit to page size 2
+        let search_res = index.search("test-vault", "note", 1, 2).unwrap();
+        let results = search_res.results;
 
         assert!(results.len() <= 2);
+        // We expect more total count if there are more matches
+        assert!(search_res.total_count >= results.len());
     }
 
     #[test]
@@ -409,7 +450,7 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "rust", 10).unwrap();
+        let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
 
         // Verify results are sorted by score descending
         for i in 1..results.len() {
@@ -430,7 +471,10 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         // Initially no "uniqueword" matches
-        let results_before = index.search("test-vault", "uniqueword", 10).unwrap();
+        let results_before = index
+            .search("test-vault", "uniqueword", 1, 10)
+            .unwrap()
+            .results;
         assert!(results_before.is_empty());
 
         // Update a file with new content
@@ -443,7 +487,10 @@ mod tests {
             .unwrap();
 
         // Now should find the match
-        let results_after = index.search("test-vault", "uniqueword", 10).unwrap();
+        let results_after = index
+            .search("test-vault", "uniqueword", 1, 10)
+            .unwrap()
+            .results;
         assert_eq!(results_after.len(), 1);
         assert_eq!(results_after[0].path, "Note.md");
     }
@@ -456,14 +503,14 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         // Search for Python (only in Another.md)
-        let results_before = index.search("test-vault", "python", 10).unwrap();
+        let results_before = index.search("test-vault", "python", 1, 10).unwrap().results;
         assert_eq!(results_before.len(), 1);
 
         // Remove the file from index
         index.remove_file("test-vault", "Another.md").unwrap();
 
         // Now should not find Python
-        let results_after = index.search("test-vault", "python", 10).unwrap();
+        let results_after = index.search("test-vault", "python", 1, 10).unwrap().results;
         assert!(results_after.is_empty());
     }
 
@@ -475,14 +522,14 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         // Search works before removal
-        let results_before = index.search("test-vault", "rust", 10);
+        let results_before = index.search("test-vault", "rust", 1, 10);
         assert!(results_before.is_ok());
 
         // Remove the vault
         index.remove_vault("test-vault").unwrap();
 
         // Search should fail after removal (vault not found)
-        let results_after = index.search("test-vault", "rust", 10);
+        let results_after = index.search("test-vault", "rust", 1, 10);
         assert!(results_after.is_err());
     }
 
@@ -490,7 +537,7 @@ mod tests {
     fn test_search_nonexistent_vault() {
         let index = SearchIndex::new();
 
-        let result = index.search("nonexistent-vault", "test", 10);
+        let result = index.search("nonexistent-vault", "test", 1, 10);
 
         assert!(result.is_err());
     }
@@ -502,12 +549,14 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "nested", 10).unwrap();
+        let results = index.search("test-vault", "nested", 1, 10).unwrap().results;
 
         // Should find the nested file
         assert!(!results.is_empty());
 
-        let nested_result = results.iter().find(|r| r.path.contains("folder/"));
+        let nested_result = results
+            .iter()
+            .find(|r| r.path.contains("folder") && r.path.contains("Nested.md"));
         assert!(
             nested_result.is_some(),
             "Expected to find nested file in results"
@@ -521,7 +570,10 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        let results = index.search("test-vault", "multiple", 10).unwrap();
+        let results = index
+            .search("test-vault", "multiple", 1, 10)
+            .unwrap()
+            .results;
 
         // "multiple" appears in Note.md on line 4 ("It contains multiple lines.")
         assert!(!results.is_empty());
@@ -554,7 +606,7 @@ mod tests {
             .index_vault("test-vault", vault.to_str().unwrap())
             .unwrap();
 
-        let results = index.search("test-vault", "test", 10).unwrap();
+        let results = index.search("test-vault", "test", 1, 10).unwrap().results;
 
         // Should have at most 10 matches per file
         for result in &results {
@@ -583,10 +635,13 @@ mod tests {
             .unwrap();
 
         // Search for strings with special characters
-        let results_cpp = index.search("test-vault", "c++", 10).unwrap();
+        let results_cpp = index.search("test-vault", "c++", 1, 10).unwrap().results;
         assert!(!results_cpp.is_empty(), "Should find C++");
 
-        let results_money = index.search("test-vault", "$money$", 10).unwrap();
+        let results_money = index
+            .search("test-vault", "$money$", 1, 10)
+            .unwrap()
+            .results;
         assert!(!results_money.is_empty(), "Should find $money$");
     }
 
@@ -606,10 +661,13 @@ mod tests {
             .index_vault("test-vault", vault.to_str().unwrap())
             .unwrap();
 
-        let results_jp = index.search("test-vault", "こんにちは", 10).unwrap();
+        let results_jp = index
+            .search("test-vault", "こんにちは", 1, 10)
+            .unwrap()
+            .results;
         assert!(!results_jp.is_empty(), "Should find Japanese text");
 
-        let results_emoji = index.search("test-vault", "🦀", 10).unwrap();
+        let results_emoji = index.search("test-vault", "🦀", 1, 10).unwrap().results;
         assert!(!results_emoji.is_empty(), "Should find emoji");
     }
 
@@ -628,13 +686,13 @@ mod tests {
         // Spawn threads that read concurrently
         let handle1 = thread::spawn(move || {
             for _ in 0..100 {
-                let _ = index_clone1.search("test-vault", "rust", 10);
+                let _ = index_clone1.search("test-vault", "rust", 1, 10);
             }
         });
 
         let handle2 = thread::spawn(move || {
             for _ in 0..100 {
-                let _ = index_clone2.search("test-vault", "note", 10);
+                let _ = index_clone2.search("test-vault", "note", 1, 10);
             }
         });
 

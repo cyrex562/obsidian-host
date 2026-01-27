@@ -6,6 +6,7 @@ use crate::watcher::FileWatcher;
 use actix_web::{delete, get, post, web, HttpResponse};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::fs;
 use tokio::sync::{broadcast, Mutex};
 
 pub struct AppState {
@@ -23,10 +24,12 @@ async fn create_vault(
     // Validate path exists
     let path = PathBuf::from(&req.path);
     if !path.exists() {
-        return Err(AppError::InvalidInput(format!(
-            "Path does not exist: {}",
-            req.path
-        )));
+        if let Err(err) = fs::create_dir_all(&path).await {
+            return Err(AppError::InvalidInput(format!(
+                "Failed to create vault directory {}: {}",
+                req.path, err
+            )));
+        }
     }
 
     if !path.is_dir() {
@@ -37,7 +40,10 @@ async fn create_vault(
     }
 
     // Create vault in database
-    let vault = state.db.create_vault(req.name.clone(), req.path.clone()).await?;
+    let vault = state
+        .db
+        .create_vault(req.name.clone(), req.path.clone())
+        .await?;
 
     // Start watching the vault
     let mut watcher = state.watcher.lock().await;
@@ -58,10 +64,7 @@ async fn list_vaults(state: web::Data<AppState>) -> AppResult<HttpResponse> {
 }
 
 #[get("/api/vaults/{id}")]
-async fn get_vault(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> AppResult<HttpResponse> {
+async fn get_vault(state: web::Data<AppState>, path: web::Path<String>) -> AppResult<HttpResponse> {
     let vault = state.db.get_vault(&path).await?;
     Ok(HttpResponse::Ok().json(vault))
 }

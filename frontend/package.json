@@ -10,6 +10,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
     "@types/highlight.js": "^9.12.4",
     "@types/node": "^25.0.9",
     "happy-dom": "^20.3.4",

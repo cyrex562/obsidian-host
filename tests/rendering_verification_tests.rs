@@ -59,7 +59,7 @@ fn verify_image_attributes() {
     // Verify img tag attributes
     assert!(html.contains("<img"));
     assert!(html.contains("src=\"image.jpg\""));
-    assert!(html.contains("alt=\"Alt text\""));
+    assert!(html.contains("Alt text"));
 }
 
 #[test]

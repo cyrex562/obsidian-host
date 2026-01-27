@@ -1,0 +1,44 @@
+[2m2026-01-24T03:15:48.902574Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-01-24T03:15:48.903460Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-01-24T03:15:48.903598Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 127.0.0.1:8080
+[2m2026-01-24T03:15:48.918160Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-01-24T03:15:48.918307Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-01-24T03:15:48.918519Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-01-24T03:15:48.919337Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 127.0.0.1:8080
+[2m2026-01-24T03:15:48.921363Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-01-24T03:15:48.921541Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-01-24T03:15:48.921761Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-127.0.0.1:8080", workers: 22, listening on: 127.0.0.1:8080
+[2m2026-01-24T03:16:10.070846Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/ [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:26713") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:10.105604Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/styles/main.css [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:26713") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:10.224628Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/dist/app.js [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:26713") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:10.593406Z[0m [33m WARN[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request failed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/favicon.ico [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m404 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:26713") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:27.286434Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/styles/main.css [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:47292") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:27.298683Z[0m [33m WARN[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request failed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/.well-known/appspecific/com.chrome.devtools.json [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m404 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:47292") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:40.163356Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/ [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:2920") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:40.188697Z[0m [33m WARN[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request failed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/.well-known/appspecific/com.chrome.devtools.json [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m404 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:2920") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:40.189115Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/styles/main.css [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:17395") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T03:16:40.205425Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/dist/app.js [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:17395") [3muser_agent[0m[2m=[0mMozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36
+[2m2026-01-24T12:48:11.345041Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGINT received; starting forced shutdown
+[2m2026-01-24T12:48:11.345225Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-01-24T12:48:11.345243Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345258Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345263Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345265Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345263Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345272Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345283Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345287Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345286Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345291Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345302Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345300Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345304Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345324Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345318Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345322Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345331Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345332Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345340Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345341Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345348Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-01-24T12:48:11.345348Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker

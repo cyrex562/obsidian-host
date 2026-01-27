@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "file",
+      "file": "Notes/Important.md",
+      "x": 100,
+      "y": 100,
+      "width": 400,
+      "height": 300,
+      "color": "3"
+    },
+    {
+      "id": "node-2",
+      "type": "link",
+      "url": "https://example.com",
+      "x": 600,
+      "y": 100,
+      "width": 400,
+      "height": 300,
+      "color": "4"
+    },
+    {
+      "id": "node-3",
+      "type": "text",
+      "text": "Notes about the project",
+      "x": 300,
+      "y": 450,
+      "width": 400,
+      "height": 200,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "node-1",
+      "fromSide": "bottom",
+      "toNode": "node-3",
+      "toSide": "top",
+      "color": "1",
+      "label": "related"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "node-2",
+      "fromSide": "bottom",
+      "toNode": "node-3",
+      "toSide": "top",
+      "color": "2"
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2026-01-25T00:00:00Z",
+    "modified": "2026-01-25T00:00:00Z",
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1.0
+    }
+  }
+}

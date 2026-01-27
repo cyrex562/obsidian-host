@@ -1,0 +1,8 @@
+{
+    "id": "example-plugin",
+    "name": "Example Plugin",
+    "version": "1.0.0",
+    "description": "A simple example plugin to demonstrate the architecture.",
+    "author": "Obsidian Host Team",
+    "main": "main.js"
+}

@@ -51,7 +51,8 @@ fn test_tag_and_wiki_link() {
     let markdown = "Check [[Link]] and #tag";
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
-    assert!(html.contains("<a href=\"Link\">Link</a>"));
+    assert!(html.contains("href=\"Link\""));
+    assert!(html.contains(">Link</a>"));
     assert!(html.contains("<a href=\"#tag\" class=\"tag\">#tag</a>"));
 }
 

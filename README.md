@@ -34,33 +34,23 @@ A self-hosted web UI for Obsidian vaults built with Rust and HTMX.
 - **WebSocket** for real-time file change notifications
 - **Pure CSS** for styling (no framework dependencies)
 
+## Documentation
+
+-   [User Guide](docs/USER_GUIDE.md) - How to use the interface.
+-   [Installation & Build](docs/BUILD.md) - Building from source and cross-compilation.
+-   [Docker Deployment](docs/DOCKER.md) - Running with Docker.
+-   [API Reference](docs/API.md) - API endpoints documentation.
+-   [Architecture](docs/ARCHITECTURE.md) - System overview.
+-   [Configuration](docs/CONFIGURATION.md) - Config file and env vars.
+-   [Future Plans](docs/ADVANCED_FEATURES.md) - Roadmap and advanced features.
+
 ## Quick Start
+1.  **Download** the latest release or build from source (see [Build Guide](docs/BUILD.md)).
+2.  **Run** the binary or Docker container.
+3.  **Open** `http://localhost:8080`.
+4.  **Register** your local vault path.
 
-1. Build the project:
-```bash
-cargo build --release
-```
-
-2. Compile the frontend (optional, for development):
-```bash
-cd frontend && npm install && npm run build:simple && cd ..
-```
-
-3. Run the server:
-```bash
-cargo run --release
-```
-
-4. Open `http://localhost:8080` in your browser
-
-5. Click "Add Vault" and provide the absolute path to your Obsidian vault
-
-## Configuration
-
-Environment variables:
-- `OBSIDIAN_SERVER_HOST`: Server host (default: `127.0.0.1`)
-- `OBSIDIAN_SERVER_PORT`: Server port (default: `8080`)
-- `OBSIDIAN_DATABASE_PATH`: SQLite database path (default: `./obsidian-host.db`)
+For detailed configuration options, see the [User Guide](docs/USER_GUIDE.md) or checks `config.toml`.
 
 ## How It Works
 

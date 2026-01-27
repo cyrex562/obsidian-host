@@ -25,8 +25,10 @@ fn test_multiple_wiki_links() {
     let markdown = "[[Note 1]] and [[Note 2|Alias 2]]";
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
-    assert!(html.contains("<a href=\"Note%201\">Note 1</a>"));
-    assert!(html.contains("<a href=\"Note%202\">Alias 2</a>"));
+    assert!(html.contains("href=\"Note%201\""));
+    assert!(html.contains(">Note 1</a>"));
+    assert!(html.contains("href=\"Note%202\""));
+    assert!(html.contains(">Alias 2</a>"));
 }
 
 #[test]
@@ -35,7 +37,8 @@ fn test_wiki_link_inside_formatting() {
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
     assert!(html.contains("<strong>"));
-    assert!(html.contains("<a href=\"Note\">Note</a>"));
+    assert!(html.contains("href=\"Note\""));
+    assert!(html.contains(">Note</a>"));
     assert!(html.contains("</strong>"));
 }
 
@@ -54,5 +57,6 @@ fn test_wiki_link_with_special_chars() {
     let markdown = "[[Note with spaces]]";
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
-    assert!(html.contains("<a href=\"Note%20with%20spaces\">Note with spaces</a>"));
+    assert!(html.contains("href=\"Note%20with%20spaces\""));
+    assert!(html.contains(">Note with spaces</a>"));
 }

@@ -1,0 +1,46 @@
+{
+    "id": "com.obsidian-host.daily-notes",
+    "name": "Daily Notes",
+    "version": "1.0.0",
+    "description": "Automatically create and manage daily notes with templates",
+    "author": "Obsidian Host Team",
+    "license": "MIT",
+    "main": "main.js",
+    "plugin_type": "javascript",
+    "capabilities": [
+        "read_files",
+        "write_files",
+        "commands",
+        "storage",
+        "modify_ui"
+    ],
+    "hooks": [
+        "on_load",
+        "on_startup"
+    ],
+    "config_schema": {
+        "type": "object",
+        "properties": {
+            "daily_notes_folder": {
+                "type": "string",
+                "default": "Daily Notes",
+                "description": "Folder where daily notes are stored"
+            },
+            "date_format": {
+                "type": "string",
+                "default": "YYYY-MM-DD",
+                "description": "Date format for daily note filenames"
+            },
+            "template_file": {
+                "type": "string",
+                "default": "Templates/Daily Note.md",
+                "description": "Template file to use for new daily notes"
+            },
+            "open_on_startup": {
+                "type": "boolean",
+                "default": true,
+                "description": "Automatically open today's note on startup"
+            }
+        }
+    }
+}

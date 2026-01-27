@@ -1,0 +1,35 @@
+{
+    "id": "com.obsidian-host.backlinks",
+    "name": "Backlinks",
+    "version": "1.0.0",
+    "description": "Show all notes that link to the current note",
+    "author": "Obsidian Host Team",
+    "license": "MIT",
+    "main": "main.js",
+    "plugin_type": "javascript",
+    "capabilities": [
+        "read_files",
+        "vault_metadata",
+        "modify_ui"
+    ],
+    "hooks": [
+        "on_load",
+        "on_file_open",
+        "on_file_save"
+    ],
+    "config_schema": {
+        "type": "object",
+        "properties": {
+            "show_unlinked_mentions": {
+                "type": "boolean",
+                "default": true,
+                "description": "Show mentions of the note name even without wiki links"
+            },
+            "case_sensitive": {
+                "type": "boolean",
+                "default": false,
+                "description": "Case-sensitive matching for unlinked mentions"
+            }
+        }
+    }
+}

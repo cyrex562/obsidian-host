@@ -1,4 +1,3 @@
-use chrono::Utc;
 use obsidian_host::services::FileService;
 use std::fs;
 use std::thread;
@@ -61,7 +60,7 @@ fn test_conflict_backup_creation() {
     let first_modified = file_data.modified;
 
     // Wait to ensure timestamp difference
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_secs(2));
 
     // Modify externally
     let full_path = temp_dir.path().join(file_path);
@@ -183,7 +182,7 @@ fn test_conflict_with_frontmatter() {
     let first_modified = file_data.modified;
 
     // Wait and modify externally
-    thread::sleep(Duration::from_millis(100));
+    thread::sleep(Duration::from_secs(2));
     let full_path = temp_dir.path().join(file_path);
     fs::write(
         &full_path,
@@ -220,7 +219,7 @@ fn test_multiple_rapid_writes() {
     FileService::create_file(vault_path, file_path, Some("# Initial")).unwrap();
 
     // Perform multiple rapid writes
-    let mut last_modified = Utc::now();
+    // Perform multiple rapid writes
     for i in 0..5 {
         thread::sleep(Duration::from_millis(10));
 
@@ -233,7 +232,6 @@ fn test_multiple_rapid_writes() {
         );
 
         assert!(result.is_ok(), "Rapid write {} should succeed", i);
-        last_modified = result.unwrap().modified;
     }
 
     // Verify final content
@@ -251,7 +249,7 @@ fn test_conflict_resolution_scenarios() {
     // Scenario 1: User keeps their version (force write)
     let file1 = "keep_mine.md";
     FileService::create_file(vault_path, file1, Some("# Original")).unwrap();
-    let data1 = FileService::read_file(vault_path, file1).unwrap();
+    let _data1 = FileService::read_file(vault_path, file1).unwrap();
 
     thread::sleep(Duration::from_millis(50));
     fs::write(temp_dir.path().join(file1), "# External").unwrap();

@@ -1,12 +1,16 @@
-import hljs from 'highlight.js';
 // @ts-ignore
 import { CodeJar } from './vendor/codejar/codejar.js';
+
+declare const htmx: any;
+declare const pdfjsLib: any;
+declare const hljs: any;
 
 // Types
 interface Vault {
     id: string;
     name: string;
     path: string;
+    path_exists?: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -48,7 +52,7 @@ interface Tab {
     content: string;
     modified: string;
     isDirty: boolean;
-    pane: number;
+    pane: string;
     fileType: 'markdown' | 'image' | 'pdf' | 'text' | 'audio' | 'video' | 'other';
     frontmatter?: any;
     autoSaveInterval?: number;
@@ -215,7 +219,7 @@ function getFileType(filePath: string): 'markdown' | 'image' | 'pdf' | 'text' | 
     if (ext === 'pdf') return 'pdf';
     if (['mp3', 'wav', 'ogg'].includes(ext)) return 'audio';
     if (['mp4', 'webm'].includes(ext)) return 'video';
-    if (['txt', 'json', 'js', 'ts', 'css', 'html', 'xml'].includes(ext)) return 'text';
+    if (['txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'rs', 'py', 'java', 'c', 'cpp', 'h', 'go', 'yaml', 'yml', 'toml', 'ini', 'sh', 'bat', 'mdx'].includes(ext)) return 'text';
     return 'other';
 }
 
@@ -233,29 +237,22 @@ function debounce(func: Function, wait: number) {
 }
 
 // App State
-class AppState {
+export class AppState {
     currentVaultId: string | null = null;
     vaults: Vault[] = [];
     openTabs: Map<string, Tab> = new Map();
     activeTabId: string | null = null;
     private _editorMode: 'raw' | 'side-by-side' | 'formatted' | 'rendered' = 'raw';
+    selectedFiles: Set<string> = new Set(); // For bulk operations
 
     // Split pane state
-    splitViewActive: boolean = false;
-    activePane: 1 | 2 = 1;
-    pane2TabId: string | null = null;  // Tab displayed in pane 2
+    panes: { id: string; flex: number; activeTabId: string | null; }[] = [];
+    activePaneId: string = 'pane-1';
     splitOrientation: 'vertical' | 'horizontal' = 'vertical';  // vertical = side-by-side, horizontal = stacked
 
     constructor() {
-        const saved = localStorage.getItem('editor-mode');
-        if (saved && ['raw', 'side-by-side', 'formatted', 'rendered'].includes(saved)) {
-            this._editorMode = saved as any;
-        }
-        // Load split orientation preference
-        const savedOrientation = localStorage.getItem('split-orientation');
-        if (savedOrientation === 'horizontal' || savedOrientation === 'vertical') {
-            this.splitOrientation = savedOrientation;
-        }
+        // Defaults will be overridden by loadPreferences()
+        this.panes.push({ id: 'pane-1', flex: 1, activeTabId: null });
     }
 
     get editorMode() {
@@ -264,7 +261,6 @@ class AppState {
 
     set editorMode(mode) {
         this._editorMode = mode;
-        localStorage.setItem('editor-mode', mode);
     }
     ws: WebSocket | null = null;
     searchDebounce: number | null = null;
@@ -275,9 +271,8 @@ class AppState {
     wsMaxReconnectDelay: number = 30000; // 30 seconds max
     conflictData: { filePath: string; yourVersion: string; serverVersion: string; } | null = null;
 
-    setVault(vaultId: string) {
+    setVault(vaultId: string | null) {
         this.currentVaultId = vaultId;
-        this.loadRecentFiles();
     }
 
     addRecentFile(filePath: string) {
@@ -290,30 +285,7 @@ class AppState {
         if (this.recentFiles.length > 20) {
             this.recentFiles.pop();
         }
-        this.saveRecentFiles();
-    }
-
-    saveRecentFiles() {
-        if (!this.currentVaultId) return;
-        localStorage.setItem(`recent-files-${this.currentVaultId}`, JSON.stringify(this.recentFiles));
-    }
-
-    loadRecentFiles() {
-        if (!this.currentVaultId) {
-            this.recentFiles = [];
-            return;
-        }
-        const stored = localStorage.getItem(`recent-files-${this.currentVaultId}`);
-        if (stored) {
-            try {
-                this.recentFiles = JSON.parse(stored);
-            } catch (e) {
-                console.error('Failed to parse recent files', e);
-                this.recentFiles = [];
-            }
-        } else {
-            this.recentFiles = [];
-        }
+        // Saving is now handled by API call in UIManager
     }
 
     addTab(tab: Tab) {
@@ -334,7 +306,7 @@ class AppState {
 }
 
 // API Client
-class ApiClient {
+export class ApiClient {
     private baseUrl = '';
 
     async getVaults(): Promise<Vault[]> {
@@ -425,10 +397,24 @@ class ApiClient {
         }
     }
 
-    async search(vaultId: string, query: string, limit: number = 50): Promise<SearchResult[]> {
-        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/search?q=${encodeURIComponent(query)}&limit=${limit}`);
-        if (!response.ok) throw new Error('Failed to search');
+    async renameFile(vaultId: string, from: string, to: string, strategy: string = 'fail'): Promise<{ new_path: string }> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/rename`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to, strategy }),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to rename file');
+        }
         return response.json();
+    }
+
+    async search(vaultId: string, query: string, limit: number = 50): Promise<SearchResult[]> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/search?q=${encodeURIComponent(query)}&page_size=${limit}`);
+        if (!response.ok) throw new Error('Failed to search');
+        const pagedResult = await response.json();
+        return pagedResult.results || [];
     }
 
     async getRandomNote(vaultId: string): Promise<{ path: string }> {
@@ -451,6 +437,11 @@ class ApiClient {
     }
 
     async uploadFiles(vaultId: string, files: FileList, targetPath: string = '', onProgress?: (loaded: number, total: number) => void): Promise<any> {
+        // If single large file (> 5MB), use chunked upload
+        if (files.length === 1 && files[0].size > 5 * 1024 * 1024) {
+            return this.uploadFileChunked(vaultId, files[0], targetPath, onProgress);
+        }
+
         const formData = new FormData();
 
         // Add all files to form data
@@ -488,6 +479,103 @@ class ApiClient {
             xhr.open('POST', `${this.baseUrl}/api/vaults/${vaultId}/upload`);
             xhr.send(formData);
         });
+    }
+
+    // Chunked Upload Methods
+    async createUploadSession(vaultId: string, filename: string, totalSize: number, path: string = ''): Promise<{ session_id: string, uploaded_bytes: number }> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/upload-sessions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, total_size: totalSize, path }),
+        });
+        if (!response.ok) throw new Error('Failed to create upload session');
+        return response.json();
+    }
+
+    async uploadChunk(vaultId: string, sessionId: string, chunk: Blob): Promise<{ uploaded_bytes: number }> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/upload-sessions/${sessionId}`, {
+            method: 'PUT',
+            body: chunk,
+        });
+        if (!response.ok) throw new Error('Failed to upload chunk');
+        return response.json();
+    }
+
+    async getUploadSessionStatus(vaultId: string, sessionId: string): Promise<{ session_id: string, uploaded_bytes: number }> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/upload-sessions/${sessionId}`);
+        if (!response.ok) throw new Error('Failed to get upload status');
+        return response.json();
+    }
+
+    async finishUploadSession(vaultId: string, sessionId: string, filename: string, path: string = ''): Promise<any> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/upload-sessions/${sessionId}/finish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, path }),
+        });
+        if (!response.ok) throw new Error('Failed to finish upload');
+        return response.json();
+    }
+
+    async uploadFileChunked(vaultId: string, file: File, targetPath: string = '', onProgress?: (loaded: number, total: number) => void): Promise<any> {
+        const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunks
+        const totalSize = file.size;
+
+        // Resume key based on file characteristics
+        const resumeKey = `upload_session_${vaultId}_${file.name}_${file.size}_${file.lastModified}`;
+        let sessionId = localStorage.getItem(resumeKey);
+        let uploadedBytes = 0;
+
+        try {
+            if (sessionId) {
+                // Check status
+                try {
+                    const status = await this.getUploadSessionStatus(vaultId, sessionId);
+                    uploadedBytes = status.uploaded_bytes;
+                    console.log(`Resuming upload for ${file.name} from ${uploadedBytes} bytes`);
+                } catch (e) {
+                    // Session invalid, start over
+                    console.warn('Invalid session, starting over');
+                    sessionId = null;
+                    uploadedBytes = 0;
+                }
+            }
+
+            if (!sessionId) {
+                const session = await this.createUploadSession(vaultId, file.name, totalSize, targetPath);
+                sessionId = session.session_id;
+                localStorage.setItem(resumeKey, sessionId);
+            }
+        } catch (e) {
+            throw e;
+        }
+
+        if (!sessionId) throw new Error("Could not initialize upload session");
+
+        // Upload loop
+        while (uploadedBytes < totalSize) {
+            const end = Math.min(uploadedBytes + CHUNK_SIZE, totalSize);
+            const chunk = file.slice(uploadedBytes, end);
+
+            try {
+                await this.uploadChunk(vaultId, sessionId, chunk);
+                uploadedBytes = end;
+
+                if (onProgress) {
+                    onProgress(uploadedBytes, totalSize);
+                }
+            } catch (e) {
+                // If chunk fails, we throw. Client can invoke upload again to resume.
+                console.error("Chunk upload failed", e);
+                // We don't remove the key so it can be resumed
+                throw new Error(`Upload failed at ${Math.round(uploadedBytes / 1024 / 1024)}MB. Try again to resume.`);
+            }
+        }
+
+        // Finish
+        const result = await this.finishUploadSession(vaultId, sessionId, file.name, targetPath);
+        localStorage.removeItem(resumeKey);
+        return { uploaded: [result] };
     }
 
     async downloadFile(vaultId: string, filePath: string): Promise<void> {
@@ -554,12 +642,66 @@ class ApiClient {
         if (!response.ok) throw new Error('Failed to resolve wiki link');
         return response.json();
     }
+
+    // Preferences
+    async getPreferences(): Promise<UserPreferences> {
+        const response = await fetch(`${this.baseUrl}/api/preferences`);
+        if (!response.ok) throw new Error('Failed to get preferences');
+        return response.json();
+    }
+
+    async updatePreferences(prefs: UserPreferences): Promise<void> {
+        const response = await fetch(`${this.baseUrl}/api/preferences`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(prefs),
+        });
+        if (!response.ok) throw new Error('Failed to update preferences');
+        return;
+    }
+
+    async resetPreferences(): Promise<void> {
+        const response = await fetch(`${this.baseUrl}/api/preferences/reset`, {
+            method: 'POST',
+        });
+        if (!response.ok) throw new Error('Failed to reset preferences');
+        return;
+    }
+
+    // Recent Files
+    async getRecentFiles(vaultId: string): Promise<string[]> {
+        const response = await fetch(`${this.baseUrl}/api/vaults/${vaultId}/recent`);
+        if (!response.ok) {
+            console.warn('Failed to get recent files, returning empty list');
+            return [];
+        }
+        return response.json();
+    }
+
+    async recordRecentFile(vaultId: string, filePath: string): Promise<void> {
+        // Fire and forget, but log error if fails
+        fetch(`${this.baseUrl}/api/vaults/${vaultId}/recent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: filePath }),
+        }).catch(e => console.error('Failed to record recent file:', e));
+    }
+}
+
+interface UserPreferences {
+    theme: string;
+    editor_mode: string;
+    font_size: number;
+    window_layout?: string;
 }
 
 // UI Manager
-class UIManager {
+export class UIManager {
     private currentJar: any = null;
     private currentQuill: any = null;
+    private paneJars: Map<string, any> = new Map();
+    private paneQuills: Map<string, any> = new Map();
+    private pdfStates: Map<string, any> = new Map();
 
     constructor(private state: AppState, private api: ApiClient) { }
 
@@ -567,6 +709,7 @@ class UIManager {
         try {
             this.state.vaults = await this.api.getVaults();
             this.renderVaultSelector();
+            this.renderVaultManager();
         } catch (error) {
             console.error('Failed to load vaults:', error);
             alert('Failed to load vaults: ' + error);
@@ -581,7 +724,12 @@ class UIManager {
         for (const vault of this.state.vaults) {
             const option = document.createElement('option');
             option.value = vault.id;
-            option.textContent = vault.name;
+            const missing = vault.path_exists === false;
+            option.textContent = missing ? `${vault.name} (missing)` : vault.name;
+            if (missing) {
+                option.style.color = '#6b7280';
+                option.style.fontStyle = 'italic';
+            }
             if (vault.id === this.state.currentVaultId) {
                 option.selected = true;
             }
@@ -589,12 +737,89 @@ class UIManager {
         }
     }
 
+    renderVaultManager() {
+        const list = document.getElementById('vault-list');
+        if (!list) return;
+
+        list.innerHTML = '';
+        if (this.state.vaults.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'vault-item vault-missing';
+            empty.textContent = 'No vaults yet. Add one below.';
+            list.appendChild(empty);
+            return;
+        }
+
+        for (const vault of this.state.vaults) {
+            const missing = vault.path_exists === false;
+            const item = document.createElement('div');
+            item.className = 'vault-item';
+
+            const meta = document.createElement('div');
+            meta.className = 'vault-meta';
+
+            const name = document.createElement('div');
+            name.className = `vault-name${missing ? ' vault-missing' : ''}`;
+            name.textContent = vault.name;
+
+            const path = document.createElement('div');
+            path.className = `vault-path${missing ? ' vault-missing' : ''}`;
+            path.textContent = vault.path;
+
+            const status = document.createElement('div');
+            status.className = `vault-status${missing ? ' vault-missing' : ''}`;
+            status.textContent = missing ? 'Missing (path not found)' : 'Available';
+
+            meta.appendChild(name);
+            meta.appendChild(path);
+            meta.appendChild(status);
+
+            const actions = document.createElement('div');
+            actions.className = 'vault-actions';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn btn-secondary';
+            removeBtn.textContent = 'Remove';
+            removeBtn.setAttribute('data-action', 'delete-vault');
+            removeBtn.setAttribute('data-vault-id', vault.id);
+
+            actions.appendChild(removeBtn);
+
+            item.appendChild(meta);
+            item.appendChild(actions);
+
+            list.appendChild(item);
+        }
+    }
+
     async switchVault(vaultId: string) {
         if (!vaultId) return;
 
+        const vault = this.state.vaults.find(v => v.id === vaultId);
+        if (vault && vault.path_exists === false) {
+            alert('This vault path no longer exists. Please remove it or choose another vault.');
+            const select = document.getElementById('vault-select') as HTMLSelectElement | null;
+            if (select) {
+                select.value = this.state.currentVaultId || '';
+            }
+            return;
+        }
+
         this.state.setVault(vaultId);
+        this.loadRecentFiles(vaultId);
         this.closeAllTabs();
-        await this.loadFileTree();
+
+        // HTMX Integration for File Tree
+        const fileTree = document.getElementById('file-tree');
+        if (fileTree && typeof htmx !== 'undefined') {
+            fileTree.setAttribute('hx-get', `/api/vaults/${vaultId}/files-html`);
+            fileTree.setAttribute('hx-trigger', 'load');
+            htmx.process(fileTree);
+            // Trigger load immediately
+            htmx.trigger(fileTree, 'load');
+        } else {
+            await this.loadFileTree();
+        }
     }
 
     async loadFileTree() {
@@ -615,18 +840,136 @@ class UIManager {
 
         if (!parentElement) {
             container.innerHTML = '';
+
+            // Show "No files found" message for empty vault
+            if (!nodes || nodes.length === 0) {
+                const emptyMessage = document.createElement('p');
+                emptyMessage.textContent = 'No files found';
+                emptyMessage.style.padding = '1rem';
+                emptyMessage.style.textAlign = 'center';
+                emptyMessage.style.color = 'var(--text-muted)';
+                container.appendChild(emptyMessage);
+                return;
+            }
         }
 
         for (const node of nodes) {
+            // Create wrapper for folder nodes to contain item + children
+            const nodeWrapper = document.createElement('div');
+            nodeWrapper.className = 'file-tree-node';
+
             const item = document.createElement('div');
             item.className = 'file-tree-item' + (node.is_directory ? ' folder' : '');
+
+            // Determine icon
+            let icon = node.is_directory ? '📁' : '📄';
+            if (!node.is_directory) {
+                const ext = node.name.split('.').pop()?.toLowerCase();
+                if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext || '')) icon = '🖼️';
+                else if (ext === 'pdf') icon = '📕';
+                else if (['mp3', 'wav', 'ogg'].includes(ext || '')) icon = '🎵';
+                else if (['mp4', 'webm'].includes(ext || '')) icon = '🎬';
+                else if (['js', 'ts', 'py', 'rs', 'html', 'css', 'json'].includes(ext || '')) icon = '📝';
+                else if (ext === 'md') icon = '📝';
+            }
+
+            // Size text
+            let metaText = '';
+            if (node.size !== undefined) {
+                if (node.size < 1024) metaText = `${node.size} B`;
+                else if (node.size < 1024 * 1024) metaText = `${(node.size / 1024).toFixed(1)} KB`;
+                else metaText = `${(node.size / (1024 * 1024)).toFixed(1)} MB`;
+            }
+
+            // Add checkbox for files (not directories)
+            const isSelected = this.state.selectedFiles.has(node.path);
+            const checkboxHtml = !node.is_directory
+                ? `<input type="checkbox" class="file-checkbox" data-path="${node.path}" ${isSelected ? 'checked' : ''}>`
+                : '';
+
+            // Add expand/collapse arrow for folders
+            const arrowHtml = node.is_directory && node.children && node.children.length > 0
+                ? `<span class="folder-arrow">▶</span>`
+                : '';
+
             item.innerHTML = `
-                <span class="icon">${node.is_directory ? '📁' : '📄'}</span>
+                ${arrowHtml}
+                ${checkboxHtml}
+                <span class="icon">${icon}</span>
                 <span class="name">${node.name}</span>
+                ${!node.is_directory ? `<span class="meta" style="font-size: 0.8em; color: var(--text-muted); margin-left: auto;">${metaText}</span>` : ''}
             `;
 
+            if (isSelected) {
+                item.classList.add('selected');
+            }
+
+            // Checkbox event handler
+            const checkbox = item.querySelector('.file-checkbox') as HTMLInputElement;
+            if (checkbox) {
+                checkbox.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    if (checkbox.checked) {
+                        this.state.selectedFiles.add(node.path);
+                        item.classList.add('selected');
+                    } else {
+                        this.state.selectedFiles.delete(node.path);
+                        item.classList.remove('selected');
+                    }
+                    this.updateBulkActionsToolbar();
+                });
+            }
+
+            // Hover preview for images
+            if (!node.is_directory && ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(node.name.split('.').pop()?.toLowerCase() || '')) {
+                const preview = document.createElement('div');
+                preview.className = 'hover-preview hidden';
+                preview.style.position = 'fixed';
+                preview.style.zIndex = '1000';
+                preview.style.background = 'var(--bg-secondary)';
+                preview.style.border = '1px solid var(--border-color)';
+                preview.style.padding = '5px';
+                preview.style.borderRadius = '4px';
+                preview.style.pointerEvents = 'none';
+                preview.innerHTML = 'Loading preview...';
+                document.body.appendChild(preview);
+
+                item.addEventListener('mouseenter', (e) => {
+                    if (!this.state.currentVaultId) return;
+
+                    const rect = item.getBoundingClientRect();
+                    preview.style.left = `${rect.right + 10}px`;
+                    preview.style.top = `${rect.top}px`;
+                    preview.classList.remove('hidden');
+
+                    // Load thumbnail
+                    // We can use the thumbnail endpoint we created earlier!
+                    // /api/vaults/{vault_id}/thumbnail/{file_path}?width=200&height=200
+                    const thumbUrl = `/api/vaults/${this.state.currentVaultId}/thumbnail/${encodeURIComponent(node.path)}?width=200&height=200`;
+
+                    preview.innerHTML = `<img src="${thumbUrl}" style="max-width: 200px; max-height: 200px; display: block;">`;
+                });
+
+                item.addEventListener('mouseleave', () => {
+                    preview.classList.add('hidden');
+                });
+
+                // Cleanup on item removal (not perfect but acceptable for now)
+                // Ideally we'd remove element from body when item is removed from DOM.
+            }
+
+
             if (!node.is_directory) {
+                item.tabIndex = 0; // Make focusable
                 item.addEventListener('click', () => this.openFile(node.path));
+
+                // Quick Look trigger
+                item.addEventListener('keydown', (e) => {
+                    if (e.code === 'Space') {
+                        e.preventDefault();
+                        this.showQuickLook(node);
+                    }
+                });
             }
 
             // Add context menu support
@@ -635,14 +978,230 @@ class UIManager {
                 this.showFileContextMenu(e, node);
             });
 
-            container.appendChild(item);
+            // Add drag and drop support for moving files
+            item.draggable = true;
+            item.setAttribute('data-path', node.path);
+            item.setAttribute('data-is-directory', String(node.is_directory));
+
+            item.addEventListener('dragstart', (e: DragEvent) => {
+                if (!e.dataTransfer) return;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', node.path);
+                e.dataTransfer.setData('application/obsidian-file', JSON.stringify({
+                    path: node.path,
+                    isDirectory: node.is_directory
+                }));
+                item.classList.add('dragging');
+            });
+
+            item.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+                // Remove all drag-over highlights
+                document.querySelectorAll('.file-tree-item.drag-over').forEach(el => {
+                    el.classList.remove('drag-over');
+                });
+            });
+
+            // Allow dropping on folders
+            if (node.is_directory) {
+                item.addEventListener('dragover', (e: DragEvent) => {
+                    e.preventDefault();
+                    if (!e.dataTransfer) return;
+
+                    // Check if this is a file from the file tree or from OS
+                    const hasObsidianFile = e.dataTransfer.types.includes('application/obsidian-file');
+                    const hasFiles = e.dataTransfer.types.includes('Files');
+
+                    if (hasObsidianFile || hasFiles) {
+                        e.dataTransfer.dropEffect = 'move';
+                        item.classList.add('drag-over');
+                    }
+                });
+
+                item.addEventListener('dragleave', (e: DragEvent) => {
+                    // Only remove highlight if we're actually leaving the element
+                    const rect = item.getBoundingClientRect();
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+                        item.classList.remove('drag-over');
+                    }
+                });
+
+                item.addEventListener('drop', async (e: DragEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    item.classList.remove('drag-over');
+
+                    if (!e.dataTransfer || !this.state.currentVaultId) return;
+
+                    // Check if dropping files from OS
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        await this.handleFileUploadDrop(e.dataTransfer.files, node.path);
+                        return;
+                    }
+
+                    // Handle moving files within vault
+                    const obsidianData = e.dataTransfer.getData('application/obsidian-file');
+                    if (obsidianData) {
+                        const draggedFile = JSON.parse(obsidianData);
+                        const sourcePath = draggedFile.path;
+
+                        // Don't allow dropping on itself or its children
+                        if (sourcePath === node.path || sourcePath.startsWith(node.path + '/')) {
+                            return;
+                        }
+
+                        // Calculate new path
+                        const fileName = sourcePath.split('/').pop() || '';
+                        const newPath = node.path ? `${node.path}/${fileName}` : fileName;
+
+                        try {
+                            await this.api.renameFile(this.state.currentVaultId, sourcePath, newPath);
+                            await this.loadFileTree();
+
+                            // Update tabs if it's an open file
+                            if (!draggedFile.isDirectory) {
+                                const oldTabId = `${this.state.currentVaultId}:${sourcePath}`;
+                                const tab = this.state.getTab(oldTabId);
+                                if (tab) {
+                                    this.state.removeTab(oldTabId);
+                                    await this.openFile(newPath);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Failed to move file:', error);
+                            alert('Failed to move file: ' + error);
+                        }
+                    }
+                });
+            }
+
+            // Add expand/collapse for folders
+            if (node.is_directory && node.children && node.children.length > 0) {
+                const arrow = item.querySelector('.folder-arrow');
+                if (arrow) {
+                    arrow.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        nodeWrapper.classList.toggle('collapsed');
+                        if (nodeWrapper.classList.contains('collapsed')) {
+                            arrow.textContent = '▶';
+                        } else {
+                            arrow.textContent = '▼';
+                        }
+                    });
+                    // Start expanded
+                    arrow.textContent = '▼';
+                }
+            }
+
+            nodeWrapper.appendChild(item);
+            container.appendChild(nodeWrapper);
 
             if (node.is_directory && node.children && node.children.length > 0) {
                 const childContainer = document.createElement('div');
                 childContainer.className = 'file-tree-children';
-                container.appendChild(childContainer);
+                nodeWrapper.appendChild(childContainer);
                 this.renderFileTree(node.children, childContainer);
             }
+        }
+    }
+
+    async showQuickLook(node: FileNode) {
+        if (!this.state.currentVaultId) return;
+
+        const modal = document.getElementById('quick-look-modal');
+        const contentContainer = document.getElementById('quick-look-content');
+        const title = document.getElementById('quick-look-title');
+        const meta = document.getElementById('quick-look-meta');
+        const openBtn = document.getElementById('quick-look-open');
+
+        if (!modal || !contentContainer || !title) return;
+
+        title.textContent = node.name;
+        if (meta) meta.textContent = node.size ? `${(node.size / 1024).toFixed(1)} KB` : '';
+
+        // Setup Open Button
+        const newOpenBtn = openBtn?.cloneNode(true);
+        if (openBtn && newOpenBtn) {
+            openBtn.parentNode?.replaceChild(newOpenBtn, openBtn);
+            newOpenBtn.addEventListener('click', () => {
+                this.openFile(node.path);
+                this.hideModal('quick-look-modal');
+            });
+        }
+
+        contentContainer.innerHTML = '<div class="loading">Loading preview...</div>';
+        this.showModal('quick-look-modal');
+
+        const fileType = getFileType(node.name);
+        try {
+            if (fileType === 'markdown' || fileType === 'text') {
+                // Fetch content
+                const fileContent = await this.api.readFile(this.state.currentVaultId, node.path);
+                let contentHtml = '';
+
+                if (fileType === 'markdown') {
+                    contentHtml = `<div class="markdown-content">${await this.renderMarkdown(fileContent.content)}</div>`;
+                } else {
+                    contentHtml = `<pre style="padding: 20px; overflow: auto; height: 100%;"><code>${this.escapeHtml(fileContent.content)}</code></pre>`;
+                }
+                contentContainer.innerHTML = contentHtml;
+
+                if (fileType === 'text') {
+                    // Syntax highlight
+                    const block = contentContainer.querySelector('code');
+                    if (block) hljs.highlightElement(block);
+                }
+
+            } else if (fileType === 'image') {
+                const src = `/api/vaults/${this.state.currentVaultId}/raw/${node.path}`;
+                contentContainer.innerHTML = `
+                    <div style="display: flex; justify-content: center; align-items: center; height: 100%; background: var(--bg-primary);">
+                        <img src="${src}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                    </div>
+                 `;
+            } else if (fileType === 'pdf') {
+                // Use PDF viewer logic - reuse pdfStates but with a unique ID for preview
+                const src = `/api/vaults/${this.state.currentVaultId}/raw/${node.path}`;
+
+                // Clean up previous preview state if exists
+                this.pdfStates.delete('preview');
+
+                // Mock a tab for the viewer
+                const mockTab = {
+                    id: 'preview',
+                    content: src,
+                    filePath: node.path,
+                    //... other props not needed by viewer
+                } as any;
+
+                this.renderPdfViewer(contentContainer, mockTab);
+
+            } else if (fileType === 'audio') {
+                const src = `/api/vaults/${this.state.currentVaultId}/raw/${node.path}`;
+                contentContainer.innerHTML = `
+                    <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                        <audio controls src="${src}" style="width: 80%;"></audio>
+                    </div>
+                 `;
+            } else if (fileType === 'video') {
+                const src = `/api/vaults/${this.state.currentVaultId}/raw/${node.path}`;
+                contentContainer.innerHTML = `
+                    <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                        <video controls src="${src}" style="max-width: 100%; max-height: 100%;"></video>
+                    </div>
+                 `;
+            } else {
+                contentContainer.innerHTML = `
+                    <div class="empty-state">
+                        <p>Preview not available for this file type.</p>
+                    </div>
+                 `;
+            }
+
+        } catch (e) {
+            contentContainer.innerHTML = `<div class="error" style="padding: 20px;">Failed to load preview: ${e}</div>`;
         }
     }
 
@@ -657,9 +1216,134 @@ class UIManager {
         menu.style.left = `${event.clientX}px`;
         menu.style.top = `${event.clientY}px`;
 
+        // New File option (only for directories)
+        if (node.is_directory) {
+            const newFileOption = document.createElement('div');
+            newFileOption.className = 'context-menu-item';
+            newFileOption.textContent = 'New File';
+            newFileOption.setAttribute('data-action', 'new-file');
+            newFileOption.addEventListener('click', async () => {
+                const fileName = prompt('Enter file name:');
+                if (!fileName || !this.state.currentVaultId) {
+                    menu.remove();
+                    return;
+                }
+
+                const filePath = node.path ? `${node.path}/${fileName}` : fileName;
+                try {
+                    await this.api.createFile(this.state.currentVaultId, filePath, '');
+                    await this.loadFileTree();
+                    await this.openFile(filePath);
+                } catch (error) {
+                    console.error('Failed to create file:', error);
+                    alert('Failed to create file: ' + error);
+                }
+                menu.remove();
+            });
+            menu.appendChild(newFileOption);
+
+            // New Folder option (only for directories)
+            const newFolderOption = document.createElement('div');
+            newFolderOption.className = 'context-menu-item';
+            newFolderOption.textContent = 'New Folder';
+            newFolderOption.setAttribute('data-action', 'new-folder');
+            newFolderOption.addEventListener('click', async () => {
+                const folderName = prompt('Enter folder name:');
+                if (!folderName || !this.state.currentVaultId) {
+                    menu.remove();
+                    return;
+                }
+
+                const folderPath = node.path ? `${node.path}/${folderName}` : folderName;
+                try {
+                    await this.api.createDirectory(this.state.currentVaultId, folderPath);
+                    await this.loadFileTree();
+                } catch (error) {
+                    console.error('Failed to create folder:', error);
+                    alert('Failed to create folder: ' + error);
+                }
+                menu.remove();
+            });
+            menu.appendChild(newFolderOption);
+        }
+
+        // Rename option (for both files and directories)
+        const renameOption = document.createElement('div');
+        renameOption.className = 'context-menu-item';
+        renameOption.textContent = 'Rename';
+        renameOption.setAttribute('data-action', 'rename');
+        renameOption.addEventListener('click', async () => {
+            const currentName = node.path.split('/').pop() || '';
+            const newName = prompt('Enter new name:', currentName);
+            if (!newName || !this.state.currentVaultId || newName === currentName) {
+                menu.remove();
+                return;
+            }
+
+            const parentPath = node.path.split('/').slice(0, -1).join('/');
+            const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+
+            try {
+                await this.api.renameFile(this.state.currentVaultId, node.path, newPath);
+                await this.loadFileTree();
+
+                // If it's an open file, update the tab
+                if (!node.is_directory) {
+                    const oldTabId = `${this.state.currentVaultId}:${node.path}`;
+                    const tab = this.state.getTab(oldTabId);
+                    if (tab) {
+                        this.state.removeTab(oldTabId);
+                        await this.openFile(newPath);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to rename:', error);
+                alert('Failed to rename: ' + error);
+            }
+            menu.remove();
+        });
+        menu.appendChild(renameOption);
+
+        // Delete option (for both files and directories)
+        const deleteOption = document.createElement('div');
+        deleteOption.className = 'context-menu-item';
+        deleteOption.textContent = 'Delete';
+        deleteOption.setAttribute('data-action', 'delete');
+        deleteOption.addEventListener('click', async () => {
+            const itemType = node.is_directory ? 'folder' : 'file';
+            if (!confirm(`Are you sure you want to delete this ${itemType}?`)) {
+                menu.remove();
+                return;
+            }
+
+            if (!this.state.currentVaultId) {
+                menu.remove();
+                return;
+            }
+
+            try {
+                await this.api.deleteFile(this.state.currentVaultId, node.path);
+                await this.loadFileTree();
+
+                // If it's an open file, close the tab
+                if (!node.is_directory) {
+                    const tabId = `${this.state.currentVaultId}:${node.path}`;
+                    if (this.state.getTab(tabId)) {
+                        this.closeTab(tabId);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to delete:', error);
+                alert('Failed to delete: ' + error);
+            }
+            menu.remove();
+        });
+        menu.appendChild(deleteOption);
+
         const downloadOption = document.createElement('div');
         downloadOption.className = 'context-menu-item';
         downloadOption.textContent = node.is_directory ? 'Download as ZIP' : 'Download';
+        downloadOption.setAttribute('data-action', 'download');
         downloadOption.addEventListener('click', async () => {
             if (!this.state.currentVaultId) return;
 
@@ -691,11 +1375,73 @@ class UIManager {
         }, 0);
     }
 
+    async handleFileUploadDrop(files: FileList, targetPath: string = '') {
+        if (!this.state.currentVaultId || !files || files.length === 0) return;
+
+        try {
+            const result = await this.api.uploadFiles(
+                this.state.currentVaultId,
+                files,
+                targetPath
+            );
+
+            // Refresh file tree to show new files
+            await this.loadFileTree();
+
+            // Show success message
+            const fileCount = files.length;
+            const message = fileCount === 1
+                ? `File "${files[0].name}" uploaded successfully`
+                : `${fileCount} files uploaded successfully`;
+
+            this.showToast(message, 'success');
+        } catch (error) {
+            console.error('Failed to upload files:', error);
+            this.showToast('Failed to upload files: ' + error, 'error');
+        }
+    }
+
+    showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.right = '20px';
+        toast.style.padding = '12px 20px';
+        toast.style.borderRadius = '4px';
+        toast.style.zIndex = '10000';
+        toast.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+
+        if (type === 'success') {
+            toast.style.backgroundColor = '#4caf50';
+            toast.style.color = 'white';
+        } else if (type === 'error') {
+            toast.style.backgroundColor = '#f44336';
+            toast.style.color = 'white';
+        } else {
+            toast.style.backgroundColor = 'var(--bg-secondary)';
+            toast.style.color = 'var(--text-primary)';
+            toast.style.border = '1px solid var(--border-color)';
+        }
+
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.transition = 'opacity 0.3s';
+            toast.style.opacity = '0';
+            setTimeout(() => {
+                document.body.removeChild(toast);
+            }, 300);
+        }, 3000);
+    }
+
     async openFile(filePath: string) {
         if (!this.state.currentVaultId) return;
 
         // Add to recents
         this.state.addRecentFile(filePath);
+        this.api.recordRecentFile(this.state.currentVaultId, filePath);
 
         const tabId = `${this.state.currentVaultId}:${filePath}`;
         const existingTab = this.state.getTab(tabId);
@@ -720,8 +1466,8 @@ class UIManager {
                 frontmatter = fileContent.frontmatter;
                 modified = fileContent.modified;
                 frontmatter = fileContent.frontmatter;
-            } else if (['image', 'pdf', 'audio', 'video'].includes(fileType)) {
-                // For binary files, we'll use the raw endpoint directly
+            } else {
+                // For binary files and unsupported types, we'll use the raw endpoint directly
                 content = `/api/vaults/${this.state.currentVaultId}/raw/${filePath}`;
             }
 
@@ -732,7 +1478,7 @@ class UIManager {
                 content: content,
                 modified: modified,
                 isDirty: false,
-                pane: 1,
+                pane: this.state.activePaneId,
                 fileType: fileType,
                 frontmatter: frontmatter,
                 undoManager: new UndoRedoManager(content),
@@ -799,9 +1545,7 @@ class UIManager {
         for (const [tabId, tab] of this.state.openTabs) {
             const tabElement = document.createElement('div');
             tabElement.className = 'tab' + (tabId === this.state.activeTabId ? ' active' : '');
-            if (tab.pane === 2) {
-                tabElement.classList.add('pane-2-tab');
-            }
+            // Dynamic pane styling (optional, skipped for now)
             tabElement.innerHTML = `
                 <span class="tab-name">${tab.isDirty ? '• ' : ''}${tab.fileName}</span>
                 <button class="tab-close">✕</button>
@@ -851,11 +1595,12 @@ class UIManager {
         menu.style.zIndex = '1000';
 
         const tab = this.state.getTab(tabId);
-        const isInPane2 = tab?.pane === 2;
+        // Heuristic: Is in the first pane?
+        const isMainPane = this.state.panes.length > 0 && tab?.pane === this.state.panes[0].id;
 
         menu.innerHTML = `
-            <div class="context-menu-item" data-action="open-split">
-                ${isInPane2 ? 'Move to Main Pane' : 'Open in Split View'}
+            <div class="context-menu-item" data-action="toggle-pane">
+                ${!isMainPane ? 'Move to Main Pane' : 'Split / New Pane'}
             </div>
             <div class="context-menu-item" data-action="close">Close Tab</div>
             <div class="context-menu-item" data-action="close-others">Close Other Tabs</div>
@@ -867,8 +1612,8 @@ class UIManager {
         menu.querySelectorAll('.context-menu-item').forEach(item => {
             item.addEventListener('click', () => {
                 const action = item.getAttribute('data-action');
-                if (action === 'open-split') {
-                    if (isInPane2) {
+                if (action === 'toggle-pane') {
+                    if (!isMainPane) {
                         this.moveTabToPane1(tabId);
                     } else {
                         this.openInSplitView(tabId);
@@ -894,17 +1639,18 @@ class UIManager {
 
     moveTabToPane1(tabId: string) {
         const tab = this.state.getTab(tabId);
-        if (tab) {
-            tab.pane = 1;
-            if (this.state.pane2TabId === tabId) {
-                this.state.pane2TabId = null;
-                this.renderPane2();
-            }
+        if (tab && this.state.panes.length > 0) {
+            const mainPane = this.state.panes[0];
+            tab.pane = mainPane.id;
+            mainPane.activeTabId = tabId;
+            this.state.activePaneId = mainPane.id;
             this.state.setActiveTab(tabId);
-            this.renderTabs();
             this.renderEditor();
+            this.renderTabs();
         }
     }
+
+
 
     closeOtherTabs(keepTabId: string) {
         const tabsToClose: string[] = [];
@@ -925,27 +1671,23 @@ class UIManager {
                 clearInterval(tab.autoSaveInterval);
             }
             this.state.removeTab(tabId);
-            if (this.state.pane2TabId === tabId) {
-                this.state.pane2TabId = null;
-            }
         }
 
         this.state.setActiveTab(keepTabId);
         this.renderTabs();
         this.renderEditor();
-        this.renderPane2();
     }
 
     setupPaneDropZones() {
-        const pane1 = document.getElementById('pane-1');
-        const pane2 = document.getElementById('pane-2');
+        const splitContainer = document.getElementById('split-container');
+        if (!splitContainer) return;
 
         const handleDragOver = (e: DragEvent) => {
             e.preventDefault();
             e.dataTransfer!.dropEffect = 'move';
         };
 
-        const handleDrop = (paneNum: 1 | 2) => (e: DragEvent) => {
+        const handleDrop = (e: DragEvent) => {
             e.preventDefault();
             const tabId = e.dataTransfer?.getData('text/plain');
             if (!tabId) return;
@@ -953,59 +1695,49 @@ class UIManager {
             const tab = this.state.getTab(tabId);
             if (!tab) return;
 
-            if (paneNum === 2) {
-                // Open split view if not active
-                if (!this.state.splitViewActive) {
-                    this.openSplitView();
-                }
+            const target = e.target as HTMLElement;
+            const paneEl = target.closest('.editor-pane');
+            if (!paneEl) return;
+            const paneId = paneEl.id;
 
-                // Move previous pane 2 tab back to pane 1
-                if (this.state.pane2TabId && this.state.pane2TabId !== tabId) {
-                    const prevTab = this.state.getTab(this.state.pane2TabId);
-                    if (prevTab) {
-                        prevTab.pane = 1;
-                    }
-                }
+            const targetPane = this.state.panes.find(p => p.id === paneId);
+            if (!targetPane) return;
 
-                tab.pane = 2;
-                this.state.pane2TabId = tabId;
-                this.state.activePane = 2;
-                this.state.setActiveTab(tabId);
-                this.renderPane2();
-            } else {
-                // Moving to pane 1
-                if (tab.pane === 2) {
-                    tab.pane = 1;
-                    if (this.state.pane2TabId === tabId) {
-                        this.state.pane2TabId = null;
-                        this.renderPane2();
-                    }
-                }
-                this.state.activePane = 1;
-                this.state.setActiveTab(tabId);
-                this.renderEditor();
-            }
+            tab.pane = targetPane.id;
+            targetPane.activeTabId = tab.id;
+            this.state.activePaneId = targetPane.id;
+            this.state.setActiveTab(tab.id);
 
+            this.renderEditor();
             this.renderTabs();
-            this.updatePaneActiveState();
         };
 
-        // Pane 1 drop zone
-        pane1?.addEventListener('dragover', handleDragOver);
-        pane1?.addEventListener('drop', handleDrop(1));
-
-        // Pane 2 drop zone
-        pane2?.addEventListener('dragover', handleDragOver);
-        pane2?.addEventListener('drop', handleDrop(2));
-
-        // Also allow drop on pane resizer to open split
-        const paneResizer = document.getElementById('pane-resizer');
-        paneResizer?.addEventListener('dragover', handleDragOver);
-        paneResizer?.addEventListener('drop', handleDrop(2));
+        splitContainer.addEventListener('dragover', handleDragOver);
+        splitContainer.addEventListener('drop', handleDrop);
     }
 
     activateTab(tabId: string) {
         this.state.setActiveTab(tabId);
+
+        const tab = this.state.getTab(tabId);
+        if (tab) {
+            // Ensure tab is assigned to a valid pane
+            let pane = this.state.panes.find(p => p.id === tab.pane);
+            if (!pane) {
+                // Fallback to active pane
+                pane = this.state.panes.find(p => p.id === this.state.activePaneId);
+                if (pane) {
+                    tab.pane = pane.id;
+                }
+            }
+
+            if (pane) {
+                pane.activeTabId = tabId;
+                // Also update activePaneId to this pane
+                this.state.activePaneId = pane.id;
+            }
+        }
+
         this.renderTabs();
         this.renderEditor();
 
@@ -1014,6 +1746,8 @@ class UIManager {
         if (propertiesPanel && !propertiesPanel.classList.contains('hidden')) {
             this.renderProperties();
         }
+
+        this.savePreferences();
     }
 
     closeTab(tabId: string) {
@@ -1046,38 +1780,218 @@ class UIManager {
         }
         this.state.openTabs.clear();
         this.state.setActiveTab(null);
+
+        // Reset active tab for all panes
+        this.state.panes.forEach(p => {
+            p.activeTabId = null;
+        });
+
         this.renderTabs();
         this.renderEditor();
     }
 
     renderEditor() {
-        // Cleanup existing CodeJar if any
-        if (this.currentJar) {
-            this.currentJar.destroy();
-            this.currentJar = null;
+        this.renderPanesStructure();
+
+        for (const pane of this.state.panes) {
+            this.renderPaneContent(pane);
         }
-        this.currentQuill = null;
+    }
 
-        const pane1 = document.getElementById('pane-1');
-        if (!pane1) return;
+    renderPanesStructure() {
+        const splitContainer = document.getElementById('split-container');
+        if (!splitContainer) return;
 
-        const content = pane1.querySelector('.editor-content') as HTMLElement;
-        if (!content) return;
+        // Check if DOM matches state (optimization)
+        const existingPaneIds = Array.from(splitContainer.querySelectorAll('.editor-pane')).map(el => el.id);
+        const statePaneIds = this.state.panes.map(p => p.id);
+        const structureMatches = existingPaneIds.length === statePaneIds.length &&
+            existingPaneIds.every((id, i) => id === statePaneIds[i]);
 
-        if (!this.state.activeTabId) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <h2>No file open</h2>
-                    <p>Select a file from the sidebar to start editing</p>
-                </div>
-            `;
+        if (structureMatches) {
+            // Check orientation class
+            if (this.state.splitOrientation === 'vertical') {
+                if (!splitContainer.classList.contains('split-vertical')) {
+                    splitContainer.classList.remove('split-horizontal');
+                    splitContainer.classList.add('split-vertical');
+                }
+            } else {
+                if (!splitContainer.classList.contains('split-horizontal')) {
+                    splitContainer.classList.remove('split-vertical');
+                    splitContainer.classList.add('split-horizontal');
+                }
+            }
             return;
         }
 
-        const tab = this.state.getTab(this.state.activeTabId);
-        if (!tab) return;
+        // Rebuild structure
+        splitContainer.innerHTML = '';
+        if (this.state.splitOrientation === 'vertical') {
+            splitContainer.classList.add('split-vertical');
+            splitContainer.classList.remove('split-horizontal');
+        } else {
+            splitContainer.classList.add('split-horizontal');
+            splitContainer.classList.remove('split-vertical');
+        }
 
-        // Ensure auto-save is running
+        this.state.panes.forEach((pane, index) => {
+            const paneEl = document.createElement('div');
+            paneEl.className = 'editor-pane';
+            paneEl.id = pane.id;
+            paneEl.dataset.pane = pane.id;
+            paneEl.style.flex = pane.flex.toString();
+
+            paneEl.innerHTML = `
+                <div class="pane-header">
+                     <div class="editor-toolbar">
+                        <button class="btn btn-icon undo-btn" title="Undo (Ctrl+Z)">
+                            <span class="icon">↶</span>
+                        </button>
+                        <button class="btn btn-icon redo-btn" title="Redo (Ctrl+Y)">
+                            <span class="icon">↷</span>
+                        </button>
+                        <span class="toolbar-separator"></span>
+                        <button class="btn btn-icon insert-link-btn" title="Insert Link (Ctrl+K)">
+                            <span class="icon">🔗</span>
+                        </button>
+                        <button class="btn btn-icon insert-image-btn" title="Insert Image">
+                            <span class="icon">🖼️</span>
+                        </button>
+                     </div>
+                     ${this.state.panes.length > 1 ? `<button class="btn btn-icon close-pane-btn" data-pane="${pane.id}" title="Close Pane">✕</button>` : ''}
+                </div>
+                <div class="editor-content"></div>
+                <div class="editor-mode-selector hidden">
+                    <button class="mode-btn" data-mode="raw">Raw</button>
+                    <button class="mode-btn" data-mode="side-by-side">Side by Side</button>
+                    <button class="mode-btn" data-mode="formatted">Formatted</button>
+                    <button class="mode-btn" data-mode="rendered">Rendered</button>
+                </div>
+            `;
+
+            // Attach toolbar events
+            paneEl.querySelector('.undo-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pane.activeTabId) {
+                    this.state.setActiveTab(pane.activeTabId);
+                    this.state.activePaneId = pane.id;
+                    this.renderTabs();
+                    this.undo();
+                }
+            });
+
+            paneEl.querySelector('.redo-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pane.activeTabId) {
+                    this.state.setActiveTab(pane.activeTabId);
+                    this.state.activePaneId = pane.id;
+                    this.renderTabs();
+                    this.redo();
+                }
+            });
+
+            paneEl.querySelector('.insert-link-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pane.activeTabId) {
+                    this.state.setActiveTab(pane.activeTabId);
+                    this.state.activePaneId = pane.id;
+                    this.renderTabs();
+                    this.showInsertLinkModal();
+                }
+            });
+
+            paneEl.querySelector('.insert-image-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pane.activeTabId) {
+                    this.state.setActiveTab(pane.activeTabId);
+                    this.state.activePaneId = pane.id;
+                    this.renderTabs();
+                    this.showInsertImageModal();
+                }
+            });
+
+            // Mode selector logic to be handled in renderPaneContent or event listeners
+            const modeBtns = paneEl.querySelectorAll('.mode-btn');
+            modeBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const mode = (e.target as HTMLElement).getAttribute('data-mode') as any;
+                    if (mode) {
+                        this.state.editorMode = mode;
+                        this.renderEditor();
+                        this.savePreferences();
+                    }
+                });
+            });
+
+            // Activate pane on click
+            paneEl.addEventListener('click', () => {
+                if (this.state.activePaneId !== pane.id) {
+                    this.state.activePaneId = pane.id;
+                    this.updatePaneActiveState();
+                }
+            });
+
+            // Close pane
+            const closeBtn = paneEl.querySelector('.close-pane-btn');
+            closeBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closePane(pane.id);
+            });
+
+            splitContainer.appendChild(paneEl);
+
+            // Add resizer
+            if (index < this.state.panes.length - 1) {
+                const resizer = document.createElement('div');
+                resizer.className = 'pane-resizer';
+                if (this.state.splitOrientation === 'horizontal') resizer.classList.add('horizontal');
+
+                // Add resizing logic listeners here or in setupSplitPane
+                this.setupResizer(resizer, pane, this.state.panes[index + 1]);
+
+                splitContainer.appendChild(resizer);
+            }
+        });
+
+        this.updatePaneActiveState();
+    }
+
+    renderPaneContent(pane: any) {
+        const container = document.getElementById(pane.id);
+        if (!container) return;
+
+        const content = container.querySelector('.editor-content') as HTMLElement;
+        const modeSelector = container.querySelector('.editor-mode-selector');
+
+        if (!this.state.activeTabId && (!pane.activeTabId)) { // Global active or pane active check?
+            // If this pane has no active tab
+            content.innerHTML = `
+                <div class="empty-state">
+                    <h2>No file open</h2>
+                    <p>Select a file from the sidebar</p>
+                </div>
+            `;
+            modeSelector?.classList.add('hidden');
+            return;
+        }
+
+        const tabId = pane.activeTabId;
+        if (!tabId) {
+            content.innerHTML = `
+                <div class="empty-state">
+                    <h2>No file open</h2>
+                    <p>Select a file</p>
+                </div>
+            `;
+            modeSelector?.classList.add('hidden');
+            return;
+        }
+
+        const tab = this.state.getTab(tabId);
+        if (!tab) return; // Should not happen
+
+        // Ensure auto-save is running (logic previously in renderEditor)
         if (!tab.autoSaveInterval) {
             tab.autoSaveInterval = window.setInterval(() => {
                 if (tab.isDirty) {
@@ -1087,11 +2001,9 @@ class UIManager {
         }
 
         // Show/Hide mode selector based on file type
-        const modeSelector = pane1.querySelector('.editor-mode-selector');
         if (modeSelector) {
             if (tab.fileType === 'markdown') {
                 modeSelector.classList.remove('hidden');
-                // Sync active button state
                 modeSelector.querySelectorAll('.mode-btn').forEach(btn => {
                     if (btn.getAttribute('data-mode') === this.state.editorMode) {
                         btn.classList.add('active');
@@ -1121,32 +2033,29 @@ class UIManager {
             this.renderUnsupportedFile(content, tab);
             return;
         } else if (tab.fileType === 'text') {
-            // For text/code files, always use raw editor
-            this.renderRawEditor(content, tab);
+            this.renderRawEditor(content, tab, pane.id); // Add paneId arg
             return;
         }
 
-        // For markdown files, use the editor modes
+        // For markdown
         switch (this.state.editorMode) {
             case 'raw':
-                this.renderRawEditor(content, tab);
+                this.renderRawEditor(content, tab, pane.id);
                 break;
             case 'side-by-side':
-                this.renderSideBySideEditor(content, tab);
+                this.renderSideBySideEditor(content, tab, pane.id);
                 break;
             case 'formatted':
-                this.renderFormattedEditor(content, tab);
+                this.renderFormattedEditor(content, tab, pane.id);
                 break;
             case 'rendered':
-                this.renderRenderedEditor(content, tab);
+                this.renderRenderedEditor(content, tab, pane.id);
                 break;
         }
     }
 
-    renderRawEditor(container: HTMLElement, tab: Tab) {
+    renderRawEditor(container: HTMLElement, tab: Tab, paneId: string) {
         // If it's a code file (non-markdown text), show with syntax highlighting
-        // We'll use a read-only view for now to support highlighting
-        // Editing code with highlighting requires a more complex editor like Monaco or CodeMirror
         if (tab.fileType === 'text') {
             const ext = tab.fileName.split('.').pop() || 'txt';
             const language = ext === 'rs' ? 'rust' : (ext === 'ts' ? 'typescript' : (ext === 'js' ? 'javascript' : ext));
@@ -1163,9 +2072,9 @@ class UIManager {
             return;
         }
 
-        container.innerHTML = `<textarea class="editor-raw" id="editor-textarea">${tab.content}</textarea>`;
+        container.innerHTML = `<textarea class="editor-raw" id="editor-textarea-${paneId}">${tab.content}</textarea>`;
 
-        const textarea = container.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
         if (textarea) {
             textarea.addEventListener('input', () => {
                 const newContent = textarea.value;
@@ -1183,18 +2092,22 @@ class UIManager {
 
 
 
-    renderSideBySideEditor(container: HTMLElement, tab: Tab) {
+    renderSideBySideEditor(container: HTMLElement, tab: Tab, paneId: string) {
+        // TODO: Make layout configurable:
+        // - Orientation: vertical (left/right) vs horizontal (top/bottom) - use splitOrientation setting
+        // - Order: rendered-first vs raw-first - add user preference
+        // - Currently: rendered (left) | raw (right)
         container.innerHTML = `
             <div class="editor-side-by-side">
+                <div class="editor-preview markdown-content" id="preview-pane-${paneId}"></div>
                 <div>
-                    <textarea class="editor-raw" id="editor-textarea">${tab.content}</textarea>
+                    <textarea class="editor-raw" id="editor-textarea-${paneId}">${tab.content}</textarea>
                 </div>
-                <div class="editor-preview markdown-content" id="preview-pane"></div>
             </div>
         `;
 
-        const textarea = container.querySelector('#editor-textarea') as HTMLTextAreaElement;
-        const preview = container.querySelector('#preview-pane') as HTMLElement;
+        const textarea = container.querySelector('textarea') as HTMLTextAreaElement;
+        const preview = container.querySelector(`#preview-pane-${paneId}`) as HTMLElement;
 
         if (textarea && preview) {
             const updatePreview = debounce(async () => {
@@ -1351,11 +2264,14 @@ class UIManager {
         }
     }
 
-    renderFormattedEditor(container: HTMLElement, tab: Tab) {
-        container.innerHTML = `<div class="editor-formatted language-markdown" id="editor-formatted"></div>`;
+    renderFormattedEditor(container: HTMLElement, tab: Tab, paneId: string) {
+        container.innerHTML = `<div class="editor-formatted language-markdown" id="editor-formatted-${paneId}"></div>`;
 
-        const editor = container.querySelector('#editor-formatted') as HTMLElement;
+        const editor = container.querySelector(`#editor-formatted-${paneId}`) as HTMLElement;
         if (editor) {
+            // Destroy existing jar for this pane if needed (CodeJar doesn't have destroy?)
+            // We just override the reference
+
             const jar = CodeJar(editor, (editor: HTMLElement) => {
                 hljs.highlightElement(editor);
             });
@@ -1369,23 +2285,25 @@ class UIManager {
                 this.updateUndoRedoButtons();
             });
 
-            this.currentJar = jar;
+            this.paneJars.set(paneId, jar);
 
             // Setup drag-and-drop for images/files
             this.setupEditorDropZone(container);
         }
     }
 
-    async renderRenderedEditor(container: HTMLElement, tab: Tab) {
+    async renderRenderedEditor(container: HTMLElement, tab: Tab, paneId: string) {
         container.innerHTML = '<div class="loading">Loading WYSIWYG Editor...</div>';
 
         // Render markdown to HTML via backend
         const html = await this.renderMarkdown(tab.content);
-        if (this.state.activeTabId !== tab.id) return;
+        if (paneId !== this.state.activePaneId && this.state.getTab(this.state.panes.find(p => p.id === paneId)?.activeTabId || '')?.id !== tab.id) {
+            // Basic check to see if we still care?
+        }
 
         // Setup container
-        container.innerHTML = `<div id="editor-wysiwyg" class="editor-wysiwyg"></div>`;
-        const editorEl = container.querySelector('#editor-wysiwyg');
+        container.innerHTML = `<div id="editor-wysiwyg-${paneId}" class="editor-wysiwyg"></div>`;
+        const editorEl = container.querySelector(`#editor-wysiwyg-${paneId}`);
 
         if (editorEl) {
             // @ts-ignore
@@ -1420,7 +2338,7 @@ class UIManager {
                 this.updateUndoRedoButtons();
             }, 500));
 
-            this.currentQuill = quill;
+            this.paneQuills.set(paneId, quill);
 
             // Setup drag-and-drop for images/files
             this.setupEditorDropZone(container);
@@ -1481,18 +2399,21 @@ class UIManager {
     }
 
     private updateEditorContent(content: string): void {
-        const pane1 = document.getElementById('pane-1');
-        if (!pane1) return;
-
         const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
-        const currentFilePath = tab?.filePath || '';
+        if (!tab) return;
+
+        const paneId = tab.pane;
+        const paneContainer = document.getElementById(paneId);
+        if (!paneContainer) return;
+
+        const currentFilePath = tab.filePath || '';
 
         // Update textarea if present (raw or side-by-side mode)
-        const textarea = pane1.querySelector('#editor-textarea') as HTMLTextAreaElement;
+        const textarea = paneContainer.querySelector('textarea.editor-raw') as HTMLTextAreaElement;
         if (textarea) {
             textarea.value = content;
             // Also update preview in side-by-side mode
-            const preview = pane1.querySelector('#preview-pane') as HTMLElement;
+            const preview = paneContainer.querySelector('.editor-preview') as HTMLElement;
             if (preview) {
                 this.renderMarkdown(content).then(html => {
                     preview.innerHTML = html;
@@ -1503,19 +2424,23 @@ class UIManager {
         }
 
         // Update CodeJar if present (formatted mode)
-        if (this.currentJar) {
-            this.currentJar.updateCode(content, false);
+        const jar = this.paneJars.get(paneId);
+        if (jar) {
+            jar.updateCode(content, false);
             return;
         }
 
         // Update Quill if present (rendered mode)
-        if (this.currentQuill) {
+        const quill = this.paneQuills.get(paneId);
+        if (quill) {
             this.renderMarkdown(content).then(html => {
-                this.currentQuill.clipboard.dangerouslyPasteHTML(html);
+                quill.clipboard.dangerouslyPasteHTML(html);
             });
             return;
         }
     }
+
+
 
     updateUndoRedoButtons(): void {
         const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
@@ -1612,10 +2537,215 @@ class UIManager {
 
     renderPdfViewer(container: HTMLElement, tab: Tab) {
         container.innerHTML = `
-            <div class="pdf-viewer">
-                <iframe src="${tab.content}" width="100%" height="100%" style="border: none;"></iframe>
+            <div class="pdf-viewer" style="height: 100%; display: flex; flex-direction: column;">
+                <div class="pdf-controls" style="padding: 5px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-icon pdf-prev-btn" title="Previous Page">◀</button>
+                    <span>
+                        <span class="pdf-page-num">1</span> / <span class="pdf-page-count">--</span>
+                    </span>
+                    <button class="btn btn-icon pdf-next-btn" title="Next Page">▶</button>
+                    <span class="toolbar-separator"></span>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="text" class="pdf-search-input" placeholder="Search..." style="width: 100px; padding: 2px;">
+                        <button class="btn btn-icon pdf-search-btn" title="Search">🔍</button>
+                    </div>
+                    <span class="toolbar-separator"></span>
+                    <button class="btn btn-icon pdf-zoom-out-btn" title="Zoom Out">-</button>
+                    <span class="pdf-zoom-level">100%</span>
+                    <button class="btn btn-icon pdf-zoom-in-btn" title="Zoom In">+</button>
+                    <span class="toolbar-separator"></span>
+                    <button class="btn btn-icon pdf-meta-btn" title="Metadata">ℹ</button>
+                </div>
+                <div class="pdf-canvas-container" style="flex: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; background: var(--bg-primary);">
+                    <canvas class="pdf-canvas"></canvas>
+                </div>
             </div>
         `;
+
+        const canvas = container.querySelector('.pdf-canvas') as HTMLCanvasElement;
+        const pageNumSpan = container.querySelector('.pdf-page-num') as HTMLElement;
+        const pageCountSpan = container.querySelector('.pdf-page-count') as HTMLElement;
+        const zoomLevelSpan = container.querySelector('.pdf-zoom-level') as HTMLElement;
+
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Ensure state exists
+        let state = this.pdfStates.get(tab.id);
+
+        // Reset state if URL changed
+        if (state && state.url !== tab.content) {
+            state = undefined;
+        }
+
+        if (!state) {
+            state = {
+                pdfDoc: null,
+                pageNum: 1,
+                pageRendering: false,
+                pageNumPending: null,
+                scale: 1.0,
+                canvas: canvas,
+                ctx: ctx,
+                url: tab.content
+            };
+            this.pdfStates.set(tab.id, state);
+        } else {
+            // Update references
+            state.canvas = canvas;
+            state.ctx = ctx;
+        }
+
+        const renderPage = (num: number) => {
+            state.pageRendering = true;
+
+            state.pdfDoc.getPage(num).then((page: any) => {
+                const viewport = page.getViewport({ scale: state.scale });
+                state.canvas.height = viewport.height;
+                state.canvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: state.ctx,
+                    viewport: viewport
+                };
+
+                const renderTask = page.render(renderContext);
+
+                renderTask.promise.then(() => {
+                    state.pageRendering = false;
+                    if (state.pageNumPending !== null) {
+                        renderPage(state.pageNumPending);
+                        state.pageNumPending = null;
+                    }
+                });
+            });
+
+            if (pageNumSpan) pageNumSpan.textContent = num.toString();
+            if (zoomLevelSpan) zoomLevelSpan.textContent = `${Math.round(state.scale * 100)}%`;
+        };
+
+        const queueRenderPage = (num: number) => {
+            if (state.pageRendering) {
+                state.pageNumPending = num;
+            } else {
+                renderPage(num);
+            }
+        };
+
+        // Event Listeners
+        container.querySelector('.pdf-prev-btn')?.addEventListener('click', () => {
+            if (state && state.pageNum > 1) {
+                state.pageNum--;
+                queueRenderPage(state.pageNum);
+            }
+        });
+
+        container.querySelector('.pdf-next-btn')?.addEventListener('click', () => {
+            if (state && state.pageNum < state.pdfDoc.numPages) {
+                state.pageNum++;
+                queueRenderPage(state.pageNum);
+            }
+        });
+
+        container.querySelector('.pdf-zoom-in-btn')?.addEventListener('click', () => {
+            if (state) {
+                state.scale += 0.25;
+                queueRenderPage(state.pageNum);
+            }
+        });
+
+        container.querySelector('.pdf-zoom-out-btn')?.addEventListener('click', () => {
+            if (state && state.scale > 0.25) {
+                state.scale -= 0.25;
+                queueRenderPage(state.pageNum);
+            }
+        });
+
+
+        container.querySelector('.pdf-meta-btn')?.addEventListener('click', () => {
+            if (state && state.pdfDoc) {
+                state.pdfDoc.getMetadata().then((data: any) => {
+                    const info = data.info || {};
+                    let text = "PDF Metadata:\n";
+                    text += `Title: ${info.Title || '-'}\n`;
+                    text += `Author: ${info.Author || '-'}\n`;
+                    text += `Subject: ${info.Subject || '-'}\n`;
+                    text += `Creator: ${info.Creator || '-'}\n`;
+                    text += `Producer: ${info.Producer || '-'}\n`;
+                    text += `CreationDate: ${info.CreationDate || '-'}`;
+                    alert(text);
+                });
+            }
+        });
+
+        const performSearch = async () => {
+            const input = container.querySelector('.pdf-search-input') as HTMLInputElement;
+            const query = input.value.trim().toLowerCase();
+            if (!query || !state || !state.pdfDoc) return;
+
+            const btn = container.querySelector('.pdf-search-btn') as HTMLElement;
+            const originalText = btn.textContent;
+            btn.textContent = '...';
+
+            let found = false;
+            // Start from current page + 1
+            for (let i = state.pageNum + 1; i <= state.pdfDoc.numPages; i++) {
+                const page = await state.pdfDoc.getPage(i);
+                const textContent = await page.getTextContent();
+                const text = textContent.items.map((item: any) => item.str).join(' ').toLowerCase();
+
+                if (text.includes(query)) {
+                    state.pageNum = i;
+                    queueRenderPage(i);
+                    found = true;
+                    break;
+                }
+            }
+
+            // If not found, wrap around
+            if (!found) {
+                for (let i = 1; i <= state.pageNum; i++) {
+                    const page = await state.pdfDoc.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const text = textContent.items.map((item: any) => item.str).join(' ').toLowerCase();
+
+                    if (text.includes(query)) {
+                        state.pageNum = i;
+                        queueRenderPage(i);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            btn.textContent = originalText;
+
+            if (!found) {
+                alert('Text not found');
+            }
+        };
+
+        container.querySelector('.pdf-search-btn')?.addEventListener('click', performSearch);
+        container.querySelector('.pdf-search-input')?.addEventListener('keypress', (e) => {
+            if ((e as KeyboardEvent).key === 'Enter') performSearch();
+        });
+
+        // Load logic
+        if (!state.pdfDoc) {
+            const loadingTask = pdfjsLib.getDocument(state.url);
+            loadingTask.promise.then((pdfDoc_: any) => {
+                state.pdfDoc = pdfDoc_;
+                if (pageCountSpan) pageCountSpan.textContent = state.pdfDoc.numPages;
+                renderPage(state.pageNum);
+            }, (reason: any) => {
+                console.error('Error loading PDF:', reason);
+                container.innerHTML = `<div class="error" style="padding: 20px;">Error loading PDF: ${reason}</div>`;
+            });
+        } else {
+            if (pageCountSpan) pageCountSpan.textContent = state.pdfDoc.numPages;
+            renderPage(state.pageNum);
+        }
     }
 
     renderAudioViewer(container: HTMLElement, tab: Tab) {
@@ -1665,6 +2795,92 @@ class UIManager {
         }
     }
 
+    // Bulk Operations
+    updateBulkActionsToolbar() {
+        const toolbar = document.getElementById('bulk-actions-toolbar');
+        const selectionCount = document.getElementById('selection-count');
+
+        if (!toolbar || !selectionCount) return;
+
+        const count = this.state.selectedFiles.size;
+        selectionCount.textContent = `${count} selected`;
+
+        if (count > 0) {
+            toolbar.classList.add('active');
+        } else {
+            toolbar.classList.remove('active');
+        }
+    }
+
+    selectAllFiles() {
+        const checkboxes = document.querySelectorAll('.file-checkbox') as NodeListOf<HTMLInputElement>;
+        checkboxes.forEach(checkbox => {
+            const path = checkbox.getAttribute('data-path');
+            if (path) {
+                this.state.selectedFiles.add(path);
+                checkbox.checked = true;
+                checkbox.closest('.file-tree-item')?.classList.add('selected');
+            }
+        });
+        this.updateBulkActionsToolbar();
+    }
+
+    deselectAllFiles() {
+        this.state.selectedFiles.clear();
+        const checkboxes = document.querySelectorAll('.file-checkbox') as NodeListOf<HTMLInputElement>;
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+            checkbox.closest('.file-tree-item')?.classList.remove('selected');
+        });
+        this.updateBulkActionsToolbar();
+    }
+
+    async bulkDownload() {
+        if (this.state.selectedFiles.size === 0 || !this.state.currentVaultId) return;
+
+        const paths = Array.from(this.state.selectedFiles);
+
+        try {
+            await this.api.downloadZip(this.state.currentVaultId, paths);
+        } catch (error) {
+            console.error('Bulk download failed:', error);
+            alert('Failed to download files: ' + error);
+        }
+    }
+
+    async bulkDelete() {
+        if (this.state.selectedFiles.size === 0 || !this.state.currentVaultId) return;
+
+        const count = this.state.selectedFiles.size;
+        const confirmed = confirm(`Are you sure you want to delete ${count} file(s)? This action cannot be undone.`);
+
+        if (!confirmed) return;
+
+        const paths = Array.from(this.state.selectedFiles);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const path of paths) {
+            try {
+                await this.api.deleteFile(this.state.currentVaultId, path);
+                successCount++;
+            } catch (error) {
+                console.error(`Failed to delete ${path}:`, error);
+                failCount++;
+            }
+        }
+
+        // Clear selection and refresh tree
+        this.deselectAllFiles();
+        await this.loadFileTree();
+
+        if (failCount > 0) {
+            alert(`Deleted ${successCount} file(s). Failed to delete ${failCount} file(s).`);
+        } else {
+            alert(`Successfully deleted ${successCount} file(s).`);
+        }
+    }
+
     setupEventListeners() {
         // Vault selector
         const vaultSelect = document.getElementById('vault-select') as HTMLSelectElement;
@@ -1681,6 +2897,61 @@ class UIManager {
 
         // Add vault form
         const addVaultForm = document.getElementById('add-vault-form') as HTMLFormElement;
+        const vaultPathInput = document.getElementById('vault-path') as HTMLInputElement;
+        const vaultPathPicker = document.getElementById('vault-path-picker') as HTMLInputElement | null;
+        const vaultPathBrowse = document.getElementById('vault-path-browse');
+
+        if (vaultPathBrowse && vaultPathPicker && vaultPathInput) {
+            vaultPathBrowse.addEventListener('click', () => {
+                vaultPathPicker.value = '';
+                vaultPathPicker.click();
+            });
+
+            vaultPathPicker.addEventListener('change', (e) => {
+                const input = e.target as HTMLInputElement;
+                const files = input.files;
+                if (!files || files.length === 0) return;
+
+                const first: any = files[0];
+                const explicitPath = first.path as string | undefined;
+                if (explicitPath) {
+                    vaultPathInput.value = explicitPath;
+                    return;
+                }
+
+                const relative = first.webkitRelativePath as string | undefined;
+                if (relative) {
+                    const parts = relative.split(/[\\/]/);
+                    if (parts.length > 1) {
+                        vaultPathInput.value = parts[0];
+                    }
+                }
+            });
+        }
+
+        const vaultList = document.getElementById('vault-list');
+        vaultList?.addEventListener('click', async (e) => {
+            const target = e.target as HTMLElement;
+            const btn = target.closest('[data-action="delete-vault"]') as HTMLElement | null;
+            if (!btn) return;
+            const vaultId = btn.getAttribute('data-vault-id');
+            if (!vaultId) return;
+
+            const proceed = confirm('Remove this vault? This will detach it from Obsidian Host but will not delete files on disk.');
+            if (!proceed) return;
+
+            try {
+                await this.api.deleteVault(vaultId);
+                if (this.state.currentVaultId === vaultId) {
+                    this.state.setVault(null);
+                    this.closeAllTabs();
+                }
+                await this.loadVaults();
+            } catch (error) {
+                alert('Failed to delete vault: ' + error);
+            }
+        });
+
         addVaultForm?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(addVaultForm);
@@ -1688,8 +2959,9 @@ class UIManager {
             const path = formData.get('path') as string;
 
             try {
-                await this.api.createVault(name, path);
+                const vault = await this.api.createVault(name, path);
                 await this.loadVaults();
+                this.switchVault(vault.id);
                 this.hideModal('add-vault-modal');
                 addVaultForm.reset();
             } catch (error) {
@@ -1727,6 +2999,13 @@ class UIManager {
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         themeToggleBtn?.addEventListener('click', () => {
             document.body.classList.toggle('theme-dark');
+        });
+
+        // Plugin Manager button
+        const pluginManagerBtn = document.getElementById('plugin-manager-btn');
+        pluginManagerBtn?.addEventListener('click', async () => {
+            this.showModal('plugin-manager-modal');
+            await this.loadPlugins();
         });
 
         // Editor mode buttons
@@ -1787,6 +3066,63 @@ class UIManager {
             await this.saveProperties();
         });
 
+        // New file/folder (toolbar)
+        const newFileBtn = document.getElementById('new-file-btn');
+        newFileBtn?.addEventListener('click', async () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+            const fileName = prompt('Enter file name:');
+            if (!fileName) return;
+            const basePath = this.getCreationBasePath();
+            const filePath = basePath ? `${basePath}/${fileName}` : fileName;
+            try {
+                await this.api.createFile(this.state.currentVaultId, filePath, '');
+                await this.loadFileTree();
+                await this.openFile(filePath);
+            } catch (error) {
+                console.error('Failed to create file:', error);
+                alert('Failed to create file: ' + error);
+            }
+        });
+
+        const newFolderBtn = document.getElementById('new-folder-btn');
+        newFolderBtn?.addEventListener('click', async () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+            const folderName = prompt('Enter folder name:');
+            if (!folderName) return;
+            const basePath = this.getCreationBasePath();
+            const folderPath = basePath ? `${basePath}/${folderName}` : folderName;
+            try {
+                await this.api.createDirectory(this.state.currentVaultId, folderPath);
+                await this.loadFileTree();
+            } catch (error) {
+                console.error('Failed to create folder:', error);
+                alert('Failed to create folder: ' + error);
+            }
+        });
+
+        const uniqueNoteBtn = document.getElementById('unique-note-btn');
+        uniqueNoteBtn?.addEventListener('click', async () => {
+            if (!this.state.currentVaultId) {
+                alert('Please select a vault first');
+                return;
+            }
+            try {
+                const fileName = await this.generateUniqueNotePath(this.state.currentVaultId);
+                await this.api.createFile(this.state.currentVaultId, fileName, '');
+                await this.loadFileTree();
+                await this.openFile(fileName);
+            } catch (error) {
+                console.error('Failed to create unique note:', error);
+                alert('Failed to create unique note: ' + error);
+            }
+        });
+
         // Random Note
         const randomNoteBtn = document.getElementById('random-note-btn');
         randomNoteBtn?.addEventListener('click', async () => {
@@ -1833,29 +3169,93 @@ class UIManager {
         // Upload functionality
         this.setupUploadHandlers();
         this.setupDragAndDrop();
+
+        // Bulk operations
+        const selectAllBtn = document.getElementById('select-all-btn');
+        selectAllBtn?.addEventListener('click', () => {
+            this.selectAllFiles();
+        });
+
+        const selectNoneBtn = document.getElementById('select-none-btn');
+        selectNoneBtn?.addEventListener('click', () => {
+            this.deselectAllFiles();
+        });
+
+        const bulkDownloadBtn = document.getElementById('bulk-download-btn');
+        bulkDownloadBtn?.addEventListener('click', async () => {
+            await this.bulkDownload();
+        });
+
+        const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+        bulkDeleteBtn?.addEventListener('click', async () => {
+            await this.bulkDelete();
+        });
     }
 
     setupUploadHandlers() {
         const uploadBtn = document.getElementById('upload-btn');
         const browseBtn = document.getElementById('browse-btn');
         const fileInput = document.getElementById('file-input') as HTMLInputElement;
+        const folderInput = document.getElementById('folder-input') as HTMLInputElement;
         const uploadArea = document.getElementById('upload-area');
+        const uploadPromptText = document.getElementById('upload-prompt-text');
+
+        let currentUploadType: 'files' | 'folder' = 'files';
+
+        // Upload type selector
+        document.querySelectorAll('.upload-type-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const type = target.getAttribute('data-type') as 'files' | 'folder';
+
+                // Update active state
+                document.querySelectorAll('.upload-type-btn').forEach(b => b.classList.remove('active'));
+                target.classList.add('active');
+
+                currentUploadType = type;
+
+                // Update UI text
+                if (uploadPromptText) {
+                    uploadPromptText.textContent = type === 'folder'
+                        ? 'Drag and drop a folder here or click to browse'
+                        : 'Drag and drop files here or click to browse';
+                }
+                if (browseBtn) {
+                    browseBtn.textContent = type === 'folder' ? 'Browse Folder' : 'Browse Files';
+                }
+            });
+        });
 
         uploadBtn?.addEventListener('click', () => {
             this.showModal('upload-modal');
         });
 
         browseBtn?.addEventListener('click', () => {
-            fileInput?.click();
-        });
-
-        uploadArea?.addEventListener('click', (e) => {
-            if (e.target === uploadArea || (e.target as HTMLElement).closest('.upload-prompt')) {
+            if (currentUploadType === 'folder') {
+                folderInput?.click();
+            } else {
                 fileInput?.click();
             }
         });
 
+        uploadArea?.addEventListener('click', (e) => {
+            if (e.target === uploadArea || (e.target as HTMLElement).closest('.upload-prompt')) {
+                if (currentUploadType === 'folder') {
+                    folderInput?.click();
+                } else {
+                    fileInput?.click();
+                }
+            }
+        });
+
         fileInput?.addEventListener('change', (e) => {
+            const files = (e.target as HTMLInputElement).files;
+            if (files && files.length > 0) {
+                this.displaySelectedFiles(files);
+            }
+        });
+
+        folderInput?.addEventListener('change', (e) => {
             const files = (e.target as HTMLInputElement).files;
             if (files && files.length > 0) {
                 this.displaySelectedFiles(files);
@@ -1969,10 +3369,10 @@ class UIManager {
         this.insertIntoEditor(markdownText, textarea);
     }
 
-    async uploadFilesForEditor(files: FileList): Promise<Array<{path: string, filename: string}>> {
+    async uploadFilesForEditor(files: FileList): Promise<Array<{ path: string, filename: string }>> {
         if (!this.state.currentVaultId) return [];
 
-        const uploadedFiles: Array<{path: string, filename: string}> = [];
+        const uploadedFiles: Array<{ path: string, filename: string }> = [];
 
         try {
             // Upload to attachments folder for organization
@@ -2018,44 +3418,99 @@ class UIManager {
         }
     }
 
+    getCreationBasePath(): string {
+        // Prefer the first selected item; if it has a parent, use that, otherwise root
+        const selected = Array.from(this.state.selectedFiles || [])[0];
+        if (!selected) return '';
+
+        // If selection ends with slash (directory) use it, otherwise use parent path
+        if (selected.endsWith('/')) {
+            return selected.slice(0, -1);
+        }
+        const parent = selected.split('/').slice(0, -1).join('/');
+        return parent;
+    }
+
+    async generateUniqueNotePath(vaultId: string): Promise<string> {
+        // Get today's date in YYYYMMDD format
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const datePrefix = `${year}${month}${day}`;
+
+        // Get file tree to find existing files with this prefix
+        const tree = await this.api.getFileTree(vaultId);
+        const flatFiles = this.flattenFileTree(tree);
+        const existingNumbers: number[] = [];
+
+        for (const file of flatFiles) {
+            if (file.name.startsWith(datePrefix) && !file.is_directory) {
+                // Extract the number part from YYYYMMDD#### format
+                const numPart = file.name.replace(datePrefix, '').replace(/\.md$/, '');
+                if (/^\d+$/.test(numPart)) {
+                    existingNumbers.push(parseInt(numPart, 10));
+                }
+            }
+        }
+
+        // Find next available number (start from 0001)
+        let nextNum = 1;
+        while (existingNumbers.includes(nextNum)) {
+            nextNum++;
+        }
+        const numPart = String(nextNum).padStart(4, '0');
+        return `${datePrefix}${numPart}.md`;
+    }
+
+    flattenFileTree(nodes: FileNode[]): FileNode[] {
+        const result: FileNode[] = [];
+        for (const node of nodes) {
+            result.push(node);
+            if (node.children && Array.isArray(node.children)) {
+                result.push(...this.flattenFileTree(node.children));
+            }
+        }
+        return result;
+    }
+
     insertIntoEditor(text: string, textarea?: HTMLTextAreaElement) {
         // For raw and side-by-side modes with textarea
         if (textarea) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const before = textarea.value.substring(0, start);
-            const after = textarea.value.substring(end);
-
-            // Add newlines if needed
-            const needsNewlineBefore = before.length > 0 && !before.endsWith('\n');
-            const needsNewlineAfter = after.length > 0 && !after.startsWith('\n');
-
-            const insertText = (needsNewlineBefore ? '\n' : '') + text + (needsNewlineAfter ? '\n' : '');
-
-            textarea.value = before + insertText + after;
-            textarea.selectionStart = textarea.selectionEnd = start + insertText.length;
-
-            // Trigger input event to update tab content
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            textarea.focus();
+            this.insertTextIntoTextarea(text, textarea);
             return;
         }
 
-        // For formatted mode (CodeJar)
-        if (this.currentJar) {
-            const editor = document.querySelector('#editor-formatted') as HTMLElement;
-            if (editor) {
-                const currentContent = this.currentJar.toString();
-                const newContent = currentContent + (currentContent.endsWith('\n') ? '' : '\n') + text + '\n';
-                this.currentJar.updateCode(newContent);
+        // Try to find active editor based on state
+        const tab = this.state.activeTabId ? this.state.getTab(this.state.activeTabId) : null;
+        if (!tab) return;
+
+        const paneId = tab.pane;
+
+        // Check for textarea in active pane
+        const paneContainer = document.getElementById(paneId);
+        if (paneContainer) {
+            const activeTextarea = paneContainer.querySelector('textarea.editor-raw') as HTMLTextAreaElement;
+            if (activeTextarea) {
+                this.insertTextIntoTextarea(text, activeTextarea);
                 return;
             }
         }
 
+        // For formatted mode (CodeJar)
+        const jar = this.paneJars.get(paneId);
+        if (jar) {
+            const currentContent = jar.toString();
+            const newContent = currentContent + (currentContent.endsWith('\n') ? '' : '\n') + text + '\n';
+            jar.updateCode(newContent);
+            return;
+        }
+
         // For WYSIWYG mode (Quill)
-        if (this.currentQuill) {
-            const range = this.currentQuill.getSelection(true);
-            const index = range ? range.index : this.currentQuill.getLength();
+        const quill = this.paneQuills.get(paneId);
+        if (quill) {
+            const range = quill.getSelection(true);
+            const index = range ? range.index : quill.getLength();
 
             // For images, insert as image embed; for other files, insert as link
             const lines = text.split('\n');
@@ -2065,14 +3520,34 @@ class UIManager {
                 if (imageMatch && this.state.currentVaultId) {
                     const filePath = imageMatch[1];
                     const imageUrl = `/api/vaults/${this.state.currentVaultId}/raw/${filePath}`;
-                    this.currentQuill.insertEmbed(index, 'image', imageUrl, 'user');
+                    quill.insertEmbed(index, 'image', imageUrl, 'user');
                 } else {
                     // Insert as text for other file types
-                    this.currentQuill.insertText(index, line + '\n', 'user');
+                    quill.insertText(index, line + '\n', 'user');
                 }
             }
             return;
         }
+    }
+
+    insertTextIntoTextarea(text: string, textarea: HTMLTextAreaElement) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end);
+
+        // Add newlines if needed
+        const needsNewlineBefore = before.length > 0 && !before.endsWith('\n');
+        const needsNewlineAfter = after.length > 0 && !after.startsWith('\n');
+
+        const insertText = (needsNewlineBefore ? '\n' : '') + text + (needsNewlineAfter ? '\n' : '');
+
+        textarea.value = before + insertText + after;
+        textarea.selectionStart = textarea.selectionEnd = start + insertText.length;
+
+        // Trigger input event to update tab content
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
     }
 
     displaySelectedFiles(files: FileList) {
@@ -2414,8 +3889,13 @@ class UIManager {
                 const { event_type, path } = changeEvent;
 
                 // Handle file tree updates
-                if (event_type === 'Created' || event_type === 'Deleted' || 'Renamed' in event_type) {
-                    await this.loadFileTree();
+                if (event_type === 'created' || event_type === 'deleted' || (typeof event_type === 'object' && 'renamed' in event_type) || event_type === 'Created' || event_type === 'Deleted' || (typeof event_type === 'object' && 'Renamed' in event_type)) {
+                    const fileTree = document.getElementById('file-tree');
+                    if (fileTree && fileTree.hasAttribute('hx-get') && typeof htmx !== 'undefined') {
+                        htmx.trigger(fileTree, 'load');
+                    } else {
+                        await this.loadFileTree();
+                    }
                 }
 
                 // Handle open tabs
@@ -2842,6 +4322,168 @@ class UIManager {
         return processed;
     }
 
+    async loadPlugins() {
+        try {
+            const response = await fetch('/api/plugins');
+            if (!response.ok) throw new Error('Failed to load plugins');
+
+            const data = await response.json();
+            this.renderInstalledPlugins(data.plugins || []);
+        } catch (error) {
+            console.error('Failed to load plugins:', error);
+            const statsText = document.getElementById('plugin-stats-text');
+            if (statsText) {
+                statsText.textContent = 'Failed to load plugins';
+            }
+        }
+    }
+
+    renderInstalledPlugins(plugins: any[]) {
+        const container = document.getElementById('installed-plugins-list');
+        const statsText = document.getElementById('plugin-stats-text');
+
+        if (!container) return;
+
+        if (statsText) {
+            statsText.textContent = `${plugins.length} plugin${plugins.length !== 1 ? 's' : ''} installed`;
+        }
+
+        if (plugins.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No plugins installed</p></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+
+        plugins.forEach((plugin: any) => {
+            const state = plugin.state || 'Unloaded';
+            const stateClass = `plugin-state-${state.toLowerCase()}`;
+            const isEnabled = plugin.enabled !== false;
+
+            const item = document.createElement('div');
+            item.className = 'plugin-item';
+            item.setAttribute('data-plugin-id', plugin.manifest.id);
+
+            item.innerHTML = `
+                <div class="plugin-item-icon">🧩</div>
+                <div class="plugin-item-content">
+                    <div class="plugin-item-header">
+                        <span class="plugin-item-name">${this.escapeHtml(plugin.manifest.name)}</span>
+                        <span class="plugin-item-version">v${this.escapeHtml(plugin.manifest.version)}</span>
+                    </div>
+                    <div class="plugin-item-description">${this.escapeHtml(plugin.manifest.description)}</div>
+                    <div class="plugin-item-meta">
+                        <span>By ${this.escapeHtml(plugin.manifest.author || 'Unknown')}</span>
+                    </div>
+                </div>
+                <div class="plugin-item-actions">
+                    <span class="plugin-state-badge ${stateClass}">${state}</span>
+                    <button class="plugin-toggle-btn ${isEnabled ? 'btn-disable' : 'btn-enable'}" data-plugin-id="${this.escapeHtml(plugin.manifest.id)}">${isEnabled ? 'Disable' : 'Enable'}</button>
+                    <button class="plugin-settings-btn" data-plugin-id="${this.escapeHtml(plugin.manifest.id)}" title="Settings">⚙️</button>
+                </div>
+            `;
+
+            container.appendChild(item);
+        });
+
+        // Add event listeners for toggle buttons
+        container.querySelectorAll('.plugin-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const target = e.target as HTMLElement;
+                const pluginId = target.getAttribute('data-plugin-id');
+                if (pluginId) {
+                    await this.togglePlugin(pluginId, target.classList.contains('btn-enable'));
+                }
+            });
+        });
+
+        // Add event listeners for settings buttons
+        container.querySelectorAll('.plugin-settings-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const pluginId = target.getAttribute('data-plugin-id');
+                if (pluginId) {
+                    this.showPluginSettings(pluginId);
+                }
+            });
+        });
+    }
+
+    async togglePlugin(pluginId: string, shouldEnable: boolean) {
+        try {
+            const response = await fetch(`/api/plugins/${pluginId}/toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ enabled: shouldEnable })
+            });
+
+            if (!response.ok) throw new Error('Failed to toggle plugin');
+
+            // Reload plugins to update UI
+            await this.loadPlugins();
+        } catch (error) {
+            console.error('Failed to toggle plugin:', error);
+            alert('Failed to toggle plugin. Please try again.');
+        }
+    }
+
+    showPluginSettings(pluginId: string) {
+        // Switch to Settings tab
+        this.switchPluginTab('settings');
+
+        // Show plugin settings
+        const settingsContainer = document.getElementById('plugin-tab-settings');
+        if (settingsContainer) {
+            settingsContainer.innerHTML = `
+                <div class="plugin-settings-container">
+                    <h3>Settings for ${this.escapeHtml(pluginId)}</h3>
+                    <p>Plugin settings configuration coming soon...</p>
+                    <button class="btn-secondary" id="back-to-installed">← Back to Installed</button>
+                </div>
+            `;
+
+            const backBtn = document.getElementById('back-to-installed');
+            backBtn?.addEventListener('click', () => {
+                this.switchPluginTab('installed');
+            });
+        }
+    }
+
+    switchPluginTab(tabName: string) {
+        // Update tab buttons
+        document.querySelectorAll('.plugin-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.getAttribute('data-tab') === tabName) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Update tab content
+        document.querySelectorAll('.plugin-tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+
+        const targetTab = document.getElementById(`plugin-tab-${tabName}`);
+        if (targetTab) {
+            targetTab.classList.remove('hidden');
+        }
+    }
+
+    setupPluginManager() {
+        // Add event listeners for plugin tab buttons
+        document.querySelectorAll('.plugin-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const tabName = target.getAttribute('data-tab');
+                if (tabName) {
+                    this.switchPluginTab(tabName);
+                }
+            });
+        });
+    }
+
     async createDefaultTemplates() {
         if (!this.state.currentVaultId) return;
 
@@ -2954,9 +4596,9 @@ class UIManager {
         document.addEventListener('keydown', (e) => {
             // Check if we're in an input/textarea that handles its own undo
             const target = e.target as HTMLElement;
-            const isInEditor = target.id === 'editor-textarea' ||
-                               target.id === 'editor-formatted' ||
-                               target.closest('#editor-wysiwyg') !== null;
+            const isInEditor = target.id.startsWith('editor-textarea-') ||
+                target.id.startsWith('editor-formatted-') ||
+                target.closest('.editor-wysiwyg') !== null;
 
             // Only intercept if we're in one of our editors
             if (!isInEditor) return;
@@ -2974,31 +4616,11 @@ class UIManager {
             }
         });
 
-        // Undo button click handler
-        const undoBtn = document.getElementById('undo-btn');
-        undoBtn?.addEventListener('click', () => {
-            this.undo();
-        });
-
-        // Redo button click handler
-        const redoBtn = document.getElementById('redo-btn');
-        redoBtn?.addEventListener('click', () => {
-            this.redo();
-        });
+        // Button handlers are now attached in renderPanesStructure
     }
 
     setupInsertHelpers() {
-        // Insert Link Button
-        const insertLinkBtn = document.getElementById('insert-link-btn');
-        insertLinkBtn?.addEventListener('click', () => {
-            this.showInsertLinkModal();
-        });
-
-        // Insert Image Button
-        const insertImageBtn = document.getElementById('insert-image-btn');
-        insertImageBtn?.addEventListener('click', () => {
-            this.showInsertImageModal();
-        });
+        // Button handlers are now attached in renderPanesStructure because they are per-pane
 
         // Insert Link Form
         const insertLinkForm = document.getElementById('insert-link-form') as HTMLFormElement;
@@ -3470,280 +5092,156 @@ class UIManager {
     }
 
     // Split Pane functionality
-    setupSplitPane() {
+    // Split Pane functionality
+    setupPanes() {
         const splitViewBtn = document.getElementById('split-view-btn');
-        const closePane2Btn = document.getElementById('close-pane-2');
         const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
-        const paneResizer = document.getElementById('pane-resizer');
-        const splitContainer = document.getElementById('split-container');
-        const pane1 = document.getElementById('pane-1');
-        const pane2 = document.getElementById('pane-2');
 
-        // Toggle split view
+        // Split view button - adds a new pane
         splitViewBtn?.addEventListener('click', () => {
-            this.toggleSplitView();
-        });
-
-        // Close pane 2
-        closePane2Btn?.addEventListener('click', () => {
-            this.closeSplitView();
+            this.splitPane();
         });
 
         // Toggle orientation
         toggleOrientationBtn?.addEventListener('click', () => {
-            this.toggleSplitOrientation();
+            this.state.splitOrientation = this.state.splitOrientation === 'vertical' ? 'horizontal' : 'vertical';
+            this.renderEditor();
+            this.savePreferences();
         });
 
-        // Pane click to set active pane
-        pane1?.addEventListener('click', () => {
-            this.setActivePane(1);
-        });
+        // Initial setup
+        this.renderEditor();
 
-        pane2?.addEventListener('click', () => {
-            this.setActivePane(2);
-        });
-
-        // Pane resizer drag functionality
-        if (paneResizer && splitContainer && pane1 && pane2) {
-            let isDragging = false;
-            let startPos = 0;
-            let startPane1Size = 0;
-
-            paneResizer.addEventListener('mousedown', (e) => {
-                if (!this.state.splitViewActive) return;
-                isDragging = true;
-
-                if (this.state.splitOrientation === 'vertical') {
-                    startPos = e.clientX;
-                    startPane1Size = pane1.offsetWidth;
-                    document.body.style.cursor = 'col-resize';
-                } else {
-                    startPos = e.clientY;
-                    startPane1Size = pane1.offsetHeight;
-                    document.body.style.cursor = 'row-resize';
-                }
-
-                paneResizer.classList.add('dragging');
-                document.body.style.userSelect = 'none';
-                e.preventDefault();
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-
-                const isVertical = this.state.splitOrientation === 'vertical';
-                const currentPos = isVertical ? e.clientX : e.clientY;
-                const delta = currentPos - startPos;
-                const containerSize = isVertical ? splitContainer.offsetWidth : splitContainer.offsetHeight;
-                const newPane1Size = startPane1Size + delta;
-
-                // Enforce minimum sizes (150px each pane)
-                const minSize = 150;
-                const maxPane1Size = containerSize - minSize - 6; // 6px for resizer
-
-                if (newPane1Size >= minSize && newPane1Size <= maxPane1Size) {
-                    const pane1Flex = newPane1Size / containerSize;
-                    const pane2Flex = 1 - pane1Flex - (6 / containerSize);
-
-                    pane1.style.flex = `${pane1Flex}`;
-                    pane2.style.flex = `${pane2Flex}`;
-                }
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (isDragging) {
-                    isDragging = false;
-                    paneResizer.classList.remove('dragging');
-                    document.body.style.cursor = '';
-                    document.body.style.userSelect = '';
-                }
-            });
-        }
-
-        // Apply initial orientation if saved
-        this.applySplitOrientation();
-    }
-
-    toggleSplitOrientation() {
-        this.state.splitOrientation = this.state.splitOrientation === 'vertical' ? 'horizontal' : 'vertical';
-        localStorage.setItem('split-orientation', this.state.splitOrientation);
-        this.applySplitOrientation();
-    }
-
-    applySplitOrientation() {
-        const splitContainer = document.getElementById('split-container');
-        const paneResizer = document.getElementById('pane-resizer');
-        const toggleBtn = document.getElementById('toggle-orientation-btn');
-        const pane1 = document.getElementById('pane-1');
-        const pane2 = document.getElementById('pane-2');
-
-        if (!splitContainer) return;
-
-        // Remove both classes first
-        splitContainer.classList.remove('split-vertical', 'split-horizontal');
-        paneResizer?.classList.remove('horizontal');
-
-        // Apply the current orientation
-        if (this.state.splitOrientation === 'vertical') {
-            splitContainer.classList.add('split-vertical');
-            if (toggleBtn) toggleBtn.title = 'Switch to horizontal split';
+        if (this.state.panes.length > 1) {
+            toggleOrientationBtn?.classList.remove('hidden');
         } else {
-            splitContainer.classList.add('split-horizontal');
-            paneResizer?.classList.add('horizontal');
-            if (toggleBtn) toggleBtn.title = 'Switch to vertical split';
-        }
-
-        // Reset flex sizes to 50-50
-        if (pane1) pane1.style.flex = '1';
-        if (pane2) pane2.style.flex = '1';
-
-        // Update button icon
-        if (toggleBtn) {
-            const icon = toggleBtn.querySelector('.icon');
-            if (icon) {
-                icon.textContent = this.state.splitOrientation === 'vertical' ? '⬍' : '⬌';
-            }
+            toggleOrientationBtn?.classList.add('hidden');
         }
     }
 
-    toggleSplitView() {
-        if (this.state.splitViewActive) {
-            this.closeSplitView();
-        } else {
-            this.openSplitView();
-        }
+    splitPane() {
+        const newPaneId = `pane-${Date.now()}`;
+        this.state.panes.push({
+            id: newPaneId,
+            flex: 1,
+            activeTabId: null
+        });
+
+        document.getElementById('toggle-orientation-btn')?.classList.remove('hidden');
+        this.renderEditor();
+        this.savePreferences();
     }
 
-    openSplitView() {
+    closePane(paneId: string) {
+        if (this.state.panes.length <= 1) return;
+
+        const index = this.state.panes.findIndex(p => p.id === paneId);
+        if (index === -1) return;
+
+        const paneToRemove = this.state.panes[index];
+
+        this.state.panes.splice(index, 1);
+
+        if (this.state.activePaneId === paneId) {
+            this.state.activePaneId = this.state.panes[0].id;
+        }
+
+        if (this.state.panes.length <= 1) {
+            document.getElementById('toggle-orientation-btn')?.classList.add('hidden');
+        }
+
+        this.renderEditor();
+        this.savePreferences();
+    }
+
+    setupResizer(resizer: HTMLElement, leftPane: any, rightPane: any) {
+        let isDragging = false;
+        let startPos = 0;
+        let startLeftSize = 0;
+        let startRightSize = 0;
+
+        const leftEl = document.getElementById(leftPane.id);
+        const rightEl = document.getElementById(rightPane.id);
         const splitContainer = document.getElementById('split-container');
-        const pane2 = document.getElementById('pane-2');
-        const splitViewBtn = document.getElementById('split-view-btn');
-        const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
 
-        this.state.splitViewActive = true;
-        splitContainer?.classList.add('split-active');
-        pane2?.classList.remove('hidden');
-        splitViewBtn?.classList.add('active');
-        toggleOrientationBtn?.classList.remove('hidden');
+        if (!leftEl || !rightEl || !splitContainer) return;
 
-        // Apply saved orientation and reset sizes
-        this.applySplitOrientation();
+        resizer.addEventListener('mousedown', (e) => {
+            isDragging = true;
 
-        // If there's no tab in pane 2, show empty state
-        this.renderPane2();
-        this.updatePaneActiveState();
-    }
-
-    closeSplitView() {
-        const splitContainer = document.getElementById('split-container');
-        const pane2 = document.getElementById('pane-2');
-        const splitViewBtn = document.getElementById('split-view-btn');
-        const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
-
-        this.state.splitViewActive = false;
-        this.state.activePane = 1;
-        splitContainer?.classList.remove('split-active');
-        splitContainer?.classList.remove('split-vertical', 'split-horizontal');
-        pane2?.classList.add('hidden');
-        splitViewBtn?.classList.remove('active');
-        toggleOrientationBtn?.classList.add('hidden');
-
-        // Move pane 2 tab back to pane 1 if it exists
-        if (this.state.pane2TabId) {
-            const tab = this.state.getTab(this.state.pane2TabId);
-            if (tab) {
-                tab.pane = 1;
+            if (this.state.splitOrientation === 'vertical') {
+                startPos = e.clientX;
+                startLeftSize = leftEl.offsetWidth;
+                startRightSize = rightEl.offsetWidth;
+                document.body.style.cursor = 'col-resize';
+            } else {
+                startPos = e.clientY;
+                startLeftSize = leftEl.offsetHeight;
+                startRightSize = rightEl.offsetHeight;
+                document.body.style.cursor = 'row-resize';
             }
-            this.state.pane2TabId = null;
-        }
 
-        this.updatePaneActiveState();
-    }
+            resizer.classList.add('dragging');
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
 
-    setActivePane(pane: 1 | 2) {
-        if (!this.state.splitViewActive && pane === 2) return;
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
 
-        this.state.activePane = pane;
-        this.updatePaneActiveState();
+            const isVertical = this.state.splitOrientation === 'vertical';
+            const currentPos = isVertical ? e.clientX : e.clientY;
+            const delta = currentPos - startPos;
 
-        // If clicking on pane 2, make its tab active
-        if (pane === 2 && this.state.pane2TabId) {
-            this.state.setActiveTab(this.state.pane2TabId);
-            this.renderTabs();
-        }
+            const totalSize = startLeftSize + startRightSize;
+            const newLeftSize = startLeftSize + delta;
+            const newRightSize = startRightSize - delta;
+
+            if (newLeftSize > 150 && newRightSize > 150) {
+                const totalFlex = leftPane.flex + rightPane.flex;
+                leftPane.flex = (newLeftSize / totalSize) * totalFlex;
+                rightPane.flex = (newRightSize / totalSize) * totalFlex;
+
+                leftEl.style.flex = leftPane.flex.toString();
+                rightEl.style.flex = rightPane.flex.toString();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                resizer.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                this.savePreferences();
+            }
+        });
     }
 
     updatePaneActiveState() {
-        const pane1 = document.getElementById('pane-1');
-        const pane2 = document.getElementById('pane-2');
-
-        pane1?.classList.remove('active');
-        pane2?.classList.remove('active');
-
-        if (this.state.splitViewActive) {
-            if (this.state.activePane === 1) {
-                pane1?.classList.add('active');
-            } else {
-                pane2?.classList.add('active');
+        this.state.panes.forEach(p => {
+            const el = document.getElementById(p.id);
+            if (el) {
+                if (p.id === this.state.activePaneId) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
             }
-        }
-    }
-
-    renderPane2() {
-        const pane2 = document.getElementById('pane-2');
-        if (!pane2) return;
-
-        const content = pane2.querySelector('.editor-content') as HTMLElement;
-        if (!content) return;
-
-        if (!this.state.pane2TabId) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <h2>No file open</h2>
-                    <p>Drag a tab here or use "Open in split" from context menu</p>
-                </div>
-            `;
-            return;
-        }
-
-        const tab = this.state.getTab(this.state.pane2TabId);
-        if (!tab) {
-            this.state.pane2TabId = null;
-            this.renderPane2();
-            return;
-        }
-
-        // Render the tab content in pane 2
-        // For now, just show basic content
-        if (tab.fileType === 'markdown') {
-            this.renderMarkdown(tab.content).then(html => {
-                content.innerHTML = `<div class="markdown-content">${html}</div>`;
-                this.setupWikiLinkHandlers(content, tab.filePath);
-            });
-        } else if (tab.fileType === 'image') {
-            content.innerHTML = `
-                <div class="image-viewer">
-                    <img src="/api/vaults/${this.state.currentVaultId}/raw/${tab.filePath}" alt="${tab.fileName}">
-                </div>
-            `;
-        } else {
-            content.innerHTML = `<pre><code>${this.escapeHtml(tab.content)}</code></pre>`;
-        }
+        });
     }
 
     openInSplitView(tabId: string) {
-        if (!this.state.splitViewActive) {
-            this.openSplitView();
-        }
-
+        this.splitPane();
+        const newPane = this.state.panes[this.state.panes.length - 1];
         const tab = this.state.getTab(tabId);
-        if (tab) {
-            tab.pane = 2;
-            this.state.pane2TabId = tabId;
-            this.state.activePane = 2;
-            this.renderPane2();
-            this.updatePaneActiveState();
+        if (tab && newPane) {
+            tab.pane = newPane.id;
+            newPane.activeTabId = tabId;
+            this.state.activePaneId = newPane.id;
+            this.renderEditor();
             this.renderTabs();
+            this.savePreferences();
         }
     }
 
@@ -4100,6 +5598,213 @@ class UIManager {
             }
         }
     }
+    async loadPreferences() {
+        try {
+            const prefs = await this.api.getPreferences();
+
+            // Set theme
+            if (prefs.theme) {
+                document.body.className = `theme-${prefs.theme}`;
+                // Update toggle button icon/state if needed
+                const themeBtn = document.getElementById('theme-toggle-btn');
+                if (themeBtn) {
+                    const icon = themeBtn.querySelector('.icon');
+                    if (icon) icon.textContent = prefs.theme === 'light' ? '☀️' : '🌙';
+                }
+            }
+
+            // Set editor mode
+            if (prefs.editor_mode) {
+                const mapBackendToFrontend: any = {
+                    'raw': 'raw',
+                    'side_by_side': 'side-by-side',
+                    'formatted_raw': 'formatted',
+                    'fully_rendered': 'rendered'
+                };
+                const mode = mapBackendToFrontend[prefs.editor_mode];
+                if (mode) {
+                    this.state.editorMode = mode;
+                }
+            }
+
+            // Set window layout
+            if (prefs.window_layout) {
+                try {
+                    const layout = JSON.parse(prefs.window_layout);
+                    if (layout.panes && Array.isArray(layout.panes)) {
+                        // Validate panes
+                        this.state.panes = layout.panes;
+                        this.state.splitOrientation = layout.splitOrientation || 'vertical';
+                        this.state.activePaneId = layout.activePaneId || (this.state.panes[0]?.id || 'pane-1');
+
+                        // We need to clear tabs that might be referenced in panes but not open? 
+                        // Actually tabs are not persisted in layout yet, just the panes structure.
+                        // Reset activeTabIds if they refer to non-existent tabs (tabs are closed on reload)
+                        this.state.panes.forEach(p => p.activeTabId = null);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse window layout', e);
+                }
+            }
+
+        } catch (e) {
+            console.error('Failed to load preferences', e);
+        }
+    }
+
+    async savePreferences() {
+        const mapFrontendToBackend: any = {
+            'raw': 'raw',
+            'side-by-side': 'side_by_side',
+            'formatted': 'formatted_raw',
+            'rendered': 'fully_rendered'
+        };
+
+        const currentTheme = document.body.classList.contains('theme-light') ? 'light' : 'dark';
+
+        const layout = {
+            panes: this.state.panes,
+            splitOrientation: this.state.splitOrientation,
+            activePaneId: this.state.activePaneId
+        };
+
+        const prefs: UserPreferences = {
+            theme: currentTheme,
+            editor_mode: mapFrontendToBackend[this.state.editorMode] || 'side_by_side',
+            font_size: 14, // Default for now
+            window_layout: JSON.stringify(layout)
+        };
+
+        try {
+            await this.api.updatePreferences(prefs);
+        } catch (e) {
+            console.error('Failed to save preferences', e);
+        }
+    }
+
+    async loadRecentFiles(vaultId: string) {
+        try {
+            const files = await this.api.getRecentFiles(vaultId);
+            this.state.recentFiles = files;
+        } catch (e) {
+            console.error('Failed to load recent files', e);
+        }
+    }
+
+    setupPreferencesEvents() {
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        if (themeBtn) {
+            // Clone to remove existing listeners (if any) to prevent double toggling
+            const newThemeBtn = themeBtn.cloneNode(true);
+            themeBtn.parentNode?.replaceChild(newThemeBtn, themeBtn);
+
+            newThemeBtn.addEventListener('click', () => {
+                const isLight = document.body.classList.contains('theme-light');
+                document.body.classList.toggle('theme-light', !isLight);
+                document.body.classList.toggle('theme-dark', isLight);
+
+                const icon = (newThemeBtn as HTMLElement).querySelector('.icon');
+                if (icon) icon.textContent = !isLight ? '☀️' : '🌙';
+
+                this.savePreferences();
+            });
+        }
+
+        // Mode buttons are dynamic per pane, so we need delegated listeners or hook into renderPaneContent
+        // Looking at renderPaneContent, it creates buttons.
+        // We probably need to hook into `setEditorMode` if it exists.
+    }
+
+    setupFileTreeEvents() {
+        const container = document.getElementById('file-tree');
+        if (!container) return;
+
+        // Delegated click handler
+        container.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+
+            // Handle folder arrow click for expand/collapse
+            if (target.classList.contains('folder-arrow')) {
+                e.stopPropagation();
+                const nodeWrapper = target.closest('.file-tree-node');
+                if (nodeWrapper) {
+                    nodeWrapper.classList.toggle('collapsed');
+                    if (nodeWrapper.classList.contains('collapsed')) {
+                        target.textContent = '▶';
+                    } else {
+                        target.textContent = '▼';
+                    }
+                }
+                return;
+            }
+
+            const item = target.closest('.file-tree-item');
+            if (!item) return;
+
+            // Handle file click
+            if (!item.classList.contains('folder')) {
+                const path = item.getAttribute('data-path');
+                if (path) this.openFile(path);
+            }
+        });
+
+        // Delegated context menu handler
+        container.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const target = e.target as HTMLElement;
+            const item = target.closest('.file-tree-item');
+            if (!item) return;
+
+            const path = item.getAttribute('data-path');
+            if (!path) return;
+
+            const isDirectory = item.classList.contains('folder');
+            const name = item.querySelector('.file-name')?.textContent || item.querySelector('.name')?.textContent || '';
+
+            // Construct a fake FileNode for existing helper
+            const node: FileNode = {
+                name: name,
+                path: path,
+                is_directory: isDirectory
+            };
+            this.showFileContextMenu(e, node);
+        });
+
+        // Setup drop zone for file uploads from OS
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) {
+                // Only allow if dragging files from OS (not internal files)
+                if (e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes('application/obsidian-file')) {
+                    e.dataTransfer.dropEffect = 'copy';
+                    container.classList.add('file-tree-drag-over');
+                }
+            }
+        });
+
+        container.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Only remove class if leaving the container entirely
+            const relatedTarget = e.relatedTarget as HTMLElement;
+            if (!container.contains(relatedTarget)) {
+                container.classList.remove('file-tree-drag-over');
+            }
+        });
+
+        container.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            container.classList.remove('file-tree-drag-over');
+
+            // Only handle files from OS, not internal drag operations
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                // Upload to root of vault
+                await this.handleFileUploadDrop(e.dataTransfer.files, '');
+            }
+        });
+    }
 }
 
 // Initialize the app
@@ -4108,8 +5813,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const api = new ApiClient();
     const ui = new UIManager(state, api);
 
+    // Expose UI manager to window for testing
+    (window as any).ui = ui;
+    (window as any).app = ui; // Also expose as app for compatibility
+
+    await ui.loadPreferences();
     await ui.loadVaults();
     ui.setupEventListeners();
+    ui.setupPreferencesEvents();
     ui.setupWebSocket();
     ui.setupQuickSwitcher();
     ui.setupTemplates();
@@ -4117,5 +5828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     ui.setupUndoRedo();
     ui.setupInsertHelpers();
     ui.setupInFileSearch();
-    ui.setupSplitPane();
+    ui.setupPanes();
+    ui.setupFileTreeEvents();
+    ui.setupPluginManager();
 });

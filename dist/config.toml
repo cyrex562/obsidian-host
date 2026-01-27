@@ -1,0 +1,17 @@
+# Obsidian Host Configuration
+
+[server]
+# The host address to bind to (default: 127.0.0.1)
+host = "127.0.0.1"
+
+# The port to listen on (default: 8080)
+port = 8080
+
+[database]
+# Path to the SQLite database file (default: ./obsidian-host.db)
+path = "./obsidian-host.db"
+
+[vault]
+# List of patterns to exclude from search indexing and file watcher
+# Default includes: .git, .obsidian, .trash, node_modules
+index_exclusions = [".git", ".obsidian", ".trash", "node_modules", "target"]

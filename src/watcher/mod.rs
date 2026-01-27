@@ -1,20 +1,20 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{FileChangeEvent, FileChangeType};
 use chrono::Utc;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, NoCache};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 pub type ChangeReceiver = mpsc::UnboundedReceiver<FileChangeEvent>;
 pub type ChangeSender = mpsc::UnboundedSender<FileChangeEvent>;
 
 pub struct FileWatcher {
-    debouncer: Debouncer<RecommendedWatcher, NoCache>,
+    debouncer: Debouncer<RecommendedWatcher, FileIdMap>,
     vault_paths: Arc<RwLock<HashMap<String, PathBuf>>>,
     change_tx: ChangeSender,
 }

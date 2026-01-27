@@ -3,7 +3,7 @@ use crate::models::{FileContent, FileNode};
 use chrono::{DateTime, Utc};
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use tracing::{debug, info};
 
 pub struct FileService;
 
@@ -122,6 +122,7 @@ impl FileService {
 
     /// Read file content
     pub fn read_file(vault_path: &str, file_path: &str) -> AppResult<FileContent> {
+        debug!(vault_path = %vault_path, file_path = %file_path, "Reading file");
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
         if !full_path.exists() {
@@ -188,6 +189,7 @@ impl FileService {
         last_modified: Option<DateTime<Utc>>,
         frontmatter: Option<&serde_json::Value>,
     ) -> AppResult<FileContent> {
+        debug!(vault_path = %vault_path, file_path = %file_path, size = content.len(), "Writing file");
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
         // Check for conflicts if last_modified is provided
@@ -289,6 +291,7 @@ impl FileService {
         file_path: &str,
         content: Option<&str>,
     ) -> AppResult<FileContent> {
+        debug!(vault_path = %vault_path, file_path = %file_path, "Creating file");
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
         if full_path.exists() {
@@ -328,6 +331,7 @@ impl FileService {
 
     /// Delete a file (move to trash)
     pub fn delete_file(vault_path: &str, file_path: &str) -> AppResult<()> {
+        info!(vault_path = %vault_path, file_path = %file_path, "Deleting file (moving to trash)");
         Self::move_to_trash(vault_path, file_path)
     }
 
@@ -501,34 +505,96 @@ impl FileService {
             .canonicalize()
             .map_err(|_| AppError::NotFound(format!("Vault not found: {}", vault_path)))?;
 
-        let full_path = vault.join(file_path);
-
-        // Prevent path traversal attacks
-        let canonical = if full_path.exists() {
-            full_path.canonicalize()?
-        } else {
-            // For non-existent paths, validate the parent
-            if let Some(parent) = full_path.parent() {
-                if parent.exists() {
-                    parent.canonicalize()?.join(
-                        full_path
-                            .file_name()
-                            .ok_or(AppError::InvalidInput("Invalid file path".to_string()))?,
-                    )
-                } else {
-                    full_path
-                }
-            } else {
-                full_path
-            }
-        };
-
-        if !canonical.starts_with(&vault) {
+        // 1. Basic check for absolute paths
+        let path_to_check = Path::new(file_path);
+        if path_to_check.is_absolute() {
             return Err(AppError::InvalidInput(
-                "Path is outside vault directory".to_string(),
+                "Absolute paths are not allowed".to_string(),
             ));
         }
 
-        Ok(canonical)
+        // 2. Component check to reject traversal attempts
+        for component in path_to_check.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    return Err(AppError::InvalidInput(
+                        "Directory traversal (..) is not allowed".to_string(),
+                    ));
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                    return Err(AppError::InvalidInput(
+                        "Root or Prefix components are not allowed".to_string(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        // 3. Construct full path
+        let full_path = vault.join(file_path);
+
+        // 4. Final canonicalization check existence (if it exists)
+        // If it exists, canonicalize and ensure it's still under vault (symlink protection)
+        if full_path.exists() {
+            let canonical = full_path.canonicalize()?;
+            if !canonical.starts_with(&vault) {
+                return Err(AppError::InvalidInput(
+                    "Path resolves outside vault directory".to_string(),
+                ));
+            }
+            Ok(canonical)
+        } else {
+            // If it doesn't exist, we trust the component check + join
+            // We can also canonicalize parent if it exists to be sure
+            if let Some(parent) = full_path.parent() {
+                if parent.exists() {
+                    let canonical_parent = parent.canonicalize()?;
+                    if !canonical_parent.starts_with(&vault) {
+                        return Err(AppError::InvalidInput(
+                            "Parent path resolves outside vault directory".to_string(),
+                        ));
+                    }
+                }
+            }
+            Ok(full_path)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_resolve_path_security() {
+        let temp = TempDir::new().unwrap();
+        let vault_path = temp.path().to_str().unwrap();
+
+        // 1. Valid path
+        let path = FileService::resolve_path(vault_path, "note.md");
+        assert!(path.is_ok());
+        assert!(path.unwrap().ends_with("note.md"));
+
+        // 2. Traversal attempt
+        let traversal = FileService::resolve_path(vault_path, "../outside.txt");
+        assert!(traversal.is_err());
+        assert_eq!(
+            traversal.unwrap_err().to_string(),
+            "Invalid input: Directory traversal (..) is not allowed"
+        );
+
+        // 3. Nested traversal attempt
+        let nested_traversal = FileService::resolve_path(vault_path, "folder/../../outside.txt");
+        assert!(nested_traversal.is_err());
+
+        // 4. Root dir attempt
+        let root_attempt = FileService::resolve_path(vault_path, "/etc/passwd");
+        assert!(root_attempt.is_err()); // Either Absolute or RootComponent check catches this
+
+        // 5. Existing file check
+        std::fs::write(temp.path().join("existing.md"), "test").unwrap();
+        let existing = FileService::resolve_path(vault_path, "existing.md");
+        assert!(existing.is_ok());
     }
 }

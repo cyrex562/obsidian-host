@@ -1,8 +1,6 @@
-use crate::models::FileChangeEvent;
 use crate::routes::vaults::AppState;
-use actix_web::{get, web, HttpRequest, HttpResponse, Error};
+use actix_web::{get, web, Error, HttpRequest, HttpResponse};
 use actix_ws::Message;
-use tokio::sync::broadcast;
 use tracing::info;
 
 #[get("/api/ws")]

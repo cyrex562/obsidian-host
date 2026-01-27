@@ -22,7 +22,7 @@
                 <select id="vault-select" class="vault-dropdown">
                     <option value="">Select a vault...</option>
                 </select>
-                <button id="add-vault-btn" class="btn btn-primary">Add Vault</button>
+                <button id="add-vault-btn" class="btn btn-primary">Manage Vaults</button>
             </div>
             <div class="search-bar">
                 <input type="search" id="search-input" placeholder="Search..." class="search-input">
@@ -52,6 +52,9 @@
                         </button>
                         <button id="new-folder-btn" class="btn btn-icon" title="New folder">
                             <span class="icon">📁</span>
+                        </button>
+                        <button id="unique-note-btn" class="btn btn-icon" title="Create unique note">
+                            <span class="icon">📝</span>
                         </button>
                         <button id="random-note-btn" class="btn btn-icon" title="Random Note">
                             <span class="icon">🎲</span>
@@ -154,30 +157,47 @@
         </div>
     </div>
 
-    <!-- Modal for adding vault -->
+    <!-- Modal for managing vaults -->
     <div id="add-vault-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Add Vault</h2>
+                <h2>Manage Vaults</h2>
                 <button class="modal-close" data-close-modal="add-vault-modal">✕</button>
             </div>
             <div class="modal-body">
-                <form id="add-vault-form">
-                    <div class="form-group">
-                        <label for="vault-name">Vault Name</label>
-                        <input type="text" id="vault-name" name="name" required>
+                <div class="vault-manager">
+                    <div class="vault-list-header">
+                        <h3>Vaults</h3>
+                        <small class="muted">Missing vaults are shown in italic gray.</small>
                     </div>
-                    <div class="form-group">
-                        <label for="vault-path">Vault Path</label>
-                        <input type="text" id="vault-path" name="path" required placeholder="/path/to/vault">
-                        <small>Absolute path to your Obsidian vault directory</small>
+                    <div id="vault-list" class="vault-list">
+                        <!-- Populated dynamically -->
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary"
-                            data-close-modal="add-vault-modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Add Vault</button>
+
+                    <div class="vault-add-section">
+                        <h3>Add New Vault</h3>
+                        <form id="add-vault-form">
+                            <div class="form-group">
+                                <label for="vault-name">Vault Name</label>
+                                <input type="text" id="vault-name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="vault-path">Vault Path</label>
+                                <div class="vault-path-row">
+                                    <input type="text" id="vault-path" name="path" required placeholder="/path/to/vault">
+                                    <button type="button" class="btn btn-secondary btn-inline" id="vault-path-browse">Browse…</button>
+                                    <input type="file" id="vault-path-picker" webkitdirectory mozdirectory msdirectory odirectory directory multiple style="display: none;">
+                                </div>
+                                <small>Absolute path to your Obsidian vault directory. The folder will be created if it does not exist.</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary"
+                                    data-close-modal="add-vault-modal">Close</button>
+                                <button type="submit" class="btn btn-primary">Add Vault</button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>

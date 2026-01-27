@@ -1,12 +1,16 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{CreateFileRequest, UpdateFileRequest};
+use crate::models::{
+    CreateFileRequest, CreateUploadSessionRequest, UpdateFileRequest, UploadSessionResponse,
+};
 use crate::routes::vaults::AppState;
-use crate::services::{FileService, WikiLinkResolver};
+use crate::services::{FileService, ImageService, WikiLinkResolver};
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, put, web, HttpResponse};
 use futures::{StreamExt, TryStreamExt};
+use std::fs::OpenOptions;
 use std::io::{Cursor, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
@@ -49,6 +53,55 @@ async fn serve_raw_file(
     let mime_type = get_mime_type(&file_path);
 
     Ok(HttpResponse::Ok().content_type(mime_type).body(raw_content))
+}
+
+#[derive(serde::Deserialize)]
+struct ThumbnailQuery {
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+#[get("/api/vaults/{vault_id}/thumbnail/{file_path:.*}")]
+async fn get_thumbnail(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ThumbnailQuery>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, file_path) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    // Resolving path to ensure it's within vault
+    let full_path = FileService::resolve_path(&vault.path, &file_path)?;
+
+    // Width/Height defaults to 200 if not specified
+    let width = query.width.unwrap_or(200);
+    let height = query.height.unwrap_or(200);
+
+    // Generate thumbnail (returns PNG bytes)
+    // Note: This operation is CPU intensive and blocking, so we should run it in blocking thread
+    // but for simplicity in this file we can run it here or wrap it.
+    // Ideally: web::block(move || ImageService::generate_thumbnail(...)).await
+    // Since ImageReader does IO, let's just run it. Using web::block is better for actix.
+
+    // For now, running synchronously (in async context) might block the worker thread.
+    // Given the constraints and existing code style, I'll allow it or use web::block if easily possible.
+    // Let's use web::block to be safe.
+
+    let thumbnail_data =
+        web::block(move || ImageService::generate_thumbnail(&full_path, width, height))
+            .await
+            .map_err(|e| {
+                crate::error::AppError::InternalError(format!(
+                    "Thumbnail generation task canceled: {}",
+                    e
+                ))
+            })??;
+
+    Ok(HttpResponse::Ok()
+        .content_type("image/png")
+        // Cache for 1 hour
+        .insert_header(("Cache-Control", "public, max-age=3600"))
+        .body(thumbnail_data))
 }
 
 fn get_mime_type(file_path: &str) -> &'static str {
@@ -583,16 +636,246 @@ async fn batch_resolve_wiki_links(
     Ok(HttpResponse::Ok().json(BatchResolveResponse { resolved }))
 }
 
+#[get("/api/vaults/{vault_id}/files-html")]
+async fn get_file_tree_html(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let vault_id = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let tree = FileService::get_file_tree(&vault.path)?;
+
+    let html = render_file_tree_to_html(&tree);
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(html))
+}
+
+fn render_file_tree_to_html(nodes: &[crate::models::FileNode]) -> String {
+    // Handle empty file tree
+    if nodes.is_empty() {
+        return r#"<p style="padding: 1rem; text-align: center; color: var(--text-muted);">No files found</p>"#.to_string();
+    }
+
+    let mut html = String::new();
+
+    // Sort nodes: directories first, then files, then alphabetical
+    let mut sorted_nodes = nodes.to_vec();
+    sorted_nodes.sort_by(|a, b| {
+        if a.is_directory != b.is_directory {
+            return b.is_directory.cmp(&a.is_directory);
+        }
+        a.name.to_lowercase().cmp(&b.name.to_lowercase())
+    });
+
+    for node in sorted_nodes {
+        let icon = if node.is_directory { "📁" } else { "📄" };
+        let type_class = if node.is_directory { "folder" } else { "file" };
+
+        // Escape name for HTML safety (basic)
+        let safe_name = node
+            .name
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
+        let safe_path = node.path.replace("\"", "&quot;");
+
+        // Add expand/collapse arrow for folders with children
+        let has_children =
+            node.is_directory && node.children.as_ref().map_or(false, |c| !c.is_empty());
+        let arrow = if has_children {
+            r#"<span class="folder-arrow">▼</span>"#
+        } else {
+            ""
+        };
+
+        html.push_str(&format!(
+            r#"<div class="file-tree-node">
+                <div class="file-tree-item {}" data-path="{}" data-type="{}" data-is-directory="{}" draggable="true">
+                    {}
+                    <span class="file-icon">{}</span>
+                    <span class="file-name">{}</span>
+                </div>"#,
+            type_class, safe_path, type_class, node.is_directory, arrow, icon, safe_name
+        ));
+
+        if node.is_directory {
+            if let Some(children) = &node.children {
+                if !children.is_empty() {
+                    html.push_str("<div class=\"file-tree-children\">");
+                    html.push_str(&render_file_tree_to_html(children));
+                    html.push_str("</div>");
+                }
+            }
+        }
+
+        html.push_str("</div>");
+    }
+
+    html
+}
+
+#[derive(serde::Deserialize)]
+struct FinishUploadRequest {
+    filename: String,
+    path: String,
+}
+
+#[post("/api/vaults/{vault_id}/upload-sessions")]
+async fn create_upload_session(
+    state: web::Data<AppState>,
+    vault_id: web::Path<String>,
+    req: web::Json<CreateUploadSessionRequest>,
+) -> AppResult<HttpResponse> {
+    let vault_id = vault_id.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    // Use .obsidian/uploads/ as temp dir
+    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
+    std::fs::create_dir_all(&upload_dir)?;
+
+    let session_id = Uuid::new_v4().to_string();
+    let temp_file_path = upload_dir.join(&session_id);
+
+    // Create empty file
+    std::fs::File::create(&temp_file_path)?;
+
+    Ok(HttpResponse::Created().json(UploadSessionResponse {
+        session_id,
+        uploaded_bytes: 0,
+        total_size: req.total_size,
+    }))
+}
+
+#[put("/api/vaults/{vault_id}/upload-sessions/{session_id}")]
+async fn upload_chunk(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+    body: web::Bytes,
+) -> AppResult<HttpResponse> {
+    let (vault_id, session_id) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
+    let temp_file_path = upload_dir.join(&session_id);
+
+    if !temp_file_path.exists() {
+        return Err(AppError::NotFound("Upload session not found".to_string()));
+    }
+
+    // Append chunk
+    let mut file = OpenOptions::new().append(true).open(&temp_file_path)?;
+    file.write_all(&body)?;
+
+    let metadata = file.metadata()?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "uploaded_bytes": metadata.len()
+    })))
+}
+
+#[get("/api/vaults/{vault_id}/upload-sessions/{session_id}")]
+async fn get_upload_status(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, session_id) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
+    let temp_file_path = upload_dir.join(&session_id);
+
+    if !temp_file_path.exists() {
+        return Err(AppError::NotFound("Upload session not found".to_string()));
+    }
+
+    let metadata = std::fs::metadata(&temp_file_path)?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "session_id": session_id,
+        "uploaded_bytes": metadata.len()
+    })))
+}
+
+#[post("/api/vaults/{vault_id}/upload-sessions/{session_id}/finish")]
+async fn finish_upload_session(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+    req: web::Json<FinishUploadRequest>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, session_id) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+
+    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
+    let temp_file_path = upload_dir.join(&session_id);
+
+    if !temp_file_path.exists() {
+        return Err(AppError::NotFound("Upload session not found".to_string()));
+    }
+
+    // Resolve safe target path
+    let safe_target_dir = if req.path.is_empty() {
+        PathBuf::from(&vault.path)
+    } else {
+        FileService::resolve_path(&vault.path, &req.path)?
+    };
+
+    if !safe_target_dir.exists() {
+        std::fs::create_dir_all(&safe_target_dir)?;
+    } else if !safe_target_dir.is_dir() {
+        return Err(AppError::InvalidInput(
+            "Target path is not a directory".to_string(),
+        ));
+    }
+
+    let final_path = safe_target_dir.join(&req.filename);
+
+    // Rename/Move
+    if let Err(_) = std::fs::rename(&temp_file_path, &final_path) {
+        std::fs::copy(&temp_file_path, &final_path)?;
+        std::fs::remove_file(&temp_file_path)?;
+    }
+
+    let mixed_path = final_path.to_string_lossy().to_string();
+    // Re-resolve relative path properly for consistency
+    // Simple way:
+    let final_path_str = final_path
+        .strip_prefix(&vault.path)
+        .unwrap_or(&final_path)
+        .to_string_lossy()
+        .to_string();
+
+    // Update index if markdown
+    if final_path_str.ends_with(".md") {
+        if let Ok(content) = FileService::read_file(&vault.path, &final_path_str) {
+            state
+                .search_index
+                .update_file(&vault_id, &final_path_str, content.content)?;
+        }
+    }
+
+    Ok(HttpResponse::Created().json(serde_json::json!({
+        "path": final_path_str,
+        "filename": req.filename
+    })))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(get_file_tree)
+        .service(get_file_tree_html)
         .service(read_file)
         .service(serve_raw_file)
+        .service(get_thumbnail)
         .service(create_file)
         .service(update_file)
         .service(delete_file)
         .service(create_directory)
         .service(rename_file)
         .service(upload_files)
+        .service(create_upload_session)
+        .service(upload_chunk)
+        .service(get_upload_status)
+        .service(finish_upload_session)
         .service(download_file)
         .service(download_zip)
         .service(get_random_file)

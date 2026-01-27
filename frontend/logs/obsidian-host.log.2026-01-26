@@ -1,0 +1,7 @@
+[2m2026-01-26T01:53:11.866409Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-01-26T01:53:11.867744Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-01-26T01:53:11.867916Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 127.0.0.1:8080
+[2m2026-01-26T01:53:11.883982Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-01-26T01:53:11.884171Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-01-26T01:53:11.884382Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-01-26T01:53:11.885195Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 127.0.0.1:8080

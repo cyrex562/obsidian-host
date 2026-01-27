@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "text",
+      "text": "Hello Canvas",
+      "x": 200,
+      "y": 200,
+      "width": 300,
+      "height": 100,
+      "color": "0"
+    }
+  ],
+  "edges": [],
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2026-01-25T00:00:00Z",
+    "modified": "2026-01-25T00:00:00Z",
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1.0
+    }
+  }
+}

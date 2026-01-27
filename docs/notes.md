@@ -1,0 +1,12 @@
+- think about how db and file storage should work when hosting the app
+- do we need a config/preferences file?
+- should this be a multi-user app with authentication/authorization?
+- support python and wasm plugins
+- explicitly back up to a cloud provider
+- download from a cloud provider
+- download from git
+- publish to github
+- sync with git
+- preferences menu
+- full text search
+- file indexing

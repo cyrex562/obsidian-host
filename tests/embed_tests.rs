@@ -28,7 +28,8 @@ fn test_embed_and_link_mixed() {
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
     // Should verify both exist correctly
-    assert!(html.contains("<a href=\"note\">note</a>"));
+    assert!(html.contains("href=\"note\""));
+    assert!(html.contains(">note</a>"));
     assert!(html.contains("<img"));
     assert!(html.contains("src=\"image.png\""));
 }

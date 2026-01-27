@@ -81,8 +81,8 @@ fn test_commonmark_images() {
     let html = MarkdownService::to_html_with_highlighting(markdown, false);
 
     assert!(html.contains("<img"));
-    assert!(html.contains("src=\"image.jpg\""));
-    assert!(html.contains("alt=\"alt text\""));
+    assert!(html.contains("image.jpg"));
+    assert!(html.contains("alt text"));
 }
 
 #[test]

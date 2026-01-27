@@ -1,0 +1,51 @@
+   Compiling obsidian-host v0.1.0 (C:\Users\cyrex\files\projects\obsidian-host)
+warning: unused import: `Serialize`
+ --> src\routes\plugins.rs:3:26
+  |
+3 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `image::imageops::FilterType`
+ --> src\services\image_service.rs:2:5
+  |
+2 | use image::imageops::FilterType;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `error`
+ --> src\services\plugin_service.rs:5:22
+  |
+5 | use tracing::{debug, error, info, warn};
+  |                      ^^^^^
+
+warning: unused variable: `mixed_path`
+   --> src\routes\files.rs:839:9
+    |
+839 |     let mixed_path = final_path.to_string_lossy().to_string();
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mixed_path`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `url`
+   --> src\services\plugin_api.rs:178:34
+    |
+178 |     pub async fn http_get(&self, url: &str) -> AppResult<String> {
+    |                                  ^^^ help: if this is intentional, prefix it with an underscore: `_url`
+
+warning: unused variable: `url`
+   --> src\services\plugin_api.rs:188:35
+    |
+188 |     pub async fn http_post(&self, url: &str, body: String) -> AppResult<String> {
+    |                                   ^^^ help: if this is intentional, prefix it with an underscore: `_url`
+
+warning: unused variable: `body`
+   --> src\services\plugin_api.rs:188:46
+    |
+188 |     pub async fn http_post(&self, url: &str, body: String) -> AppResult<String> {
+    |                                              ^^^^ help: if this is intentional, prefix it with an underscore: `_body`
+
+warning: `obsidian-host` (lib) generated 7 warnings (run `cargo fix --lib -p obsidian-host` to apply 7 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 42.30s
+     Running `target\debug\obsidian-host.exe`
+error: process didn't exit successfully: `target\debug\obsidian-host.exe` (exit code: 0xffffffff)

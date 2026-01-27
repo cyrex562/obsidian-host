@@ -1,0 +1,68 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - combobox [ref=e5] [cursor=pointer]:
+        - option "Select a vault..." [selected]
+        - option "Canvas Test"
+        - option "Content Editing Test"
+        - option "Core Plugins Test"
+        - option "Drag Drop Test"
+        - option "Global Search Test"
+        - option "Media Embedding Test"
+        - option "Metadata Test"
+        - option "Plugin Actions Test"
+        - option "Plugin Manager Test"
+        - option "Quick Switcher Test"
+        - option "Random Note Test"
+        - option "Tabs Layout Test"
+      - button "Add Vault" [ref=e6] [cursor=pointer]
+    - searchbox "Search..." [ref=e8]
+    - generic [ref=e9]: ●
+    - generic [ref=e10]:
+      - button "🧩" [ref=e11] [cursor=pointer]:
+        - generic [ref=e12]: 🧩
+      - button "🌙" [ref=e13] [cursor=pointer]:
+        - generic [ref=e14]: 🌙
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - heading "Files" [level=3] [ref=e18]
+        - generic [ref=e19]:
+          - button "⬆️" [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]: ⬆️
+          - button "📄" [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: 📄
+          - button "📁" [ref=e24] [cursor=pointer]:
+            - generic [ref=e25]: 📁
+          - button "🎲" [ref=e26] [cursor=pointer]:
+            - generic [ref=e27]: 🎲
+          - button "📅" [ref=e28] [cursor=pointer]:
+            - generic [ref=e29]: 📅
+          - button "📋" [ref=e30] [cursor=pointer]:
+            - generic [ref=e31]: 📋
+      - paragraph [ref=e34]: No vault selected
+    - generic [ref=e36]:
+      - generic [ref=e39]:
+        - button "ℹ️" [ref=e40] [cursor=pointer]:
+          - generic [ref=e41]: ℹ️
+        - button "⬇️" [ref=e42] [cursor=pointer]:
+          - generic [ref=e43]: ⬇️
+        - button "⚡" [ref=e44] [cursor=pointer]:
+          - generic [ref=e45]: ⚡
+      - generic [ref=e47]:
+        - generic [ref=e49]:
+          - button "↶" [ref=e50] [cursor=pointer]:
+            - generic [ref=e51]: ↶
+          - button "↷" [ref=e52] [cursor=pointer]:
+            - generic [ref=e53]: ↷
+          - button "🔗" [ref=e55] [cursor=pointer]:
+            - generic [ref=e56]: 🔗
+          - button "🖼️" [ref=e57] [cursor=pointer]:
+            - generic [ref=e58]: 🖼️
+        - generic [ref=e60]:
+          - heading "No file open" [level=2] [ref=e61]
+          - paragraph [ref=e62]: Select a file from the sidebar
+```
