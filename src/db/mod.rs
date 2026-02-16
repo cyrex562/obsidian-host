@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
+use crate::models::auth::{Session, SessionRow, User, UserRole, UserRow};
 use crate::models::{EditorMode, UserPreferences, Vault, VaultRow};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -86,11 +87,70 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Auth: users table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                picture TEXT,
+                role TEXT NOT NULL DEFAULT 'pending',
+                oidc_subject TEXT NOT NULL,
+                oidc_issuer TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(oidc_subject, oidc_issuer)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Auth: sessions table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Auth: OIDC state table for CSRF protection
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS oidc_states (
+                csrf_token TEXT PRIMARY KEY NOT NULL,
+                nonce TEXT NOT NULL,
+                pkce_verifier TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    /// Quick connectivity check for health endpoints.
+    pub async fn health_check(&self) -> AppResult<()> {
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::from)?;
+        Ok(())
     }
 
     // Vault operations
@@ -333,9 +393,9 @@ impl Database {
     pub async fn get_recent_files(&self, vault_id: &str, limit: i32) -> AppResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"
-            SELECT path FROM recent_files 
-            WHERE vault_id = ? 
-            ORDER BY last_accessed DESC 
+            SELECT path FROM recent_files
+            WHERE vault_id = ?
+            ORDER BY last_accessed DESC
             LIMIT ?
             "#,
         )
@@ -346,5 +406,272 @@ impl Database {
         .map_err(AppError::from)?;
 
         Ok(rows.into_iter().map(|r| r.0).collect())
+    }
+
+    // =========================================================================
+    // Auth: User operations
+    // =========================================================================
+
+    /// Find or create a user from OIDC claims. The first user is auto-approved as admin.
+    pub async fn upsert_user_from_oidc(
+        &self,
+        email: &str,
+        name: &str,
+        picture: Option<&str>,
+        oidc_subject: &str,
+        oidc_issuer: &str,
+    ) -> AppResult<User> {
+        // Check if user already exists by OIDC subject+issuer
+        let existing = sqlx::query_as::<_, UserRow>(
+            "SELECT * FROM users WHERE oidc_subject = ? AND oidc_issuer = ?",
+        )
+        .bind(oidc_subject)
+        .bind(oidc_issuer)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(row) = existing {
+            // Update name/picture/email on each login
+            let now = Utc::now().to_rfc3339();
+            sqlx::query(
+                "UPDATE users SET email = ?, name = ?, picture = ?, updated_at = ? WHERE id = ?",
+            )
+            .bind(email)
+            .bind(name)
+            .bind(picture)
+            .bind(&now)
+            .bind(&row.id)
+            .execute(&self.pool)
+            .await?;
+
+            let mut user: User = row.into();
+            user.email = email.to_string();
+            user.name = name.to_string();
+            user.picture = picture.map(|s| s.to_string());
+            return Ok(user);
+        }
+
+        // New user: check if this is the first user (auto-admin)
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&self.pool)
+            .await?;
+
+        let role = if count.0 == 0 {
+            UserRole::Admin
+        } else {
+            UserRole::Pending
+        };
+
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            INSERT INTO users (id, email, name, picture, role, oidc_subject, oidc_issuer, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING *
+            "#,
+        )
+        .bind(&id)
+        .bind(email)
+        .bind(name)
+        .bind(picture)
+        .bind(role.as_str())
+        .bind(oidc_subject)
+        .bind(oidc_issuer)
+        .bind(&now)
+        .bind(&now)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.into())
+    }
+
+    pub async fn get_user_by_id(&self, id: &str) -> AppResult<User> {
+        let row = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => AppError::NotFound(format!("User {} not found", id)),
+                _ => AppError::from(e),
+            })?;
+
+        Ok(row.into())
+    }
+
+    pub async fn list_users(&self) -> AppResult<Vec<User>> {
+        let rows = sqlx::query_as::<_, UserRow>("SELECT * FROM users ORDER BY created_at DESC")
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows.into_iter().map(|r| r.into()).collect())
+    }
+
+    pub async fn update_user_role(&self, user_id: &str, role: &UserRole) -> AppResult<User> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE users SET role = ?, updated_at = ? WHERE id = ?")
+            .bind(role.as_str())
+            .bind(&now)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    pub async fn delete_user(&self, user_id: &str) -> AppResult<()> {
+        // Also deletes sessions via CASCADE
+        let result = sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!("User {} not found", user_id)));
+        }
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // Auth: Session operations
+    // =========================================================================
+
+    /// Create a new session for a user, returning the session ID.
+    pub async fn create_session(
+        &self,
+        user_id: &str,
+        token_hash: &str,
+        duration_hours: i64,
+    ) -> AppResult<Session> {
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+        let expires_at = now + Duration::hours(duration_hours);
+
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING *
+            "#,
+        )
+        .bind(&id)
+        .bind(user_id)
+        .bind(token_hash)
+        .bind(expires_at.to_rfc3339())
+        .bind(now.to_rfc3339())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.into())
+    }
+
+    /// Look up a session by token hash and verify it hasn't expired.
+    pub async fn get_valid_session(&self, token_hash: &str) -> AppResult<Option<Session>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            "SELECT * FROM sessions WHERE token_hash = ?",
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let session: Session = r.into();
+                if session.expires_at < Utc::now() {
+                    // Expired - clean it up
+                    let _ = sqlx::query("DELETE FROM sessions WHERE id = ?")
+                        .bind(&session.id)
+                        .execute(&self.pool)
+                        .await;
+                    Ok(None)
+                } else {
+                    Ok(Some(session))
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub async fn delete_session(&self, token_hash: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM sessions WHERE token_hash = ?")
+            .bind(token_hash)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_user_sessions(&self, user_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Clean up expired sessions periodically.
+    pub async fn cleanup_expired_sessions(&self) -> AppResult<u64> {
+        let now = Utc::now().to_rfc3339();
+        let result = sqlx::query("DELETE FROM sessions WHERE expires_at < ?")
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    // =========================================================================
+    // Auth: OIDC state operations (CSRF protection)
+    // =========================================================================
+
+    pub async fn store_oidc_state(
+        &self,
+        csrf_token: &str,
+        nonce: &str,
+        pkce_verifier: &str,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            INSERT INTO oidc_states (csrf_token, nonce, pkce_verifier, created_at)
+            VALUES (?, ?, ?, ?)
+            "#,
+        )
+        .bind(csrf_token)
+        .bind(nonce)
+        .bind(pkce_verifier)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Retrieve and consume an OIDC state (one-time use).
+    pub async fn consume_oidc_state(
+        &self,
+        csrf_token: &str,
+    ) -> AppResult<Option<(String, String)>> {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT nonce, pkce_verifier FROM oidc_states WHERE csrf_token = ?",
+        )
+        .bind(csrf_token)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if row.is_some() {
+            sqlx::query("DELETE FROM oidc_states WHERE csrf_token = ?")
+                .bind(csrf_token)
+                .execute(&self.pool)
+                .await?;
+
+            // Clean up old states (>10 min)
+            let cutoff = (Utc::now() - Duration::minutes(10)).to_rfc3339();
+            let _ = sqlx::query("DELETE FROM oidc_states WHERE created_at < ?")
+                .bind(&cutoff)
+                .execute(&self.pool)
+                .await;
+        }
+
+        Ok(row)
     }
 }

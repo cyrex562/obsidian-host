@@ -8,6 +8,75 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     #[serde(default)]
     pub vault: VaultConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    /// Whether authentication is enabled. When false, all requests are allowed without login.
+    #[serde(default = "default_auth_enabled")]
+    pub enabled: bool,
+
+    /// Google OAuth client ID
+    #[serde(default)]
+    pub google_client_id: String,
+
+    /// Google OAuth client secret
+    #[serde(default)]
+    pub google_client_secret: String,
+
+    /// The external URL of this application (used for redirect URI construction)
+    /// e.g., "http://localhost:8080" or "https://notes.example.com"
+    #[serde(default = "default_external_url")]
+    pub external_url: String,
+
+    /// Session duration in hours (default: 168 = 7 days)
+    #[serde(default = "default_session_hours")]
+    pub session_duration_hours: i64,
+
+    /// Secret key for signing session cookies (should be random, >= 32 chars)
+    #[serde(default = "default_session_secret")]
+    pub session_secret: String,
+
+    /// Force Secure flag on cookies even when the app receives HTTP traffic.
+    /// Enable this when behind a TLS-terminating proxy (e.g., Tailscale Funnel, nginx).
+    #[serde(default)]
+    pub force_secure_cookies: bool,
+}
+
+fn default_auth_enabled() -> bool {
+    false
+}
+
+fn default_external_url() -> String {
+    "http://localhost:8080".to_string()
+}
+
+fn default_session_hours() -> i64 {
+    168 // 7 days
+}
+
+fn default_session_secret() -> String {
+    // Generate a random secret if not configured (not stable across restarts)
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let bytes: Vec<u8> = (0..32).map(|_| rng.random::<u8>()).collect();
+    hex::encode(bytes)
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_auth_enabled(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
+            external_url: default_external_url(),
+            session_duration_hours: default_session_hours(),
+            session_secret: default_session_secret(),
+            force_secure_cookies: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +101,7 @@ pub struct VaultConfig {
 }
 
 fn default_host() -> String {
-    "127.0.0.1".to_string()
+    "0.0.0.0".to_string()
 }
 
 fn default_port() -> u16 {
@@ -65,6 +134,7 @@ impl Default for AppConfig {
             vault: VaultConfig {
                 index_exclusions: default_exclusions(),
             },
+            auth: AuthConfig::default(),
         }
     }
 }
@@ -119,7 +189,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = AppConfig::default();
-        assert_eq!(config.server.host, "127.0.0.1");
+        assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
         assert_eq!(config.database.path, "./obsidian-host.db");
         assert!(config.vault.index_exclusions.contains(&".git".to_string()));

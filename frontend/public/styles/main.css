@@ -1351,3 +1351,392 @@ a:hover {
 .htmx-request.htmx-indicator {
     display: inline;
 }
+
+/* ==========================================================================
+   Admin Dashboard Styles
+   ========================================================================== */
+
+.admin-dashboard {
+    max-width: 800px;
+    width: 90vw;
+}
+
+/* Stats Bar */
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.admin-stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.admin-stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.admin-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.15rem;
+}
+
+.admin-stat-card.stat-pending .admin-stat-value { color: #fbbf24; }
+.admin-stat-card.stat-active .admin-stat-value { color: #4ade80; }
+.admin-stat-card.stat-suspended .admin-stat-value { color: #ef4444; }
+
+/* Admin Tabs */
+.admin-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1rem;
+}
+
+.admin-tab-btn {
+    padding: 0.75rem 1.25rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.admin-tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.admin-tab-btn.active {
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
+}
+
+.admin-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+}
+
+.admin-tab-badge.badge-zero {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+/* Filter Bar */
+.admin-filter-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.admin-search-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    transition: border-color 0.15s ease;
+}
+
+.admin-search-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.admin-filter-select {
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+/* User List */
+.admin-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.admin-user-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: border-color 0.15s ease;
+}
+
+.admin-user-card:hover {
+    border-color: var(--text-secondary);
+}
+
+.admin-user-card.card-pending {
+    border-left: 3px solid #fbbf24;
+}
+
+.admin-user-card.card-suspended {
+    border-left: 3px solid #ef4444;
+    opacity: 0.75;
+}
+
+.admin-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.admin-user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.admin-user-avatar-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.admin-user-details {
+    min-width: 0;
+}
+
+.admin-user-name {
+    font-weight: 500;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-user-email {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-user-meta {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.admin-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Role Badges */
+.admin-role-badge {
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.role-admin {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+}
+
+.role-user {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.role-pending {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.role-suspended {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+/* Action Buttons */
+.admin-btn {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.admin-btn:hover {
+    background: var(--bg-tertiary);
+}
+
+.admin-btn-approve {
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+}
+
+.admin-btn-approve:hover {
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.admin-btn-suspend {
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+}
+
+.admin-btn-suspend:hover {
+    background: rgba(251, 191, 36, 0.1);
+}
+
+.admin-btn-unsuspend {
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+}
+
+.admin-btn-unsuspend:hover {
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.admin-btn-delete {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.admin-btn-delete:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.admin-btn-promote {
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #a78bfa;
+}
+
+.admin-btn-promote:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.admin-btn-demote {
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.admin-btn-demote:hover {
+    background: var(--bg-tertiary);
+}
+
+/* Empty state for pending */
+.admin-empty-state {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-secondary);
+}
+
+.admin-empty-state .admin-empty-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.5;
+}
+
+/* Confirm dialog styling */
+.admin-confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-confirm-dialog {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: var(--shadow-lg);
+}
+
+.admin-confirm-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.admin-confirm-message {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+}
+
+.admin-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
