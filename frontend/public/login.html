@@ -88,6 +88,12 @@
             border: 1px solid rgba(255, 152, 0, 0.3);
             color: #ff9800;
         }
+
+        .status-suspended {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
     </style>
 </head>
 
@@ -138,6 +144,12 @@
                 statusArea.innerHTML = `
                     <div class="status-message status-expired">
                         Your session has expired. Please sign in again.
+                    </div>
+                `;
+            } else if (status === 'suspended') {
+                statusArea.innerHTML = `
+                    <div class="status-message status-suspended">
+                        Your account has been suspended. Please contact an administrator for assistance.
                     </div>
                 `;
             } else if (status === 'unauthorized') {

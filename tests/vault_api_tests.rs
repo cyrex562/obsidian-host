@@ -23,6 +23,7 @@ async fn setup_app_state(temp_dir: &TempDir) -> web::Data<AppState> {
         search_index,
         watcher,
         event_broadcaster: event_tx,
+        auth_service: None,
     })
 }
 

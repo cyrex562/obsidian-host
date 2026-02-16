@@ -72,6 +72,13 @@ impl FromRequest for AuthenticatedUser {
                 .into());
             }
 
+            if user.role == UserRole::Suspended {
+                return Err(crate::error::AppError::Forbidden(
+                    "Your account has been suspended".into(),
+                )
+                .into());
+            }
+
             Ok(AuthenticatedUser(user))
         })
     }

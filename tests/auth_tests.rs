@@ -175,6 +175,71 @@ async fn test_delete_nonexistent_user() {
 }
 
 // =============================================================================
+// Suspended role tests
+// =============================================================================
+
+#[tokio::test]
+async fn test_suspend_user() {
+    let db = setup_db().await;
+
+    let _admin = db
+        .upsert_user_from_oidc("admin@test.com", "Admin", None, "s1", "iss")
+        .await
+        .unwrap();
+
+    let user = db
+        .upsert_user_from_oidc("user@test.com", "User", None, "s2", "iss")
+        .await
+        .unwrap();
+
+    // Approve user first
+    let approved = db
+        .update_user_role(&user.id, &UserRole::User)
+        .await
+        .unwrap();
+    assert_eq!(approved.role, UserRole::User);
+
+    // Suspend the user
+    let suspended = db
+        .update_user_role(&user.id, &UserRole::Suspended)
+        .await
+        .unwrap();
+    assert_eq!(suspended.role, UserRole::Suspended);
+}
+
+#[tokio::test]
+async fn test_unsuspend_user() {
+    let db = setup_db().await;
+
+    let _admin = db
+        .upsert_user_from_oidc("admin@test.com", "Admin", None, "s1", "iss")
+        .await
+        .unwrap();
+
+    let user = db
+        .upsert_user_from_oidc("user@test.com", "User", None, "s2", "iss")
+        .await
+        .unwrap();
+
+    // Suspend then unsuspend
+    db.update_user_role(&user.id, &UserRole::Suspended)
+        .await
+        .unwrap();
+
+    let restored = db
+        .update_user_role(&user.id, &UserRole::User)
+        .await
+        .unwrap();
+    assert_eq!(restored.role, UserRole::User);
+}
+
+#[tokio::test]
+async fn test_suspended_role_serialization() {
+    assert_eq!(UserRole::Suspended.as_str(), "suspended");
+    assert_eq!(UserRole::from_str("suspended"), UserRole::Suspended);
+}
+
+// =============================================================================
 // Session tests
 // =============================================================================
 

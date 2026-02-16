@@ -12,6 +12,8 @@ pub enum UserRole {
     User,
     /// Newly registered, awaiting admin approval
     Pending,
+    /// Account suspended by admin
+    Suspended,
 }
 
 impl UserRole {
@@ -20,6 +22,7 @@ impl UserRole {
             UserRole::Admin => "admin",
             UserRole::User => "user",
             UserRole::Pending => "pending",
+            UserRole::Suspended => "suspended",
         }
     }
 
@@ -27,6 +30,7 @@ impl UserRole {
         match s {
             "admin" => UserRole::Admin,
             "user" => UserRole::User,
+            "suspended" => UserRole::Suspended,
             _ => UserRole::Pending,
         }
     }

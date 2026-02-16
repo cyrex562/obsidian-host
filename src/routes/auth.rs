@@ -74,6 +74,7 @@ async fn callback(
 
     let redirect_url = match user.role {
         UserRole::Pending => "/login?status=pending",
+        UserRole::Suspended => "/login?status=suspended",
         _ => "/",
     };
 

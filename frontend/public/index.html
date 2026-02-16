@@ -617,16 +617,64 @@
         </div>
     </div>
 
-    <!-- Admin Panel Modal -->
+    <!-- Admin Dashboard Modal -->
     <div id="admin-panel-modal" class="modal hidden">
-        <div class="modal-content modal-large">
+        <div class="modal-content modal-large admin-dashboard">
             <div class="modal-header">
-                <h2>User Management</h2>
+                <h2>Admin Dashboard</h2>
                 <button class="modal-close" data-close-modal="admin-panel-modal">&#10005;</button>
             </div>
             <div class="modal-body">
-                <div id="admin-users-list" class="admin-users-list">
-                    <p>Loading users...</p>
+                <!-- Stats Bar -->
+                <div class="admin-stats" id="admin-stats">
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-value" id="stat-total">0</span>
+                        <span class="admin-stat-label">Total Users</span>
+                    </div>
+                    <div class="admin-stat-card stat-pending">
+                        <span class="admin-stat-value" id="stat-pending">0</span>
+                        <span class="admin-stat-label">Pending</span>
+                    </div>
+                    <div class="admin-stat-card stat-active">
+                        <span class="admin-stat-value" id="stat-active">0</span>
+                        <span class="admin-stat-label">Active</span>
+                    </div>
+                    <div class="admin-stat-card stat-suspended">
+                        <span class="admin-stat-value" id="stat-suspended">0</span>
+                        <span class="admin-stat-label">Suspended</span>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="admin-tabs">
+                    <button class="admin-tab-btn active" data-admin-tab="pending">
+                        Pending Requests <span class="admin-tab-badge" id="pending-badge">0</span>
+                    </button>
+                    <button class="admin-tab-btn" data-admin-tab="all">All Users</button>
+                </div>
+
+                <!-- Pending Tab -->
+                <div class="admin-tab-content" id="admin-tab-pending">
+                    <div id="admin-pending-list" class="admin-users-list">
+                        <p>Loading...</p>
+                    </div>
+                </div>
+
+                <!-- All Users Tab -->
+                <div class="admin-tab-content hidden" id="admin-tab-all">
+                    <div class="admin-filter-bar">
+                        <input type="search" id="admin-user-search" class="admin-search-input" placeholder="Search users by name or email...">
+                        <select id="admin-role-filter" class="admin-filter-select">
+                            <option value="all">All Roles</option>
+                            <option value="admin">Admin</option>
+                            <option value="user">User</option>
+                            <option value="pending">Pending</option>
+                            <option value="suspended">Suspended</option>
+                        </select>
+                    </div>
+                    <div id="admin-all-list" class="admin-users-list">
+                        <p>Loading...</p>
+                    </div>
                 </div>
             </div>
         </div>
