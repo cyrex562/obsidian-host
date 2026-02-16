@@ -15,3 +15,24 @@ path = "./obsidian-host.db"
 # List of patterns to exclude from search indexing and file watcher
 # Default includes: .git, .obsidian, .trash, node_modules
 index_exclusions = [".git", ".obsidian", ".trash", "node_modules", "target"]
+
+[auth]
+# Enable authentication (default: false)
+# When false, all requests are allowed without login.
+enabled = false
+
+# Google OAuth 2.0 / OIDC credentials
+# Create these at https://console.cloud.google.com/apis/credentials
+# Set the authorized redirect URI to: {external_url}/api/auth/callback
+# google_client_id = "your-client-id.apps.googleusercontent.com"
+# google_client_secret = "your-client-secret"
+
+# The externally-reachable URL of this application (used for OAuth redirect URI)
+external_url = "http://localhost:8080"
+
+# Session duration in hours (default: 168 = 7 days)
+session_duration_hours = 168
+
+# Secret key for signing session tokens (should be random, >= 32 chars)
+# If not set, a random key is generated on startup (sessions won't survive restarts)
+# session_secret = "change-me-to-a-random-string-at-least-32-chars"

@@ -11,7 +11,7 @@ use obsidian_host::config::AppConfig;
 use obsidian_host::db::Database;
 use obsidian_host::models::FileChangeEvent;
 use obsidian_host::routes::AppState;
-use obsidian_host::services::SearchIndex;
+use obsidian_host::services::{AuthService, SearchIndex};
 use obsidian_host::watcher::FileWatcher;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -236,12 +236,49 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
+    // Initialize auth service (if enabled)
+    let auth_service = if config.auth.enabled {
+        info!("Authentication is enabled, initializing OIDC...");
+        match AuthService::new(config.auth.clone()).await {
+            Ok(service) => {
+                info!("Authentication service initialized successfully");
+                Some(Arc::new(service))
+            }
+            Err(e) => {
+                error!("Failed to initialize auth service: {}. Starting without auth.", e);
+                None
+            }
+        }
+    } else {
+        info!("Authentication is disabled (set auth.enabled = true in config to enable)");
+        None
+    };
+
+    // Spawn periodic session cleanup task
+    let db_cleanup = db.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            match db_cleanup.cleanup_expired_sessions().await {
+                Ok(count) if count > 0 => {
+                    info!("Cleaned up {} expired sessions", count);
+                }
+                Err(e) => {
+                    warn!("Session cleanup failed: {}", e);
+                }
+                _ => {}
+            }
+        }
+    });
+
     // Create app state
     let app_state = web::Data::new(AppState {
         db,
         search_index,
         watcher,
         event_broadcaster: event_tx,
+        auth_service,
     });
 
     let server_host = config.server.host.clone();
@@ -255,6 +292,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(obsidian_host::middleware::RequestLogging)
             .wrap(middleware::Compress::default())
+            .configure(obsidian_host::routes::auth::configure)
             .configure(obsidian_host::routes::vaults::configure)
             .configure(obsidian_host::routes::files::configure)
             .configure(obsidian_host::routes::search::configure)

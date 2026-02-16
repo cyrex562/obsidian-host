@@ -1,7 +1,7 @@
 use crate::db::Database;
 use crate::error::{AppError, AppResult};
 use crate::models::{CreateVaultRequest, FileChangeEvent};
-use crate::services::SearchIndex;
+use crate::services::{AuthService, SearchIndex};
 use crate::watcher::FileWatcher;
 use actix_web::{delete, get, post, web, HttpResponse};
 use std::path::PathBuf;
@@ -14,6 +14,8 @@ pub struct AppState {
     pub search_index: SearchIndex,
     pub watcher: Arc<Mutex<FileWatcher>>,
     pub event_broadcaster: broadcast::Sender<FileChangeEvent>,
+    /// None when auth is disabled
+    pub auth_service: Option<Arc<AuthService>>,
 }
 
 #[post("/api/vaults")]

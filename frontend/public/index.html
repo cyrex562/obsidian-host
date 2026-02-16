@@ -18,6 +18,7 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <script type="module" src="/dist/app.js" defer></script>
+    <script src="/dist/auth.js" defer></script>
 </head>
 
 <body class="theme-dark">
@@ -38,11 +39,17 @@
                 <span id="connection-status" class="connection-status" title="Connecting...">●</span>
             </div>
             <div class="theme-toggle">
+                <button id="admin-panel-btn" class="btn btn-icon hidden" title="Admin Panel">
+                    <span class="icon">&#9881;</span>
+                </button>
                 <button id="plugin-manager-btn" class="btn btn-icon" title="Plugin Manager">
                     <span class="icon">🧩</span>
                 </button>
                 <button id="theme-toggle-btn" class="btn btn-icon">
                     <span class="icon">🌙</span>
+                </button>
+                <button id="logout-btn" class="btn btn-icon hidden" title="Logout">
+                    <span class="icon">&#x2192;</span>
                 </button>
             </div>
         </div>
@@ -605,6 +612,21 @@
                         <button class="btn btn-secondary" id="plugin-details-settings">Settings</button>
                         <button class="btn btn-secondary" id="plugin-details-reload">Reload</button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-panel-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>User Management</h2>
+                <button class="modal-close" data-close-modal="admin-panel-modal">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <div id="admin-users-list" class="admin-users-list">
+                    <p>Loading users...</p>
                 </div>
             </div>
         </div>

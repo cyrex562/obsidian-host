@@ -1351,3 +1351,109 @@ a:hover {
 .htmx-request.htmx-indicator {
     display: inline;
 }
+
+/* ==========================================================================
+   Admin Panel Styles
+   ========================================================================== */
+
+.admin-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.admin-user-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.admin-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.admin-user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.admin-user-avatar-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+}
+
+.admin-user-name {
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.admin-user-email {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.admin-user-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.admin-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.admin-user-role {
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.role-admin {
+    background: rgba(124, 58, 237, 0.2);
+    color: #a78bfa;
+}
+
+.role-user {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+}
+
+.role-pending {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.admin-role-select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}

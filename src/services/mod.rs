@@ -1,3 +1,4 @@
+pub mod auth_service;
 pub mod file_service;
 pub mod frontmatter_service;
 pub mod image_service;
@@ -7,6 +8,7 @@ pub mod plugin_service;
 pub mod search_service;
 pub mod wiki_link_service;
 
+pub use auth_service::AuthService;
 pub use file_service::{FileService, RenameStrategy};
 pub use image_service::ImageService;
 pub use markdown_service::{MarkdownService, RenderOptions};
