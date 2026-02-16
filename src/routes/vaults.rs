@@ -16,6 +16,8 @@ pub struct AppState {
     pub event_broadcaster: broadcast::Sender<FileChangeEvent>,
     /// None when auth is disabled
     pub auth_service: Option<Arc<AuthService>>,
+    /// Force Secure flag on cookies (for TLS-terminating proxies)
+    pub force_secure_cookies: bool,
 }
 
 #[post("/api/vaults")]

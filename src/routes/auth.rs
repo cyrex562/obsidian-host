@@ -70,7 +70,12 @@ async fn callback(
     );
 
     let token = auth.create_session(&state.db, &user.id).await?;
-    let cookie = build_session_cookie(&token, auth.session_duration_hours(), auth.external_url());
+    let cookie = build_session_cookie(
+        &token,
+        auth.session_duration_hours(),
+        auth.external_url(),
+        state.force_secure_cookies,
+    );
 
     let redirect_url = match user.role {
         UserRole::Pending => "/login?status=pending",
@@ -206,9 +211,14 @@ async fn delete_user(
 // Helpers
 // =============================================================================
 
-fn build_session_cookie(token: &str, duration_hours: i64, external_url: &str) -> String {
+fn build_session_cookie(
+    token: &str,
+    duration_hours: i64,
+    external_url: &str,
+    force_secure: bool,
+) -> String {
     let max_age = duration_hours * 3600;
-    let secure = external_url.starts_with("https://");
+    let secure = force_secure || external_url.starts_with("https://");
     let secure_flag = if secure { "; Secure" } else { "" };
 
     format!(

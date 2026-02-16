@@ -38,6 +38,11 @@ pub struct AuthConfig {
     /// Secret key for signing session cookies (should be random, >= 32 chars)
     #[serde(default = "default_session_secret")]
     pub session_secret: String,
+
+    /// Force Secure flag on cookies even when the app receives HTTP traffic.
+    /// Enable this when behind a TLS-terminating proxy (e.g., Tailscale Funnel, nginx).
+    #[serde(default)]
+    pub force_secure_cookies: bool,
 }
 
 fn default_auth_enabled() -> bool {
@@ -69,6 +74,7 @@ impl Default for AuthConfig {
             external_url: default_external_url(),
             session_duration_hours: default_session_hours(),
             session_secret: default_session_secret(),
+            force_secure_cookies: false,
         }
     }
 }
@@ -95,7 +101,7 @@ pub struct VaultConfig {
 }
 
 fn default_host() -> String {
-    "127.0.0.1".to_string()
+    "0.0.0.0".to_string()
 }
 
 fn default_port() -> u16 {
@@ -183,7 +189,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = AppConfig::default();
-        assert_eq!(config.server.host, "127.0.0.1");
+        assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
         assert_eq!(config.database.path, "./obsidian-host.db");
         assert!(config.vault.index_exclusions.contains(&".git".to_string()));

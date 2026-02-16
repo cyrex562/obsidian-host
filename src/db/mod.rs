@@ -144,6 +144,15 @@ impl Database {
         &self.pool
     }
 
+    /// Quick connectivity check for health endpoints.
+    pub async fn health_check(&self) -> AppResult<()> {
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .map_err(AppError::from)?;
+        Ok(())
+    }
+
     // Vault operations
     pub async fn create_vault(&self, name: String, path: String) -> AppResult<Vault> {
         if name.trim().is_empty() {

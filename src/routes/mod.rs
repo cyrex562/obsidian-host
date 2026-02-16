@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod files;
+pub mod health;
 pub mod markdown;
 pub mod plugins;
 pub mod preferences;

@@ -1,8 +1,10 @@
 # Obsidian Host Configuration
 
 [server]
-# The host address to bind to (default: 127.0.0.1)
-host = "127.0.0.1"
+# The host address to bind to (default: 0.0.0.0)
+# Use "0.0.0.0" to accept connections from all interfaces (required for Tailscale Funnel)
+# Use "127.0.0.1" to only accept local connections
+host = "0.0.0.0"
 
 # The port to listen on (default: 8080)
 port = 8080
@@ -36,3 +38,7 @@ session_duration_hours = 168
 # Secret key for signing session tokens (should be random, >= 32 chars)
 # If not set, a random key is generated on startup (sessions won't survive restarts)
 # session_secret = "change-me-to-a-random-string-at-least-32-chars"
+
+# Force Secure flag on cookies even when the app receives HTTP traffic.
+# Enable this when behind a TLS-terminating proxy (e.g., Tailscale Funnel, nginx).
+# force_secure_cookies = true

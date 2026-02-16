@@ -9,6 +9,7 @@ use mime_guess::from_path;
 use obsidian_host::assets::Assets;
 use obsidian_host::config::AppConfig;
 use obsidian_host::db::Database;
+use obsidian_host::middleware::SecurityHeaders;
 use obsidian_host::models::FileChangeEvent;
 use obsidian_host::routes::AppState;
 use obsidian_host::services::{AuthService, SearchIndex};
@@ -279,6 +280,7 @@ async fn main() -> std::io::Result<()> {
         watcher,
         event_broadcaster: event_tx,
         auth_service,
+        force_secure_cookies: config.auth.force_secure_cookies,
     });
 
     let server_host = config.server.host.clone();
@@ -287,11 +289,19 @@ async fn main() -> std::io::Result<()> {
     // Start HTTP server
     info!("Starting HTTP server on {}:{}", server_host, server_port);
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
+        // Configure payload limits (100 MB for file uploads)
+        let payload_config = web::PayloadConfig::default().limit(100 * 1024 * 1024);
+        let json_config = web::JsonConfig::default().limit(10 * 1024 * 1024); // 10 MB for JSON
+
         App::new()
             .app_data(app_state.clone())
+            .app_data(payload_config)
+            .app_data(json_config)
+            .wrap(SecurityHeaders)
             .wrap(obsidian_host::middleware::RequestLogging)
             .wrap(middleware::Compress::default())
+            .configure(obsidian_host::routes::health::configure)
             .configure(obsidian_host::routes::auth::configure)
             .configure(obsidian_host::routes::vaults::configure)
             .configure(obsidian_host::routes::files::configure)
@@ -303,6 +313,21 @@ async fn main() -> std::io::Result<()> {
             .configure(configure_static)
     })
     .bind((server_host.as_str(), server_port))?
-    .run()
-    .await
+    .run();
+
+    // Graceful shutdown: wait for either the server to finish or a shutdown signal
+    info!("Server started. Press Ctrl+C to stop.");
+    tokio::select! {
+        result = server => {
+            if let Err(e) = result {
+                error!("Server error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Shutdown signal received, stopping server...");
+        }
+    }
+
+    info!("Server stopped.");
+    Ok(())
 }

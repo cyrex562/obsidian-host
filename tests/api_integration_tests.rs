@@ -25,6 +25,7 @@ async fn setup_app_state(temp_dir: &TempDir) -> (web::Data<AppState>, String) {
         watcher,
         event_broadcaster: event_tx,
         auth_service: None,
+        force_secure_cookies: false,
     });
 
     // Create a vault
