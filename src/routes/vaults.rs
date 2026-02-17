@@ -1,7 +1,8 @@
+use crate::config::AppConfig;
 use crate::db::Database;
 use crate::error::{AppError, AppResult};
 use crate::models::{CreateVaultRequest, FileChangeEvent};
-use crate::services::{AuthService, SearchIndex};
+use crate::services::{AuthService, PluginService, SearchIndex};
 use crate::watcher::FileWatcher;
 use actix_web::{delete, get, post, web, HttpResponse};
 use std::path::PathBuf;
@@ -16,8 +17,9 @@ pub struct AppState {
     pub event_broadcaster: broadcast::Sender<FileChangeEvent>,
     /// None when auth is disabled
     pub auth_service: Option<Arc<AuthService>>,
-    /// Force Secure flag on cookies (for TLS-terminating proxies)
+    pub plugin_service: Arc<tokio::sync::RwLock<PluginService>>,
     pub force_secure_cookies: bool,
+    pub config: AppConfig,
 }
 
 #[post("/api/vaults")]

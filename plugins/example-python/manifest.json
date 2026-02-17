@@ -1,0 +1,15 @@
+{
+    "id": "example-python",
+    "name": "Example Python Plugin",
+    "version": "1.0.0",
+    "description": "A simple example plugin written in Python",
+    "author": "Obsidian Host",
+    "license": "MIT",
+    "plugin_type": "python",
+    "main": "main.py",
+    "capabilities": [
+        "read_files",
+        "write_files",
+        "network"
+    ]
+}

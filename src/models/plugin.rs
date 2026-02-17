@@ -62,6 +62,7 @@ fn default_plugin_type() -> PluginType {
 pub enum PluginType {
     JavaScript,
     Wasm,
+    Python,
 }
 
 /// Plugin capabilities - what the plugin is allowed to do

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Plugin API provides controlled access to host functionality
+#[derive(Clone)]
 pub struct PluginApi {
     context: PluginContext,
     event_bus: Arc<RwLock<EventBus>>,
@@ -39,6 +40,14 @@ impl PluginApi {
     }
 
     // File System Operations
+    
+    /// Read file content from vault (blocking)
+    pub fn read_file_blocking(&self, vault_path: &str, file_path: &str) -> AppResult<String> {
+        self.check_capability(&PluginCapability::ReadFiles)?;
+        let content = FileService::read_file(vault_path, file_path)?;
+        Ok(content.content)
+    }
+
 
     /// Read file content from vault
     pub async fn read_file(&self, vault_path: &str, file_path: &str) -> AppResult<String> {
@@ -57,6 +66,18 @@ impl PluginApi {
     ) -> AppResult<()> {
         self.check_capability(&PluginCapability::WriteFiles)?;
 
+        FileService::write_file(vault_path, file_path, &content, None, None)?;
+        Ok(())
+    }
+
+    /// Write file content to vault (blocking)
+    pub fn write_file_blocking(
+        &self,
+        vault_path: &str,
+        file_path: &str,
+        content: String,
+    ) -> AppResult<()> {
+        self.check_capability(&PluginCapability::WriteFiles)?;
         FileService::write_file(vault_path, file_path, &content, None, None)?;
         Ok(())
     }
@@ -206,6 +227,23 @@ impl PluginApi {
         Ok(command_id)
     }
 
+    /// Show notification to user (blocking)
+    pub fn show_notice_blocking(&self, message: &str, duration_ms: Option<u32>) -> AppResult<()> {
+        self.check_capability(&PluginCapability::ModifyUI)?;
+
+        let event = Event {
+            event_type: EventType::ShowNotice,
+            data: serde_json::json!({
+                "message": message,
+                "duration": duration_ms.unwrap_or(3000)
+            }),
+        };
+        
+        let bus = self.event_bus.blocking_read();
+        bus.emit_blocking(event);
+        Ok(())
+    }
+
     /// Show notification to user
     pub async fn show_notice(&self, message: &str, duration_ms: Option<u32>) -> AppResult<()> {
         self.check_capability(&PluginCapability::ModifyUI)?;
@@ -258,7 +296,7 @@ fn collect_files(nodes: &[crate::models::FileNode], files: &mut Vec<String>) {
 }
 
 /// Event system for plugin communication
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Event {
     pub event_type: EventType,
     pub data: serde_json::Value,
@@ -316,6 +354,14 @@ impl EventBus {
     }
 
     pub async fn emit(&self, event: Event) {
+        if let Some(subscribers) = self.subscribers.get(&event.event_type) {
+            for (_, callback) in subscribers {
+                callback(event.clone());
+            }
+        }
+    }
+
+    pub fn emit_blocking(&self, event: Event) {
         if let Some(subscribers) = self.subscribers.get(&event.event_type) {
             for (_, callback) in subscribers {
                 callback(event.clone());

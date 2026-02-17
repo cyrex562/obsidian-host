@@ -347,4 +347,11 @@ impl AppError {
     }
 }
 
+
+impl From<pyo3::PyErr> for AppError {
+    fn from(err: pyo3::PyErr) -> Self {
+        AppError::InternalError(format!("Python error: {}", err))
+    }
+}
+
 pub type AppResult<T> = Result<T, AppError>;

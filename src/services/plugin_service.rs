@@ -1,5 +1,11 @@
-use crate::models::plugin::{Plugin, PluginCapability, PluginManifest, PluginState};
+use crate::models::plugin::{Plugin, PluginCapability, PluginManifest, PluginContext, PluginState, PluginType};
+use crate::services::plugin_api::{Event, EventBus, EventType, PluginApi, PluginStorage};
+use crate::services::plugin_runtime::{python::PythonPluginRunner, wasm::WasmPluginRunner};
+use crate::services::PluginRuntime;
+use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,8 +20,11 @@ pub struct PluginService {
     plugins_dir: PathBuf,
     config_path: PathBuf,
     plugins: HashMap<String, Plugin>,
+    runtimes: HashMap<String, Box<dyn PluginRuntime>>,
     load_order: Vec<String>,
     config: PluginConfig,
+    event_bus: Arc<RwLock<EventBus>>,
+    storage: Arc<RwLock<PluginStorage>>,
 }
 
 impl PluginService {
@@ -28,8 +37,11 @@ impl PluginService {
             plugins_dir,
             config_path,
             plugins: HashMap::new(),
+            runtimes: HashMap::new(),
             load_order: Vec::new(),
             config,
+            event_bus: Arc::new(RwLock::new(EventBus::new())),
+            storage: Arc::new(RwLock::new(PluginStorage::new())),
         }
     }
 
@@ -82,13 +94,15 @@ impl PluginService {
             let path = entry.path();
             if path.is_dir() {
                 match self.load_plugin_manifest(&path) {
-                    Ok(plugin) => {
+                    Ok(mut plugin) => {
                         let plugin_id = plugin.manifest.id.clone();
                         discovered_ids.push(plugin_id.clone());
 
                         // On first run, add all plugins to enabled set
                         if is_first_run {
                             self.config.enabled_plugins.insert(plugin_id.clone());
+                            plugin.enabled = true;
+                            plugin.state = PluginState::Unloaded;
                         }
 
                         self.plugins.insert(plugin_id, plugin);
@@ -380,9 +394,96 @@ impl PluginService {
         }
     }
 
-    /// Legacy method for compatibility
-    pub fn scan_plugins(&self) -> Vec<Plugin> {
-        self.get_plugins()
+    /// Load a plugin
+    pub async fn load_plugin(&mut self, plugin_id: &str) -> AppResult<()> {
+        let plugin = self
+            .plugins
+            .get_mut(plugin_id)
+            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {}", plugin_id)))?;
+
+        if plugin.state == PluginState::Loaded {
+            return Ok(());
+        }
+
+        if !plugin.enabled {
+            return Err(AppError::InvalidInput(format!("Plugin {} is disabled", plugin_id)));
+        }
+
+        plugin.state = PluginState::Loading;
+        info!("Loading plugin: {}", plugin_id);
+
+        let context = PluginContext {
+            plugin_id: plugin_id.to_string(),
+            vault_id: None, // Context might need vault_id if tied to a vault? 
+            // For now, plugins are global or we need to pass vault context.
+            // PluginContext in models has Option<String>.
+            capabilities: plugin.manifest.capabilities.clone(),
+        };
+
+        let api = PluginApi::new(
+            context,
+            self.event_bus.clone(),
+            self.storage.clone(),
+        );
+
+        let plugin_dir = PathBuf::from(&plugin.path);
+        
+        let mut runtime: Box<dyn PluginRuntime> = match plugin.manifest.plugin_type {
+            PluginType::Wasm => Box::new(WasmPluginRunner::new(api, plugin_dir, plugin.manifest.clone())),
+            PluginType::Python => Box::new(PythonPluginRunner::new(api, plugin_dir, plugin.manifest.clone())),
+            PluginType::JavaScript => {
+                plugin.state = PluginState::Failed;
+                plugin.last_error = Some("JavaScript plugins not supported yet".to_string());
+                return Err(AppError::InternalError("JavaScript plugins not supported yet".to_string()));
+            }
+        };
+
+        match runtime.load().await {
+            Ok(_) => {
+                plugin.state = PluginState::Loaded;
+                plugin.last_error = None;
+                self.runtimes.insert(plugin_id.to_string(), runtime);
+                info!("Plugin loaded: {}", plugin_id);
+                Ok(())
+            }
+            Err(e) => {
+                plugin.state = PluginState::Failed;
+                plugin.last_error = Some(e.to_string());
+                error!("Failed to load plugin {}: {}", plugin_id, e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Unload a plugin
+    pub async fn unload_plugin(&mut self, plugin_id: &str) -> AppResult<()> {
+        if let Some(mut runtime) = self.runtimes.remove(plugin_id) {
+            info!("Unloading plugin: {}", plugin_id);
+            if let Err(e) = runtime.unload().await {
+                error!("Error unloading plugin {}: {}", plugin_id, e);
+            }
+        }
+
+        if let Some(plugin) = self.plugins.get_mut(plugin_id) {
+            plugin.state = PluginState::Unloaded;
+        }
+
+        Ok(())
+    }
+
+    /// Dispatch event to all loaded plugins
+    pub async fn dispatch_event(&self, event: Event) {
+        for (id, runtime) in &self.runtimes {
+            if let Err(e) = runtime.on_event(&event).await {
+                error!("Plugin {} failed to handle event {:?}: {}", id, event.event_type, e);
+            }
+        }
+    }
+
+    /// Reload a plugin
+    pub async fn reload_plugin(&mut self, plugin_id: &str) -> AppResult<()> {
+        self.unload_plugin(plugin_id).await?;
+        self.load_plugin(plugin_id).await
     }
 }
 

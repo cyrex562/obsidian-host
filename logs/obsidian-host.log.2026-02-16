@@ -1,0 +1,241 @@
+[2m2026-02-16T22:32:16.227322Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:32:16.228418Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:32:16.228450Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:32:16.246734Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:32:16.246806Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:32:16.246938Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:32:16.247067Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:32:16.247130Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:32:16.247249Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:32:16.247287Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/example-python": Failed to parse manifest: unknown variant `Python`, expected one of `javascript`, `wasm`, `python` at line 8 column 27
+[2m2026-02-16T22:32:16.247309Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 1 plugins
+[2m2026-02-16T22:32:16.247498Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:32:16.247615Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 0 enabled plugins...
+[2m2026-02-16T22:32:16.248198Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading vault: test vault 1 at C:\Users\cyrex\files\projects\obsidian-host\data\test_vault_1
+[2m2026-02-16T22:32:16.248221Z[0m [33m WARN[0m [2mobsidian_host[0m[2m:[0m Removing vault 567b7a70-7540-4f48-854d-7b392ba4c2b6 because path is missing: C:\Users\cyrex\files\projects\obsidian-host\data\test_vault_1
+[2m2026-02-16T22:32:16.252278Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:32:16.252320Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:32:16.252558Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:32:16.252576Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:32:16.252628Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:32:16.252641Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080
+[2m2026-02-16T22:33:19.820670Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGTERM received; starting graceful shutdown
+[2m2026-02-16T22:33:19.820821Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-02-16T22:33:19.820836Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820836Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820836Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820849Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820851Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820846Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820853Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820855Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820862Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820866Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820875Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820886Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820905Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820904Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820898Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820915Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820920Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820925Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.820941Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.821032Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.821082Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:19.822075Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:20.123736Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server stopped.
+[2m2026-02-16T22:33:21.098745Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:33:21.099732Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:33:21.099770Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:33:21.102608Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:33:21.102643Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:33:21.102727Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:33:21.102820Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:33:21.102862Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:33:21.102963Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:33:21.103002Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/example-python": Failed to parse manifest: unknown variant `ReadFiles`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 11 column 19
+[2m2026-02-16T22:33:21.103028Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 1 plugins
+[2m2026-02-16T22:33:21.103175Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:33:21.103279Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 0 enabled plugins...
+[2m2026-02-16T22:33:21.103494Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:33:21.103520Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:33:21.103682Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:33:21.103702Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:33:21.103720Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:33:21.103732Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080
+[2m2026-02-16T22:33:39.315869Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGTERM received; starting graceful shutdown
+[2m2026-02-16T22:33:39.316031Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-02-16T22:33:39.316073Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316077Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316077Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316074Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316072Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316078Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316078Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316094Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316112Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316108Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316157Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316173Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316173Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316614Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316745Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316751Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316762Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316857Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.316882Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.317482Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:39.619341Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server stopped.
+[2m2026-02-16T22:33:40.575904Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:33:40.576868Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:33:40.576896Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:33:40.579417Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:33:40.579461Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:33:40.579557Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:33:40.579670Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:33:40.579731Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:33:40.579840Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:33:40.579902Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 2 plugins
+[2m2026-02-16T22:33:40.580073Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:33:40.580195Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 0 enabled plugins...
+[2m2026-02-16T22:33:40.580444Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:33:40.580478Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:33:40.580727Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:33:40.580750Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:33:40.580774Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:33:40.580792Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080
+[2m2026-02-16T22:33:56.567514Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGTERM received; starting graceful shutdown
+[2m2026-02-16T22:33:56.567663Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-02-16T22:33:56.567699Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567700Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567707Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567711Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567721Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567716Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567739Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567740Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567742Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567728Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567737Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567772Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567767Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567778Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567780Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567794Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567808Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567829Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567829Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567865Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.567982Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.568744Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:33:56.870214Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server stopped.
+[2m2026-02-16T22:33:57.871419Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:33:57.872396Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:33:57.872428Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:33:57.876451Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:33:57.876520Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:33:57.876575Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:33:57.876756Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:33:57.876856Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:33:57.877142Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:33:57.877363Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 2 plugins
+[2m2026-02-16T22:33:57.877605Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:33:57.877780Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 0 enabled plugins...
+[2m2026-02-16T22:33:57.878080Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:33:57.878126Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:33:57.878370Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:33:57.878399Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:33:57.878429Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:33:57.878448Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080
+[2m2026-02-16T22:34:26.091252Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGTERM received; starting graceful shutdown
+[2m2026-02-16T22:34:26.091387Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-02-16T22:34:26.091400Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091401Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091400Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091411Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091412Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091418Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091426Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091439Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091438Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091434Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091446Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091437Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091432Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091467Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091471Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091473Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091465Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091479Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091493Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091571Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.091977Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.092278Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:34:26.393386Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server stopped.
+[2m2026-02-16T22:34:50.002025Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:34:50.003037Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:34:50.003071Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:34:50.006277Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:34:50.006309Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:34:50.006335Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:34:50.006443Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:34:50.006485Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:34:50.006600Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:34:50.006728Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 2 plugins
+[2m2026-02-16T22:34:50.006868Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:34:50.006967Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 0 enabled plugins...
+[2m2026-02-16T22:34:50.007243Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:34:50.007266Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:34:50.007415Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:34:50.007432Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:34:50.007449Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:34:50.007459Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080
+[2m2026-02-16T22:35:27.022975Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGTERM received; starting graceful shutdown
+[2m2026-02-16T22:35:27.023142Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023143Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023148Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023159Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023162Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023168Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-02-16T22:35:27.023152Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023146Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023165Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023144Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023174Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023200Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023196Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023200Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023186Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023145Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023182Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023231Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023234Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023238Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023263Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023314Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.023206Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-02-16T22:35:27.325334Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server stopped.
+[2m2026-02-16T22:35:36.727276Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-02-16T22:35:36.728276Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-02-16T22:35:36.728307Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 0.0.0.0:8080
+[2m2026-02-16T22:35:36.731076Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-02-16T22:35:36.731111Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-02-16T22:35:36.731137Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovering plugins in "./plugins"
+[2m2026-02-16T22:35:36.731248Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/backlinks": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 13 column 19
+[2m2026-02-16T22:35:36.731295Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/daily-notes": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 15 column 19
+[2m2026-02-16T22:35:36.731414Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Failed to load plugin from "./plugins/word-count": Failed to parse manifest: unknown variant `modify_ui`, expected one of `read_files`, `write_files`, `delete_files`, `vault_metadata`, `network`, `storage`, `modify_u_i`, `commands`, `editor_access`, `system_exec` at line 12 column 19
+[2m2026-02-16T22:35:36.731528Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Discovered 2 plugins
+[2m2026-02-16T22:35:36.731580Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Plugin load order: ["example-plugin", "example-python"]
+[2m2026-02-16T22:35:36.731710Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-02-16T22:35:36.731820Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading 2 enabled plugins...
+[2m2026-02-16T22:35:36.731836Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Loading plugin: example-plugin
+[2m2026-02-16T22:35:36.731850Z[0m [31mERROR[0m [2mobsidian_host[0m[2m:[0m Failed to load plugin example-plugin: An unexpected error occurred: JavaScript plugins not supported yet
+[2m2026-02-16T22:35:36.731863Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Loading plugin: example-python
+[2m2026-02-16T22:35:36.731873Z[0m [33m WARN[0m [2mobsidian_host::services::plugin_runtime::python[0m[2m:[0m Python support is currently disabled due to build environment issues.
+[2m2026-02-16T22:35:36.731889Z[0m [32m INFO[0m [2mobsidian_host::services::plugin_service[0m[2m:[0m Plugin loaded: example-python
+[2m2026-02-16T22:35:36.732120Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Authentication is disabled (set auth.enabled = true in config to enable)
+[2m2026-02-16T22:35:36.732146Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 0.0.0.0:8080
+[2m2026-02-16T22:35:36.732358Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 22 workers
+[2m2026-02-16T22:35:36.732374Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server started. Press Ctrl+C to stop.
+[2m2026-02-16T22:35:36.732412Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-02-16T22:35:36.732425Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8080", workers: 22, listening on: 0.0.0.0:8080

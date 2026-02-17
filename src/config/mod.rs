@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -96,8 +97,14 @@ pub struct DatabaseConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultConfig {
+    #[serde(default = "default_vault_root")]
+    pub root_dir: PathBuf,
     #[serde(default = "default_exclusions")]
     pub index_exclusions: Vec<String>,
+}
+
+fn default_vault_root() -> PathBuf {
+    PathBuf::from("./data/vaults")
 }
 
 fn default_host() -> String {
@@ -132,6 +139,7 @@ impl Default for AppConfig {
                 path: default_db_path(),
             },
             vault: VaultConfig {
+                root_dir: default_vault_root(),
                 index_exclusions: default_exclusions(),
             },
             auth: AuthConfig::default(),
@@ -159,6 +167,7 @@ impl Default for DatabaseConfig {
 impl Default for VaultConfig {
     fn default() -> Self {
         Self {
+            root_dir: default_vault_root(),
             index_exclusions: default_exclusions(),
         }
     }

@@ -5,6 +5,7 @@ pub mod markdown;
 pub mod plugins;
 pub mod preferences;
 pub mod search;
+pub mod sync;
 pub mod vaults;
 pub mod ws;
 

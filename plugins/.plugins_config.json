@@ -1,5 +1,6 @@
 {
   "enabled_plugins": [
-    "example-plugin"
+    "example-plugin",
+    "example-python"
   ]
 }

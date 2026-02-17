@@ -12,10 +12,10 @@ use obsidian_host::db::Database;
 use obsidian_host::middleware::SecurityHeaders;
 use obsidian_host::models::FileChangeEvent;
 use obsidian_host::routes::AppState;
-use obsidian_host::services::{AuthService, SearchIndex};
+use obsidian_host::services::{AuthService, PluginService, SearchIndex};
 use obsidian_host::watcher::FileWatcher;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, RwLock};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -135,6 +135,37 @@ async fn main() -> std::io::Result<()> {
     let search_index = SearchIndex::new();
     info!("Search index initialized");
 
+    // Initialize Plugin Service
+    // Default to ./plugins directory
+    let plugins_dir = std::path::PathBuf::from("./plugins");
+    let mut plugin_service_instance = PluginService::new(plugins_dir);
+    
+    // Discover plugins (synchronous first pass)
+    if let Err(e) = plugin_service_instance.discover_plugins() {
+         error!("Failed to discover plugins: {}", e);
+    }
+    
+    if let Err(e) = plugin_service_instance.resolve_dependencies() {
+        error!("Failed to resolve plugin dependencies: {}", e);
+    }
+    
+    let plugin_service = Arc::new(RwLock::new(plugin_service_instance));
+    
+    // Spawn task to load enabled plugins
+    let ps_clone = plugin_service.clone();
+    tokio::spawn(async move {
+        // We need a write, lock to load plugins
+        let mut ps = ps_clone.write().await;
+        let enabled_ids: Vec<String> = ps.get_enabled_plugins().iter().map(|p| p.manifest.id.clone()).collect();
+        
+        info!("Loading {} enabled plugins...", enabled_ids.len());
+        for id in enabled_ids {
+            if let Err(e) = ps.load_plugin(&id).await {
+                error!("Failed to load plugin {}: {}", id, e);
+            }
+        }
+    });
+
     // Initialize file watcher
     let (watcher, mut change_rx) = FileWatcher::new().expect("Failed to create file watcher");
     let watcher = Arc::new(Mutex::new(watcher));
@@ -147,6 +178,7 @@ async fn main() -> std::io::Result<()> {
     // Spawn task to forward file changes to broadcast channel
     let search_index_clone = search_index.clone();
     let db_clone = db.clone();
+    let ps_event_dispatch = plugin_service.clone(); 
     tokio::spawn(async move {
         while let Some(change_event) = change_rx.recv().await {
             info!("File change detected: {:?}", change_event);
@@ -194,9 +226,26 @@ async fn main() -> std::io::Result<()> {
             }
 
             // Broadcast to websocket clients
-            if let Err(e) = event_tx_clone.send(change_event) {
+            if let Err(e) = event_tx_clone.send(change_event.clone()) {
                 error!("Failed to broadcast event: {}", e);
             }
+            
+            // Dispatch to plugins
+            use obsidian_host::services::plugin_api::{Event, EventType};
+            let event_type = match &change_event.event_type {
+                obsidian_host::models::FileChangeType::Created => EventType::FileCreate,
+                obsidian_host::models::FileChangeType::Modified => EventType::FileSave,
+                obsidian_host::models::FileChangeType::Deleted => EventType::FileDelete,
+                obsidian_host::models::FileChangeType::Renamed { .. } => EventType::FileRename,
+            };
+            
+            let event = Event {
+                event_type,
+                data: serde_json::to_value(&change_event).unwrap_or_default(),
+            };
+            
+            let ps = ps_event_dispatch.read().await;
+            ps.dispatch_event(event).await;
         }
     });
 
@@ -269,9 +318,11 @@ async fn main() -> std::io::Result<()> {
                     warn!("Session cleanup failed: {}", e);
                 }
                 _ => {}
+
             }
         }
     });
+
 
     // Create app state
     let app_state = web::Data::new(AppState {
@@ -280,7 +331,9 @@ async fn main() -> std::io::Result<()> {
         watcher,
         event_broadcaster: event_tx,
         auth_service,
+        plugin_service,
         force_secure_cookies: config.auth.force_secure_cookies,
+        config: config.clone(),
     });
 
     let server_host = config.server.host.clone();
@@ -306,6 +359,7 @@ async fn main() -> std::io::Result<()> {
             .configure(obsidian_host::routes::vaults::configure)
             .configure(obsidian_host::routes::files::configure)
             .configure(obsidian_host::routes::search::configure)
+            .configure(obsidian_host::routes::sync::config)
             .configure(obsidian_host::routes::ws::configure)
             .configure(obsidian_host::routes::markdown::configure)
             .configure(obsidian_host::routes::preferences::configure)
