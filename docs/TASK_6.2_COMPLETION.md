@@ -39,8 +39,8 @@ The Metadata Editor (Properties Panel) feature was already fully implemented in 
 **Files**:
 
 - JavaScript: [frontend/src/app.ts](frontend/src/app.ts#L3405-L3560)
-- HTML: [frontend/public/index.html](frontend/public/index.html#L216-L230)
-- CSS: [frontend/public/styles/main.css](frontend/public/styles/main.css#L835-L850)
+- Vue layout: [frontend/src/layouts/MainLayout.vue](../frontend/src/layouts/MainLayout.vue)
+- Frontmatter UI: [frontend/src/components/editor/FrontmatterPanel.vue](../frontend/src/components/editor/FrontmatterPanel.vue)
 
 ## Test Implementation
 

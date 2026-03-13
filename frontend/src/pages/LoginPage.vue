@@ -51,7 +51,10 @@ async function login() {
   error.value = '';
   try {
     await authStore.login(username.value, password.value);
-    router.push('/');
+    const redirect = typeof router.currentRoute.value.query.redirect === 'string'
+      ? router.currentRoute.value.query.redirect
+      : '/';
+    router.push(redirect);
   } catch (e: any) {
     error.value = e?.message ?? 'Login failed.';
   } finally {

@@ -1,12 +1,12 @@
 {
-  "build_time_utc": "2026-03-12T12:25:36.062974+00:00",
-  "git_commit": "3306640323843b0275b0f15fe6b0d8f7e56c8af9",
-  "release_id": "72e80ca25131da88",
+  "build_time_utc": "2026-03-13T17:12:15.612859+00:00",
+  "git_commit": "9c9f0d05f82f187606cb41bea8aa9f182fab1279",
+  "release_id": "207dceafa02865c9",
   "target_platform": "x86_64-unknown-linux-gnu",
   "deployment_target": "obsidian-test-a",
   "server": {
     "artifact": "server/obsidian-host",
-    "sha256": "72e80ca25131da8878b4730a2dfdcc853a855744aad7bb1af67f283aea006339",
+    "sha256": "207dceafa02865c9842fed8732697672eae44c5118bcbc99b04b06e925784554",
     "frontend_embedded": true
   },
   "desktop": {

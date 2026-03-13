@@ -2,7 +2,7 @@ use actix_web::{test, web, App};
 use obsidian_host::db::Database;
 use obsidian_host::models::{CreateFileRequest, UpdateFileRequest};
 use obsidian_host::routes::{files, vaults, AppState};
-use obsidian_host::services::{FileService, SearchIndex};
+use obsidian_host::services::{default_storage_backend, FileService, SearchIndex};
 use obsidian_host::watcher::FileWatcher;
 use serde_json::json;
 use std::sync::Arc;
@@ -22,8 +22,10 @@ async fn setup_app_state(temp_dir: &TempDir) -> (web::Data<AppState>, String) {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
+        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
+        change_log_retention_days: 7,
     });
 
     // Create a vault

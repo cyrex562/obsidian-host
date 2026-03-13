@@ -5,9 +5,13 @@ pub mod graph;
 pub mod plugin;
 
 pub use obsidian_types::{
-    CreateFileRequest, CreateUploadSessionRequest, CreateVaultRequest, EditorMode, FileChangeEvent,
-    FileChangeType, FileContent, FileNode, PagedSearchResult, SearchMatch, SearchResult,
-    UpdateFileRequest, UploadSessionResponse, UserPreferences, Vault, WsMessage,
+    AddGroupMemberRequest, AdminUser, AuthenticatedUserProfile, ChangePasswordRequest,
+    CreateFileRequest, CreateGroupRequest, CreateUploadSessionRequest, CreateUserRequest,
+    CreateUserResponse, CreateVaultRequest, EditorMode, FileChangeEvent, FileChangeType,
+    FileContent, FileNode, GroupInfo, GroupMember, PagedSearchResult, SearchMatch, SearchResult,
+    ShareVaultWithGroupRequest, ShareVaultWithUserRequest, UpdateFileRequest,
+    UploadSessionResponse, UserPreferences, Vault, VaultRole, VaultShareEntry, VaultShareList,
+    WsMessage,
 };
 
 #[derive(Debug, Clone, FromRow)]

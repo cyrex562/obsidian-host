@@ -21,7 +21,116 @@ pub struct VaultSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateVaultRequest {
     pub name: String,
-    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VaultRole {
+    Owner,
+    Editor,
+    Viewer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupInfo {
+    pub id: String,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupMember {
+    pub user_id: String,
+    pub username: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthenticatedUserProfile {
+    pub id: String,
+    pub username: String,
+    pub is_admin: bool,
+    pub must_change_password: bool,
+    pub groups: Vec<GroupInfo>,
+    pub auth_method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminUser {
+    pub id: String,
+    pub username: String,
+    pub is_admin: bool,
+    pub must_change_password: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUserRequest {
+    pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temporary_password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_admin: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUserResponse {
+    pub id: String,
+    pub username: String,
+    pub temporary_password: String,
+    pub is_admin: bool,
+    pub must_change_password: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateGroupRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddGroupMemberRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareVaultWithUserRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    pub role: VaultRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareVaultWithGroupRequest {
+    pub group_id: String,
+    pub role: VaultRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultShareEntry {
+    pub principal_type: String,
+    pub principal_id: String,
+    pub principal_name: String,
+    pub role: VaultRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultShareList {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_user_id: Option<String>,
+    pub user_shares: Vec<VaultShareEntry>,
+    pub group_shares: Vec<VaultShareEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

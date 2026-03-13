@@ -6,10 +6,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { usePreferencesStore } from '@/stores/preferences';
-import { useWebSocket } from '@/composables/useWebSocket';
+import { useAuthStore } from '@/stores/auth';
 
 const prefsStore = usePreferencesStore();
+const authStore = useAuthStore();
+const router = useRouter();
 
 // Vuetify theme name driven by user preference
 const theme = computed(() =>
@@ -18,8 +21,26 @@ const theme = computed(() =>
 
 // Bootstrap: load preferences, then open WS
 onMounted(async () => {
-  await prefsStore.load();
-  useWebSocket();
+  const isLoginRoute = router.currentRoute.value.path === '/login';
+
+  if (authStore.isAuthenticated || !isLoginRoute) {
+    await prefsStore.load();
+  }
+
+  if (authStore.isAuthenticated) {
+    try {
+      await authStore.ensureFresh();
+      await authStore.loadProfile();
+    } catch {
+      await authStore.logout();
+      if (router.currentRoute.value.path !== '/login') {
+        await router.replace({
+          path: '/login',
+          query: { redirect: router.currentRoute.value.fullPath || '/' },
+        });
+      }
+    }
+  }
 });
 </script>
 

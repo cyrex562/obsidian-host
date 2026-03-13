@@ -60,11 +60,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { ApiError } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 import { useVaultsStore } from '@/stores/vaults';
 import { useFilesStore } from '@/stores/files';
 import { useTabsStore } from '@/stores/tabs';
 import { useUiStore } from '@/stores/ui';
+import { useWebSocket } from '@/composables/useWebSocket';
 
 import TopBar from '@/components/TopBar.vue';
 import SidebarActions from '@/components/sidebar/SidebarActions.vue';
@@ -81,6 +84,8 @@ const vaultsStore = useVaultsStore();
 const filesStore = useFilesStore();
 const tabsStore = useTabsStore();
 const uiStore = useUiStore();
+const authStore = useAuthStore();
+const router = useRouter();
 
 const sidebarOpen = ref(true);
 const sidebarWidth = ref(280);
@@ -90,6 +95,20 @@ const quickSwitcherOpen = ref(false);
 const pluginsOpen = ref(false);
 
 onMounted(async () => {
+  try {
+    await authStore.ensureFresh();
+    await authStore.loadProfile();
+  } catch {
+    await authStore.logout();
+    await router.replace({
+      path: '/login',
+      query: { redirect: router.currentRoute.value.fullPath || '/' },
+    });
+    return;
+  }
+
+  useWebSocket();
+
   await vaultsStore.loadVaults();
   if (vaultsStore.activeVaultId) {
     await filesStore.loadTree(vaultsStore.activeVaultId);

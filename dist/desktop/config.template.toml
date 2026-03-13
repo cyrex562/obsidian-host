@@ -19,6 +19,8 @@ index_exclusions = [".git", ".obsidian", ".trash", "node_modules", "target"]
 [auth]
 # Authentication toggle and token settings
 enabled = false
+# Current provider options: "password" (implemented), "oidc" (planned), "mtls" (planned)
+provider = "password"
 jwt_secret = ""
 access_token_ttl = 3600
 refresh_token_ttl = 604800
@@ -35,3 +37,16 @@ change_log_retention_days = 7
 [cors]
 # Allowed browser origins for API requests
 allowed_origins = ["http://localhost:5173"]
+
+[storage]
+# Storage backend: "local" (implemented), "s3" (scaffolded)
+backend = "local"
+
+[storage.s3]
+# Optional S3/MinIO settings (used when storage.backend = "s3")
+endpoint = ""
+bucket = ""
+region = ""
+access_key = ""
+secret_key = ""
+path_style = true

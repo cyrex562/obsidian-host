@@ -1,105 +1,270 @@
-import { test, expect } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { expect, test } from '@playwright/test';
+import { defaultProfile, installCommonAppMocks, seedActiveVault, seedAuthTokens } from './helpers/appMocks';
+import type { Page } from '@playwright/test';
 
-const FIXTURES_DIR = path.resolve(__dirname, '../../tests/fixtures');
-const VAULT_1_DIR = path.join(FIXTURES_DIR, 'vault_1');
-const VAULT_2_DIR = path.join(FIXTURES_DIR, 'vault_2');
+const vaultA = {
+    id: 'v-a',
+    name: 'Vault Alpha',
+    path: 'C:/vaults/alpha',
+    path_exists: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+};
 
-test.beforeAll(async () => {
-    // Setup test vaults
-    if (!fs.existsSync(FIXTURES_DIR)) fs.mkdirSync(FIXTURES_DIR, { recursive: true });
+const vaultB = {
+    id: 'v-b',
+    name: 'Vault Beta',
+    path: 'C:/vaults/beta',
+    path_exists: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+};
 
-    if (!fs.existsSync(VAULT_1_DIR)) fs.mkdirSync(VAULT_1_DIR);
-    fs.writeFileSync(path.join(VAULT_1_DIR, 'note1.md'), '# Vault 1 Note');
+async function installSharingMocks(page: Page) {
+    const groups = [
+        { id: 'g-editors', name: 'Editors', created_at: new Date().toISOString() },
+    ];
 
-    if (!fs.existsSync(VAULT_2_DIR)) fs.mkdirSync(VAULT_2_DIR);
-    fs.writeFileSync(path.join(VAULT_2_DIR, 'note2.md'), '# Vault 2 Note');
-});
+    let shares = {
+        owner_user_id: 'u1',
+        user_shares: [
+            {
+                principal_type: 'user',
+                principal_id: 'u2',
+                principal_name: 'bob',
+                role: 'viewer',
+            },
+        ],
+        group_shares: [
+            {
+                principal_type: 'group',
+                principal_id: 'g-editors',
+                principal_name: 'Editors',
+                role: 'editor',
+            },
+        ],
+    };
 
-test.afterAll(async () => {
-    // Cleanup is optional, maybe we want to inspect
-    // fs.rmSync(FIXTURES_DIR, { recursive: true, force: true });
-});
+    let members = [
+        { user_id: 'u2', username: 'bob' },
+    ];
 
-test('Task 1.1: Vault Selection & Creation', async ({ page }) => {
-    page.on('dialog', dialog => {
-        console.log(`Dialog message: ${dialog.message()}`);
-        dialog.accept();
+    await page.route('**/api/groups', async (route) => {
+        const method = route.request().method();
+        if (method === 'GET') {
+            await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(groups) });
+            return;
+        }
+
+        if (method === 'POST') {
+            const payload = route.request().postDataJSON() as { name: string };
+            const created = { id: `g-${payload.name.toLowerCase()}`, name: payload.name, created_at: new Date().toISOString() };
+            groups.push(created);
+            await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(created) });
+            return;
+        }
+
+        await route.fallback();
     });
 
-    console.log('Navigating to home page...');
-    await page.goto('/');
-    await expect(page).toHaveTitle(/Obsidian Host/i);
+    await page.route('**/api/groups/*/members', async (route) => {
+        const method = route.request().method();
 
-    // 1. Initial State
-    console.log('Checking initial state...');
-    const addVaultBtn = page.locator('#add-vault-btn');
-    // Wait for it to be attached to DOM
-    await addVaultBtn.waitFor({ state: 'attached', timeout: 10000 });
+        if (method === 'GET') {
+            await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(members) });
+            return;
+        }
 
-    // Check visibility logic - if it fails here, something is hiding it
-    const isVisible = await addVaultBtn.isVisible();
-    console.log(`Add Vault button visible: ${isVisible}`);
-    if (!isVisible) {
-        // Dump body HTML to see if something obscures it
-        const bodyHtml = await page.innerHTML('body');
-        console.log('Body HTML snapshot:', bodyHtml.slice(0, 1000));
-    }
-    await expect(addVaultBtn).toBeVisible();
+        if (method === 'POST') {
+            const payload = route.request().postDataJSON() as { username?: string };
+            const username = payload.username ?? 'user';
+            const created = { user_id: `u-${username}`, username };
+            members = [...members, created];
+            await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(members) });
+            return;
+        }
 
-    // 2. Add Vault 1
-    console.log('Adding Vault 1...');
-    await addVaultBtn.click();
+        await route.fallback();
+    });
 
-    // Modal should open
-    const modal = page.locator('#add-vault-modal');
-    await expect(modal).toBeVisible();
+    await page.route('**/api/groups/*/members/*', async (route) => {
+        if (route.request().method() !== 'DELETE') {
+            await route.fallback();
+            return;
+        }
 
-    await page.fill('#vault-path', VAULT_1_DIR);
-    await page.fill('#vault-name', 'Vault One');
+        const target = route.request().url().split('/').pop() ?? '';
+        members = members.filter((m) => m.user_id !== target);
+        await route.fulfill({ status: 204, body: '' });
+    });
 
-    // Click submit in the form
-    await page.click('#add-vault-form button[type="submit"]');
+    await page.route(/.*\/api\/vaults\/[^/]+\/shares$/, async (route) => {
+        if (route.request().method() !== 'GET') {
+            await route.fallback();
+            return;
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shares) });
+    });
 
-    // Verify Vault 1 is selected
-    // The file tree should eventually show note1.md
-    console.log('Verifying Vault 1 content...');
-    await expect(page.locator('#file-tree')).toContainText('note1.md', { timeout: 10000 });
-    await expect(page.locator('#file-tree')).not.toContainText('note2.md');
+    await page.route(/.*\/api\/vaults\/[^/]+\/shares\/users$/, async (route) => {
+        if (route.request().method() !== 'POST') {
+            await route.fallback();
+            return;
+        }
 
-    // 3. Add Vault 2
-    console.log('Adding Vault 2...');
-    await addVaultBtn.click();
+        const payload = route.request().postDataJSON() as { username?: string; role: string };
+        shares = {
+            ...shares,
+            user_shares: [
+                ...shares.user_shares,
+                {
+                    principal_type: 'user',
+                    principal_id: `u-${payload.username ?? 'user'}`,
+                    principal_name: payload.username ?? 'user',
+                    role: payload.role,
+                },
+            ],
+        };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shares) });
+    });
 
-    await page.fill('#vault-path', VAULT_2_DIR);
-    await page.fill('#vault-name', 'Vault Two');
-    await page.click('#add-vault-form button[type="submit"]');
+    await page.route(/.*\/api\/vaults\/[^/]+\/shares\/users\/[^/]+$/, async (route) => {
+        if (route.request().method() !== 'DELETE') {
+            await route.fallback();
+            return;
+        }
 
-    console.log('Verifying Vault 2 content...');
-    await expect(page.locator('#file-tree')).toContainText('note2.md', { timeout: 10000 });
-    await expect(page.locator('#file-tree')).not.toContainText('note1.md');
+        const userId = route.request().url().split('/').pop() ?? '';
+        shares = {
+            ...shares,
+            user_shares: shares.user_shares.filter((share) => share.principal_id !== userId),
+        };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shares) });
+    });
 
-    // 4. Switch Vault
-    // Select Vault One from dropdown
-    console.log('Switching back to Vault 1...');
-    const vaultSelect = page.locator('#vault-select');
-    // We need to know the value of the option. Usually IDs or names.
-    // We can select by label.
-    await vaultSelect.selectOption({ label: 'Vault One' });
+    await page.route(/.*\/api\/vaults\/[^/]+\/shares\/groups$/, async (route) => {
+        if (route.request().method() !== 'POST') {
+            await route.fallback();
+            return;
+        }
 
-    console.log('Verifying Vault 1 content after switch...');
-    await expect(page.locator('#file-tree')).toContainText('note1.md', { timeout: 10000 });
-    await expect(page.locator('#file-tree')).not.toContainText('note2.md');
+        const payload = route.request().postDataJSON() as { group_id: string; role: string };
+        const groupName = groups.find((g) => g.id === payload.group_id)?.name ?? payload.group_id;
+        shares = {
+            ...shares,
+            group_shares: [
+                ...shares.group_shares,
+                {
+                    principal_type: 'group',
+                    principal_id: payload.group_id,
+                    principal_name: groupName,
+                    role: payload.role,
+                },
+            ],
+        };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shares) });
+    });
 
-    // Switch to Vault Two
-    console.log('Switching to Vault 2...');
-    await vaultSelect.selectOption({ label: 'Vault Two' });
+    await page.route(/.*\/api\/vaults\/[^/]+\/shares\/groups\/[^/]+$/, async (route) => {
+        if (route.request().method() !== 'DELETE') {
+            await route.continue();
+            return;
+        }
 
-    console.log('Verifying Vault 2 content after switch...');
-    await expect(page.locator('#file-tree')).toContainText('note2.md', { timeout: 10000 });
-    await expect(page.locator('#file-tree')).not.toContainText('note1.md');
+        const groupId = route.request().url().split('/').pop() ?? '';
+        shares = {
+            ...shares,
+            group_shares: shares.group_shares.filter((share) => share.principal_id !== groupId),
+        };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shares) });
+    });
+}
 
-    console.log('Test Complete.');
+test.describe('Vault management', () => {
+    test('loads active vault from persisted selection', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, vaultA.id);
+        await installCommonAppMocks(page, {
+            profile: defaultProfile,
+            vaults: [vaultA, vaultB],
+            treeByVaultId: {
+                [vaultA.id]: [{ name: 'alpha.md', path: 'alpha.md', is_directory: false, modified: new Date().toISOString() }],
+                [vaultB.id]: [{ name: 'beta.md', path: 'beta.md', is_directory: false, modified: new Date().toISOString() }],
+            },
+        });
+
+        await page.goto('/');
+        await expect(page.getByText('alpha.md')).toBeVisible();
+        await expect(page.getByRole('banner').getByText('Vault Alpha')).toBeVisible();
+    });
+
+    test('loads alternate active vault id and tree', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, vaultB.id);
+        await installCommonAppMocks(page, {
+            profile: defaultProfile,
+            vaults: [vaultA, vaultB],
+            treeByVaultId: {
+                [vaultA.id]: [{ name: 'alpha.md', path: 'alpha.md', is_directory: false, modified: new Date().toISOString() }],
+                [vaultB.id]: [{ name: 'beta.md', path: 'beta.md', is_directory: false, modified: new Date().toISOString() }],
+            },
+        });
+
+        await page.goto('/');
+        await expect(page.getByText('beta.md')).toBeVisible();
+        await expect(page.getByRole('banner').getByText('Vault Beta')).toBeVisible();
+    });
+
+    test('opens vault manager from sidebar controls', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, vaultA.id);
+        await installCommonAppMocks(page, { profile: defaultProfile, vaults: [vaultA] });
+
+        await page.goto('/');
+        await page.locator('button:has(.mdi-cog)').first().click();
+        await expect(page.getByText('Vault Manager')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Add' })).toBeVisible();
+    });
+
+    test('manages sharing entries for users and groups', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, vaultA.id);
+        await installCommonAppMocks(page, { profile: defaultProfile, vaults: [vaultA] });
+        await installSharingMocks(page);
+
+        await page.goto('/');
+        await page.locator('button:has(.mdi-cog)').first().click();
+
+        await expect(page.getByText('Current access')).toBeVisible();
+        await expect(page.getByText('Group: Editors')).toBeVisible();
+
+        await page.locator('button[title="Revoke group share"]').first().click();
+        await expect(page.getByText('Group: Editors')).toHaveCount(0);
+    });
+
+    test('creates groups and manages group members', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, vaultA.id);
+        await installCommonAppMocks(page, { profile: defaultProfile, vaults: [vaultA] });
+        await installSharingMocks(page);
+
+        await page.goto('/');
+        await page.locator('button:has(.mdi-cog)').first().click();
+
+        await page.getByLabel('Create group').fill('Reviewers');
+        await page.getByRole('button', { name: 'Create' }).click();
+
+        await expect(page.locator('.v-list-item-subtitle', { hasText: 'u2' })).toHaveCount(1);
+
+        await page.getByLabel('Add member by username').fill('dana');
+        await page.getByRole('button', { name: 'Add' }).first().click();
+        await expect(page.getByText('dana', { exact: true })).toBeVisible();
+
+        await page
+            .locator('.v-list-item', { has: page.locator('.v-list-item-subtitle', { hasText: 'u2' }) })
+            .locator('button')
+            .first()
+            .click();
+        await expect(page.locator('.v-list-item-subtitle', { hasText: 'u2' })).toHaveCount(0);
+    });
 });

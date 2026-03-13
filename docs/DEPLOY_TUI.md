@@ -22,8 +22,10 @@ Local machine:
 - Python 3.11+
 - Node.js / npm
 - Rust toolchain
-- `cross` on non-Linux hosts for the Linux server build
+- `cross` on non-Linux hosts for the default local Linux server build (containerized via Docker)
 - `ssh` and `scp`
+
+For local builds on Windows/macOS using `cross`, Docker Desktop must be running and the Linux daemon must be reachable.
 
 Remote VM:
 
@@ -80,6 +82,12 @@ Build artifacts:
 python .\scripts\deploy_tui.py build --target obsidian-test-a
 ```
 
+Build artifacts using remote host compilation explicitly:
+
+```powershell
+python .\scripts\deploy_tui.py build --target obsidian-test-a --remote-build
+```
+
 Deploy an existing `dist/` bundle:
 
 ```powershell
@@ -90,6 +98,12 @@ Build and deploy in one step:
 
 ```powershell
 python .\scripts\deploy_tui.py build-and-deploy --target obsidian-test-a
+```
+
+Build and deploy using remote host compilation explicitly:
+
+```powershell
+python .\scripts\deploy_tui.py build-and-deploy --target obsidian-test-a --remote-build
 ```
 
 ## Remote Layout
@@ -119,4 +133,7 @@ That keeps `config.toml`, `obsidian-host.db`, and `logs/` in the persistent shar
 ## Notes
 
 - The tool uses `npm run build`, not the stale `build:simple` reference found in older docs/scripts.
-- On Windows, the Linux server build requires `cross` because the deploy target VM is Linux.
+- The default build strategy is now **local** on all platforms.
+- On Windows and other non-Linux hosts, the local Linux server build uses `cross` (containerized on the local machine) rather than compiling on the remote VM.
+- Remote compilation is still available, but only when `--remote-build` is passed explicitly.
+- The deploy tool now performs an early Docker daemon readiness check for local `cross` builds and fails fast with guidance if Docker is not reachable.

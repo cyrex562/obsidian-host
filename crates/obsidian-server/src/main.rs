@@ -12,7 +12,7 @@ use obsidian_host::config::AppConfig;
 use obsidian_host::db::Database;
 use obsidian_host::models::FileChangeEvent;
 use obsidian_host::routes::AppState;
-use obsidian_host::services::SearchIndex;
+use obsidian_host::services::{build_storage_backend, SearchIndex};
 use obsidian_host::watcher::FileWatcher;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -284,6 +284,7 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(AppState {
         db,
         search_index,
+        storage: build_storage_backend(&config.storage),
         watcher,
         event_broadcaster: event_tx,
         change_log_retention_days: config.sync.change_log_retention_days,
@@ -319,6 +320,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(obsidian_host::middleware::AuthMiddleware)
             .wrap(middleware::Compress::default())
             .configure(obsidian_host::routes::auth::configure)
+            .configure(obsidian_host::routes::admin::configure)
+            .configure(obsidian_host::routes::groups::configure)
             .configure(obsidian_host::routes::vaults::configure)
             .configure(obsidian_host::routes::files::configure)
             .configure(obsidian_host::routes::search::configure)

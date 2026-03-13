@@ -2,7 +2,7 @@ use actix_web::{test, web, App};
 use obsidian_host::db::Database;
 use obsidian_host::models::CreateVaultRequest;
 use obsidian_host::routes::{vaults, AppState};
-use obsidian_host::services::SearchIndex;
+use obsidian_host::services::{default_storage_backend, SearchIndex};
 use obsidian_host::watcher::FileWatcher;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -21,8 +21,10 @@ async fn setup_app_state(temp_dir: &TempDir) -> web::Data<AppState> {
     web::Data::new(AppState {
         db: db.clone(),
         search_index,
+        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
+        change_log_retention_days: 7,
     })
 }
 
@@ -47,7 +49,7 @@ async fn test_create_and_list_vaults() {
         .uri("/api/vaults")
         .set_json(&CreateVaultRequest {
             name: "Vault 1".to_string(),
-            path: vault_dir.to_string_lossy().to_string(),
+            path: Some(vault_dir.to_string_lossy().to_string()),
         })
         .to_request();
 
@@ -93,7 +95,7 @@ async fn test_switch_vaults() {
         .uri("/api/vaults")
         .set_json(&CreateVaultRequest {
             name: "Vault A".to_string(),
-            path: vault1_dir.to_string_lossy().to_string(),
+            path: Some(vault1_dir.to_string_lossy().to_string()),
         })
         .to_request();
     let _ = test::call_service(&app, req).await;
@@ -103,7 +105,7 @@ async fn test_switch_vaults() {
         .uri("/api/vaults")
         .set_json(&CreateVaultRequest {
             name: "Vault B".to_string(),
-            path: vault2_dir.to_string_lossy().to_string(),
+            path: Some(vault2_dir.to_string_lossy().to_string()),
         })
         .to_request();
     let _ = test::call_service(&app, req).await;

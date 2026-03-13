@@ -8,7 +8,8 @@ Cargo.lock
 
 # Frontend
 node_modules/
-frontend/public/dist/
+public/dist/
+frontend/
 *.log
 
 # IDE

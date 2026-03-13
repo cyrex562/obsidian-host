@@ -1,5 +1,7 @@
+use crate::config::AppConfig;
+use crate::middleware::AuthenticatedUser;
 use crate::routes::vaults::AppState;
-use actix_web::{get, web, Error, HttpRequest, HttpResponse};
+use actix_web::{get, web, Error, HttpMessage, HttpRequest, HttpResponse};
 use actix_ws::Message;
 use tracing::info;
 
@@ -8,10 +10,13 @@ async fn websocket(
     req: HttpRequest,
     stream: web::Payload,
     state: web::Data<AppState>,
+    config: web::Data<AppConfig>,
 ) -> Result<HttpResponse, Error> {
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
 
     let mut event_rx = state.event_broadcaster.subscribe();
+    let auth_enabled = config.auth.enabled;
+    let current_user = req.extensions().get::<AuthenticatedUser>().cloned();
 
     actix_web::rt::spawn(async move {
         loop {
@@ -36,6 +41,17 @@ async fn websocket(
 
                 // Receive file change events
                 Ok(change_event) = event_rx.recv() => {
+                    if auth_enabled {
+                        let Some(current_user) = &current_user else {
+                            continue;
+                        };
+
+                        match state.db.get_vault_role_for_user(&change_event.vault_id, &current_user.user_id).await {
+                            Ok(Some(_)) => {}
+                            _ => continue,
+                        }
+                    }
+
                     let etag = match &change_event.event_type {
                         crate::models::FileChangeType::Created | crate::models::FileChangeType::Modified => {
                             match state.db.get_vault(&change_event.vault_id).await {

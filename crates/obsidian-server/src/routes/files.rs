@@ -8,9 +8,8 @@ use actix_multipart::Multipart;
 use actix_web::http::header::{ETAG, IF_NONE_MATCH};
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse};
 use futures::{StreamExt, TryStreamExt};
-use std::fs::OpenOptions;
 use std::io::{Cursor, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -93,7 +92,7 @@ async fn serve_raw_file(
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let raw_content = FileService::read_raw_file(&vault.path, &file_path)?;
+    let raw_content = state.storage.read_raw(&vault.path, &file_path)?;
 
     // Determine MIME type based on file extension
     let mime_type = get_mime_type(&file_path);
@@ -340,7 +339,9 @@ async fn create_file(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content = FileService::create_file(&vault.path, &req.path, req.content.as_deref())?;
+    let content = state
+        .storage
+        .create_file(&vault.path, &req.path, req.content.as_deref())?;
     let etag = build_file_etag(&content);
 
     state
@@ -374,7 +375,7 @@ async fn update_file(
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content = FileService::write_file(
+    let content = state.storage.write_file(
         &vault.path,
         &file_path,
         &req.content,
@@ -519,6 +520,7 @@ async fn upload_files(
 
     let mut uploaded_files = Vec::new();
     let max_file_size = 100 * 1024 * 1024; // 100MB limit
+    let mut requested_target_path = String::new();
 
     while let Ok(Some(mut field)) = payload.try_next().await {
         // Get the field name and filename
@@ -533,9 +535,6 @@ async fn upload_files(
             .and_then(|cd| cd.get_name())
             .unwrap_or("file");
 
-        // Extract directory path if provided (format: "path" field)
-        let mut target_path = String::new();
-
         // If field name is "path", this contains the directory path
         if field_name == "path" {
             let mut path_bytes = Vec::new();
@@ -544,30 +543,17 @@ async fn upload_files(
                     chunk.map_err(|e| AppError::InternalError(format!("Upload error: {}", e)))?;
                 path_bytes.extend_from_slice(&data);
             }
-            target_path = String::from_utf8(path_bytes)
+            requested_target_path = String::from_utf8(path_bytes)
                 .map_err(|_| AppError::InvalidInput("Invalid path encoding".to_string()))?;
             continue;
         }
 
-        // Construct full file path
-        let file_path = if target_path.is_empty() {
-            filename.to_string()
-        } else {
-            format!("{}/{}", target_path.trim_end_matches('/'), filename)
-        };
+        let session_id = Uuid::new_v4().to_string();
+        state
+            .storage
+            .create_upload_session_temp(&vault.path, &session_id)?;
 
-        // Create the full path on disk
-        let full_path = FileService::resolve_path(&vault.path, &file_path)
-            .map_err(|e| AppError::InvalidInput(format!("Invalid file path: {}", e)))?;
-
-        // Create parent directory if needed
-        if let Some(parent) = full_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        // Write file data
         let mut total_size = 0;
-        let mut file = std::fs::File::create(&full_path)?;
 
         while let Some(chunk) = field.next().await {
             let data =
@@ -575,31 +561,39 @@ async fn upload_files(
             total_size += data.len();
 
             if total_size > max_file_size {
-                // Clean up partial file
-                drop(file);
-                let _ = std::fs::remove_file(&full_path);
+                // Clean up partial upload session temp file
+                let _ = state
+                    .storage
+                    .delete_upload_session_temp(&vault.path, &session_id);
                 return Err(AppError::InvalidInput(format!(
                     "File {} exceeds maximum size of 100MB",
                     filename
                 )));
             }
 
-            file.write_all(&data)?;
+            state
+                .storage
+                .append_upload_chunk(&vault.path, &session_id, &data)?;
         }
 
-        drop(file);
+        let final_path_str = state.storage.finalize_upload_session(
+            &vault.path,
+            &session_id,
+            &requested_target_path,
+            &filename,
+        )?;
 
         // Update search index if it's a markdown file
-        if file_path.ends_with(".md") {
-            if let Ok(content) = FileService::read_file(&vault.path, &file_path) {
+        if final_path_str.ends_with(".md") {
+            if let Ok(content) = FileService::read_file(&vault.path, &final_path_str) {
                 state
                     .search_index
-                    .update_file(&vault_id, &file_path, content.content)?;
+                    .update_file(&vault_id, &final_path_str, content.content)?;
             }
         }
 
         uploaded_files.push(serde_json::json!({
-            "path": file_path,
+            "path": final_path_str,
             "size": total_size,
             "filename": filename,
         }));
@@ -996,15 +990,10 @@ async fn create_upload_session(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    // Use .obsidian/uploads/ as temp dir
-    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
-    std::fs::create_dir_all(&upload_dir)?;
-
     let session_id = Uuid::new_v4().to_string();
-    let temp_file_path = upload_dir.join(&session_id);
-
-    // Create empty file
-    std::fs::File::create(&temp_file_path)?;
+    state
+        .storage
+        .create_upload_session_temp(&vault.path, &session_id)?;
 
     Ok(HttpResponse::Created().json(UploadSessionResponse {
         session_id,
@@ -1021,22 +1010,12 @@ async fn upload_chunk(
 ) -> AppResult<HttpResponse> {
     let (vault_id, session_id) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
-
-    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
-    let temp_file_path = upload_dir.join(&session_id);
-
-    if !temp_file_path.exists() {
-        return Err(AppError::NotFound("Upload session not found".to_string()));
-    }
-
-    // Append chunk
-    let mut file = OpenOptions::new().append(true).open(&temp_file_path)?;
-    file.write_all(&body)?;
-
-    let metadata = file.metadata()?;
+    let uploaded_bytes = state
+        .storage
+        .append_upload_chunk(&vault.path, &session_id, &body)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "uploaded_bytes": metadata.len()
+        "uploaded_bytes": uploaded_bytes
     })))
 }
 
@@ -1047,19 +1026,13 @@ async fn get_upload_status(
 ) -> AppResult<HttpResponse> {
     let (vault_id, session_id) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
-
-    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
-    let temp_file_path = upload_dir.join(&session_id);
-
-    if !temp_file_path.exists() {
-        return Err(AppError::NotFound("Upload session not found".to_string()));
-    }
-
-    let metadata = std::fs::metadata(&temp_file_path)?;
+    let uploaded_bytes = state
+        .storage
+        .get_upload_session_size(&vault.path, &session_id)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "session_id": session_id,
-        "uploaded_bytes": metadata.len()
+        "uploaded_bytes": uploaded_bytes
     })))
 }
 
@@ -1071,45 +1044,12 @@ async fn finish_upload_session(
 ) -> AppResult<HttpResponse> {
     let (vault_id, session_id) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
-
-    let upload_dir = Path::new(&vault.path).join(".obsidian").join("uploads");
-    let temp_file_path = upload_dir.join(&session_id);
-
-    if !temp_file_path.exists() {
-        return Err(AppError::NotFound("Upload session not found".to_string()));
-    }
-
-    // Resolve safe target path
-    let safe_target_dir = if req.path.is_empty() {
-        PathBuf::from(&vault.path)
-    } else {
-        FileService::resolve_path(&vault.path, &req.path)?
-    };
-
-    if !safe_target_dir.exists() {
-        std::fs::create_dir_all(&safe_target_dir)?;
-    } else if !safe_target_dir.is_dir() {
-        return Err(AppError::InvalidInput(
-            "Target path is not a directory".to_string(),
-        ));
-    }
-
-    let final_path = safe_target_dir.join(&req.filename);
-
-    // Rename/Move
-    if let Err(_) = std::fs::rename(&temp_file_path, &final_path) {
-        std::fs::copy(&temp_file_path, &final_path)?;
-        std::fs::remove_file(&temp_file_path)?;
-    }
-
-    let mixed_path = final_path.to_string_lossy().to_string();
-    // Re-resolve relative path properly for consistency
-    // Simple way:
-    let final_path_str = final_path
-        .strip_prefix(&vault.path)
-        .unwrap_or(&final_path)
-        .to_string_lossy()
-        .to_string();
+    let final_path_str = state.storage.finalize_upload_session(
+        &vault.path,
+        &session_id,
+        &req.path,
+        &req.filename,
+    )?;
 
     // Update index if markdown
     if final_path_str.ends_with(".md") {

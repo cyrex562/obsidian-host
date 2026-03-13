@@ -10,6 +10,18 @@ import type {
     UserPreferences,
     UploadSessionResponse,
     LoginResponse,
+    AuthenticatedUserProfile,
+    GroupInfo,
+    GroupMember,
+    CreateGroupRequest,
+    AddGroupMemberRequest,
+    VaultShareList,
+    ShareVaultWithUserRequest,
+    ShareVaultWithGroupRequest,
+    AdminUser,
+    CreateUserRequest,
+    CreateUserResponse,
+    ChangePasswordRequest,
 } from './types';
 import { useAuthStore } from '@/stores/auth';
 
@@ -298,3 +310,90 @@ export const apiRefreshToken = (refreshToken: string): Promise<LoginResponse> =>
 
 export const apiLogout = (): Promise<void> =>
     request('/api/auth/logout', { method: 'POST' });
+
+export const apiMe = (): Promise<AuthenticatedUserProfile> =>
+    request('/api/auth/me');
+
+export const apiChangePassword = (data: ChangePasswordRequest): Promise<{ success: boolean }> =>
+    request('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+
+export const apiListUsers = (): Promise<AdminUser[]> =>
+    request('/api/admin/users');
+
+export const apiCreateUser = (data: CreateUserRequest): Promise<CreateUserResponse> =>
+    request('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+// ── Groups ───────────────────────────────────────────────────────────────────
+
+export const apiListGroups = (): Promise<GroupInfo[]> =>
+    request('/api/groups');
+
+export const apiCreateGroup = (data: CreateGroupRequest): Promise<GroupInfo> =>
+    request('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const apiListGroupMembers = (groupId: string): Promise<GroupMember[]> =>
+    request(`/api/groups/${groupId}/members`);
+
+export const apiAddGroupMember = (
+    groupId: string,
+    data: AddGroupMemberRequest,
+): Promise<GroupMember[]> =>
+    request(`/api/groups/${groupId}/members`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const apiRemoveGroupMember = (groupId: string, userId: string): Promise<void> =>
+    request(`/api/groups/${groupId}/members/${userId}`, {
+        method: 'DELETE',
+    });
+
+// ── Vault sharing ────────────────────────────────────────────────────────────
+
+export const apiListVaultShares = (vaultId: string): Promise<VaultShareList> =>
+    request(`/api/vaults/${vaultId}/shares`);
+
+export const apiShareVaultWithUser = (
+    vaultId: string,
+    data: ShareVaultWithUserRequest,
+): Promise<VaultShareList> =>
+    request(`/api/vaults/${vaultId}/shares/users`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const apiShareVaultWithGroup = (
+    vaultId: string,
+    data: ShareVaultWithGroupRequest,
+): Promise<VaultShareList> =>
+    request(`/api/vaults/${vaultId}/shares/groups`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const apiRevokeVaultUserShare = (
+    vaultId: string,
+    userId: string,
+): Promise<VaultShareList> =>
+    request(`/api/vaults/${vaultId}/shares/users/${userId}`, {
+        method: 'DELETE',
+    });
+
+export const apiRevokeVaultGroupShare = (
+    vaultId: string,
+    groupId: string,
+): Promise<VaultShareList> =>
+    request(`/api/vaults/${vaultId}/shares/groups/${groupId}`, {
+        method: 'DELETE',
+    });

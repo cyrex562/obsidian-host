@@ -16,6 +16,8 @@ pub struct AppConfig {
     pub sync: SyncConfig,
     #[serde(default)]
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,9 @@ pub struct DatabaseConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultConfig {
+    #[serde(default = "default_vault_base_dir")]
+    pub base_dir: String,
+
     #[serde(default = "default_exclusions")]
     pub index_exclusions: Vec<String>,
 }
@@ -43,6 +48,8 @@ pub struct VaultConfig {
 pub struct AuthConfig {
     #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
+    #[serde(default = "default_auth_provider")]
+    pub provider: String,
     #[serde(default = "default_jwt_secret")]
     pub jwt_secret: String,
     #[serde(default = "default_access_token_ttl")]
@@ -67,6 +74,30 @@ pub struct CorsConfig {
     pub allowed_origins: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageConfig {
+    #[serde(default = "default_storage_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub s3: S3StorageConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct S3StorageConfig {
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub bucket: Option<String>,
+    #[serde(default)]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub access_key: Option<String>,
+    #[serde(default)]
+    pub secret_key: Option<String>,
+    #[serde(default = "default_s3_path_style")]
+    pub path_style: bool,
+}
+
 fn default_host() -> String {
     "127.0.0.1".to_string()
 }
@@ -88,12 +119,20 @@ fn default_exclusions() -> Vec<String> {
     ]
 }
 
+fn default_vault_base_dir() -> String {
+    "./vaults".to_string()
+}
+
 fn default_auth_enabled() -> bool {
     false
 }
 
 fn default_jwt_secret() -> String {
     "".to_string()
+}
+
+fn default_auth_provider() -> String {
+    "password".to_string()
 }
 
 fn default_access_token_ttl() -> u64 {
@@ -112,6 +151,14 @@ fn default_cors_allowed_origins() -> Vec<String> {
     vec!["http://localhost:5173".to_string()]
 }
 
+fn default_storage_backend() -> String {
+    "local".to_string()
+}
+
+fn default_s3_path_style() -> bool {
+    true
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -123,10 +170,12 @@ impl Default for AppConfig {
                 path: default_db_path(),
             },
             vault: VaultConfig {
+                base_dir: default_vault_base_dir(),
                 index_exclusions: default_exclusions(),
             },
             auth: AuthConfig {
                 enabled: default_auth_enabled(),
+                provider: default_auth_provider(),
                 jwt_secret: default_jwt_secret(),
                 access_token_ttl: default_access_token_ttl(),
                 refresh_token_ttl: default_refresh_token_ttl(),
@@ -138,6 +187,10 @@ impl Default for AppConfig {
             },
             cors: CorsConfig {
                 allowed_origins: default_cors_allowed_origins(),
+            },
+            storage: StorageConfig {
+                backend: default_storage_backend(),
+                s3: S3StorageConfig::default(),
             },
         }
     }
@@ -163,6 +216,7 @@ impl Default for DatabaseConfig {
 impl Default for VaultConfig {
     fn default() -> Self {
         Self {
+            base_dir: default_vault_base_dir(),
             index_exclusions: default_exclusions(),
         }
     }
@@ -172,6 +226,7 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             enabled: default_auth_enabled(),
+            provider: default_auth_provider(),
             jwt_secret: default_jwt_secret(),
             access_token_ttl: default_access_token_ttl(),
             refresh_token_ttl: default_refresh_token_ttl(),
@@ -193,6 +248,15 @@ impl Default for CorsConfig {
     fn default() -> Self {
         Self {
             allowed_origins: default_cors_allowed_origins(),
+        }
+    }
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_storage_backend(),
+            s3: S3StorageConfig::default(),
         }
     }
 }
@@ -226,7 +290,9 @@ mod tests {
         assert_eq!(config.server.port, 8080);
         assert_eq!(config.database.path, "./obsidian-host.db");
         assert!(config.vault.index_exclusions.contains(&".git".to_string()));
+        assert_eq!(config.vault.base_dir, "./vaults");
         assert!(!config.auth.enabled);
+        assert_eq!(config.auth.provider, "password");
         assert_eq!(config.auth.access_token_ttl, 3600);
         assert_eq!(config.auth.refresh_token_ttl, 604800);
         assert_eq!(config.sync.change_log_retention_days, 7);
@@ -234,6 +300,7 @@ mod tests {
             config.cors.allowed_origins,
             vec!["http://localhost:5173".to_string()]
         );
+        assert_eq!(config.storage.backend, "local");
     }
 
     #[test]

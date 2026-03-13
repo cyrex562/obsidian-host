@@ -12,7 +12,7 @@ export interface Vault {
 
 export interface CreateVaultRequest {
     name: string;
-    path: string;
+    path?: string;
 }
 
 export interface FileNode {
@@ -108,6 +108,88 @@ export interface LoginResponse {
     access_token: string;
     refresh_token: string;
     expires_in: number; // seconds
+}
+
+export type VaultRole = 'owner' | 'editor' | 'viewer';
+
+export interface GroupInfo {
+    id: string;
+    name: string;
+    created_at: string;
+}
+
+export interface GroupMember {
+    user_id: string;
+    username: string;
+}
+
+export interface AuthenticatedUserProfile {
+    id: string;
+    username: string;
+    is_admin: boolean;
+    must_change_password: boolean;
+    groups: GroupInfo[];
+    auth_method: string;
+}
+
+export interface AdminUser {
+    id: string;
+    username: string;
+    is_admin: boolean;
+    must_change_password: boolean;
+    created_at: string;
+}
+
+export interface CreateUserRequest {
+    username: string;
+    temporary_password?: string;
+    is_admin?: boolean;
+}
+
+export interface CreateUserResponse {
+    id: string;
+    username: string;
+    temporary_password: string;
+    is_admin: boolean;
+    must_change_password: boolean;
+}
+
+export interface ChangePasswordRequest {
+    current_password: string;
+    new_password: string;
+}
+
+export interface CreateGroupRequest {
+    name: string;
+}
+
+export interface AddGroupMemberRequest {
+    user_id?: string;
+    username?: string;
+}
+
+export interface ShareVaultWithUserRequest {
+    user_id?: string;
+    username?: string;
+    role: VaultRole;
+}
+
+export interface ShareVaultWithGroupRequest {
+    group_id: string;
+    role: VaultRole;
+}
+
+export interface VaultShareEntry {
+    principal_type: string;
+    principal_id: string;
+    principal_name: string;
+    role: VaultRole;
+}
+
+export interface VaultShareList {
+    owner_user_id?: string;
+    user_shares: VaultShareEntry[];
+    group_shares: VaultShareEntry[];
 }
 
 // WebSocket message envelope (Phase F formal type, used here for frontend)

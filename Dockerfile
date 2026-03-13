@@ -4,7 +4,7 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
-RUN npm run build:simple
+RUN npm run build
 
 # Stage 2: Build Backend
 FROM rust:1.84-slim-bullseye AS backend-builder
@@ -12,8 +12,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y pkg-config libssl-dev gcc
 COPY . .
 # Copy built frontend assets from stage 1 to the location expected by rust-embed
-# The rust-embed macro looks at "frontend/public/" relative to Cargo.toml
-COPY --from=frontend-builder /app/frontend/public ./frontend/public
+# The rust-embed macro looks at "target/frontend/" relative to crates/obsidian-server.
+COPY --from=frontend-builder /app/target/frontend ./target/frontend
 
 # Build release binary
 # We use --release and --locked to ensure reproducible builds

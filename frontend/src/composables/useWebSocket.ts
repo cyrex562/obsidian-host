@@ -3,8 +3,9 @@ import type { WsMessage, FileChangeType } from '@/api/types';
 import { useFilesStore } from '@/stores/files';
 import { useTabsStore } from '@/stores/tabs';
 import { useVaultsStore } from '@/stores/vaults';
+import { useAuthStore } from '@/stores/auth';
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`;
+const WS_BASE_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 // Module-level singleton so only one WS connection exists regardless of how many
@@ -63,12 +64,33 @@ function handleMessage(event: MessageEvent) {
     }
 }
 
-function connect() {
+async function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return;
     }
 
-    ws = new WebSocket(WS_URL);
+    const authStore = useAuthStore();
+    if (!authStore.isAuthenticated) {
+        connected.value = false;
+        return;
+    }
+
+    try {
+        await authStore.ensureFresh();
+    } catch {
+        await authStore.logout();
+        connected.value = false;
+        return;
+    }
+
+    if (!authStore.accessToken) {
+        connected.value = false;
+        return;
+    }
+
+    const wsUrl = new URL(WS_BASE_URL);
+    wsUrl.searchParams.set('access_token', authStore.accessToken);
+    ws = new WebSocket(wsUrl.toString());
 
     ws.addEventListener('open', () => {
         connected.value = true;
@@ -80,9 +102,15 @@ function connect() {
     ws.addEventListener('close', () => {
         connected.value = false;
         ws = null;
+        const authStore = useAuthStore();
+        if (!authStore.isAuthenticated) {
+            return;
+        }
         const delay = getReconnectDelay();
         reconnectAttempts++;
-        reconnectTimer = setTimeout(connect, delay);
+        reconnectTimer = setTimeout(() => {
+            void connect();
+        }, delay);
     });
 
     ws.addEventListener('error', () => {
@@ -102,7 +130,7 @@ function disconnect() {
 
 export function useWebSocket() {
     // Start the connection if not already running
-    connect();
+    void connect();
 
     // Cleanup when the last consumer unmounts is not straightforward with a singleton,
     // so we intentionally keep the connection alive for the app lifetime.

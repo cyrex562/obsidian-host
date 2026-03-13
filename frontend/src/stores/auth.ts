@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { apiLogin, apiRefreshToken, apiLogout } from '@/api/client';
-import type { LoginResponse } from '@/api/types';
+import { apiLogin, apiRefreshToken, apiLogout, apiMe, apiChangePassword } from '@/api/client';
+import type { LoginResponse, AuthenticatedUserProfile } from '@/api/types';
 
 const ACCESS_TOKEN_KEY = 'obsidian_access_token';
 const REFRESH_TOKEN_KEY = 'obsidian_refresh_token';
@@ -11,9 +11,13 @@ export const useAuthStore = defineStore('auth', () => {
     const accessToken = ref<string | null>(localStorage.getItem(ACCESS_TOKEN_KEY));
     const refreshToken = ref<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY));
     const expiresAt = ref<number>(parseInt(localStorage.getItem(EXPIRES_AT_KEY) ?? '0', 10));
+    const profile = ref<AuthenticatedUserProfile | null>(null);
+    const loadingProfile = ref(false);
 
     const isAuthenticated = computed(() => !!accessToken.value);
     const isExpired = computed(() => Date.now() > expiresAt.value - 60_000); // 60s margin
+    const isAdmin = computed(() => !!profile.value?.is_admin);
+    const mustChangePassword = computed(() => !!profile.value?.must_change_password);
 
     function _applyTokens(resp: LoginResponse) {
         accessToken.value = resp.access_token;
@@ -27,6 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
     async function login(username: string, password: string) {
         const resp = await apiLogin(username, password);
         _applyTokens(resp);
+        await loadProfile(true);
     }
 
     async function refresh() {
@@ -40,9 +45,26 @@ export const useAuthStore = defineStore('auth', () => {
         accessToken.value = null;
         refreshToken.value = null;
         expiresAt.value = 0;
+        profile.value = null;
         localStorage.removeItem(ACCESS_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(EXPIRES_AT_KEY);
+    }
+
+    async function loadProfile(force = false) {
+        if (!accessToken.value) {
+            profile.value = null;
+            return null;
+        }
+        if (!force && profile.value) return profile.value;
+
+        loadingProfile.value = true;
+        try {
+            profile.value = await apiMe();
+            return profile.value;
+        } finally {
+            loadingProfile.value = false;
+        }
     }
 
     // Call before any authenticated request to ensure the token is still valid.
@@ -52,5 +74,29 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    return { accessToken, refreshToken, expiresAt, isAuthenticated, isExpired, login, refresh, logout, ensureFresh };
+    async function changePassword(currentPassword: string, newPassword: string) {
+        await apiChangePassword({
+            current_password: currentPassword,
+            new_password: newPassword,
+        });
+        await loadProfile(true);
+    }
+
+    return {
+        accessToken,
+        refreshToken,
+        expiresAt,
+        profile,
+        loadingProfile,
+        isAuthenticated,
+        isExpired,
+        isAdmin,
+        mustChangePassword,
+        login,
+        refresh,
+        logout,
+        ensureFresh,
+        loadProfile,
+        changePassword,
+    };
 });

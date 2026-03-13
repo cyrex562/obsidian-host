@@ -1,16 +1,31 @@
 use crate::config::AppConfig;
+use crate::routes::AppState;
 use actix_web::body::{EitherBody, MessageBody};
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    http::header,
+    http::{header, Method},
     Error, HttpMessage, HttpResponse,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct UserId(pub String);
+
+#[derive(Debug, Clone)]
+pub struct AuthenticatedUser {
+    pub user_id: String,
+    pub username: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequiredVaultRole {
+    Read,
+    Write,
+    Manage,
+}
 
 pub struct AuthMiddleware;
 
@@ -26,12 +41,14 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(AuthMiddlewareService { service }))
+        ready(Ok(AuthMiddlewareService {
+            service: Rc::new(service),
+        }))
     }
 }
 
 pub struct AuthMiddlewareService<S> {
-    service: S,
+    service: Rc<S>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,9 +73,10 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let should_skip = should_skip_auth(&req);
+        let service = Rc::clone(&self.service);
 
         if should_skip {
-            let fut = self.service.call(req);
+            let fut = service.call(req);
             return Box::pin(async move { Ok(fut.await?.map_into_left_body()) });
         }
 
@@ -68,11 +86,11 @@ where
             .unwrap_or_default();
 
         if !app_cfg.auth.enabled {
-            let fut = self.service.call(req);
+            let fut = service.call(req);
             return Box::pin(async move { Ok(fut.await?.map_into_left_body()) });
         }
 
-        let bearer = match extract_bearer(req.headers().get(header::AUTHORIZATION)) {
+        let bearer = match extract_access_token(&req) {
             Some(token) => token,
             None => {
                 let response = HttpResponse::Unauthorized().json(serde_json::json!({
@@ -87,7 +105,7 @@ where
 
         let secret = effective_jwt_secret(&app_cfg);
         let claims = match decode::<Claims>(
-            bearer,
+            &bearer,
             &DecodingKey::from_secret(secret.as_bytes()),
             &Validation::default(),
         ) {
@@ -111,9 +129,77 @@ where
             return Box::pin(async move { Ok(req.into_response(response).map_into_right_body()) });
         }
 
-        req.extensions_mut().insert(UserId(claims.sub));
-        let fut = self.service.call(req);
-        Box::pin(async move { Ok(fut.await?.map_into_left_body()) })
+        let user = AuthenticatedUser {
+            user_id: claims.sub.clone(),
+            username: claims.username.clone(),
+        };
+
+        let state = req.app_data::<actix_web::web::Data<AppState>>().cloned();
+        let required_vault_role = required_vault_role(&req);
+
+        Box::pin(async move {
+            let req = req;
+
+            if let Some(state) = state.as_ref() {
+                if !is_password_change_exempt_path(req.path()) {
+                    match state.db.user_must_change_password(&user.user_id).await {
+                        Ok(true) => {
+                            let response = HttpResponse::Forbidden().json(serde_json::json!({
+                                "error": "PASSWORD_CHANGE_REQUIRED",
+                                "message": "You must change your temporary password before continuing"
+                            }));
+                            return Ok(req.into_response(response).map_into_right_body());
+                        }
+                        Ok(false) => {}
+                        Err(_) => {
+                            let response = HttpResponse::InternalServerError().json(serde_json::json!({
+                                "error": "INTERNAL_ERROR",
+                                "message": "Failed to validate password policy"
+                            }));
+                            return Ok(req.into_response(response).map_into_right_body());
+                        }
+                    }
+                }
+            }
+
+            if let (Some((vault_id, required_role)), Some(state)) = (required_vault_role, state) {
+                let user_role = state
+                    .db
+                    .get_vault_role_for_user(&vault_id, &user.user_id)
+                    .await;
+                match user_role {
+                    Ok(Some(role)) if role_allows(&role, required_role) => {}
+                    Ok(Some(_)) | Ok(None) => {
+                        let vault_exists = state.db.get_vault(&vault_id).await.is_ok();
+                        let response = if vault_exists {
+                            HttpResponse::Forbidden().json(serde_json::json!({
+                                "error": "FORBIDDEN",
+                                "message": "You do not have access to this vault"
+                            }))
+                        } else {
+                            HttpResponse::NotFound().json(serde_json::json!({
+                                "error": "NOT_FOUND",
+                                "message": "Vault not found"
+                            }))
+                        };
+                        return Ok(req.into_response(response).map_into_right_body());
+                    }
+                    Err(_) => {
+                        let response =
+                            HttpResponse::InternalServerError().json(serde_json::json!({
+                                "error": "INTERNAL_ERROR",
+                                "message": "Failed to authorize vault access"
+                            }));
+                        return Ok(req.into_response(response).map_into_right_body());
+                    }
+                }
+            }
+
+            req.extensions_mut().insert(UserId(user.user_id.clone()));
+            req.extensions_mut().insert(user);
+            let fut = service.call(req);
+            Ok(fut.await?.map_into_left_body())
+        })
     }
 }
 
@@ -124,7 +210,7 @@ fn should_skip_auth(req: &ServiceRequest) -> bool {
         return true;
     }
 
-    if path.starts_with("/api/auth/") {
+    if path == "/api/auth/login" || path == "/api/auth/refresh" {
         return true;
     }
 
@@ -150,10 +236,83 @@ fn extract_bearer(auth_header: Option<&header::HeaderValue>) -> Option<&str> {
     raw.strip_prefix("Bearer ")
 }
 
+fn extract_access_token(req: &ServiceRequest) -> Option<String> {
+    if let Some(token) = extract_bearer(req.headers().get(header::AUTHORIZATION)) {
+        return Some(token.to_string());
+    }
+
+    if req.path() == "/api/ws" {
+        for pair in req.query_string().split('&') {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next().unwrap_or_default();
+            let value = parts.next().unwrap_or_default();
+            if key == "access_token" && !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 fn effective_jwt_secret(app_cfg: &AppConfig) -> String {
     if app_cfg.auth.jwt_secret.trim().is_empty() {
         crate::config::DEFAULT_DEV_JWT_SECRET.to_string()
     } else {
         app_cfg.auth.jwt_secret.clone()
     }
+}
+
+fn required_vault_role(req: &ServiceRequest) -> Option<(String, RequiredVaultRole)> {
+    let segments: Vec<&str> = req
+        .path()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.len() < 3 || segments[0] != "api" || segments[1] != "vaults" {
+        return None;
+    }
+
+    let vault_id = segments[2].to_string();
+    let tail = &segments[3..];
+    let method = req.method();
+
+    let required = if tail.first() == Some(&"shares") {
+        RequiredVaultRole::Manage
+    } else if tail.is_empty() {
+        match *method {
+            Method::GET | Method::HEAD => RequiredVaultRole::Read,
+            Method::DELETE => RequiredVaultRole::Manage,
+            _ => RequiredVaultRole::Write,
+        }
+    } else if *method == Method::GET || *method == Method::HEAD {
+        RequiredVaultRole::Read
+    } else if *method == Method::POST {
+        match tail[0] {
+            "render" | "resolve-link" | "resolve-links" | "download-zip" => RequiredVaultRole::Read,
+            _ => RequiredVaultRole::Write,
+        }
+    } else {
+        RequiredVaultRole::Write
+    };
+
+    Some((vault_id, required))
+}
+
+fn role_allows(role: &crate::models::VaultRole, required: RequiredVaultRole) -> bool {
+    match required {
+        RequiredVaultRole::Read => true,
+        RequiredVaultRole::Write => matches!(
+            role,
+            crate::models::VaultRole::Owner | crate::models::VaultRole::Editor
+        ),
+        RequiredVaultRole::Manage => matches!(role, crate::models::VaultRole::Owner),
+    }
+}
+
+fn is_password_change_exempt_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/auth/me" | "/api/auth/logout" | "/api/auth/change-password"
+    )
 }

@@ -1,39 +1,51 @@
 # Plugin Management UI Implementation Guide
 
 ## Overview
+
 The Plugin Management UI provides a comprehensive interface for managing plugins in Obsidian Host.
 
 ## Components Added
 
-### 1. HTML Structure (`frontend/public/index.html`)
+### 1. HTML Structure (`frontend/index.html`)
+
+> Note: this document originally referenced the pre-Vite static entry at `frontend/public/index.html`.
+> Current frontend entrypoint is `frontend/index.html`, with UI rendered by Vue components under `frontend/src/`.
 
 **Plugin Manager Modal**:
+
 - Three tabs: Installed, Browse, Settings
 - Plugin list with status badges
 - Plugin details modal
 - Search and category filtering
 
 **Plugin Manager Button**:
+
 - Added to top bar (🧩 icon)
 - Opens plugin manager modal
 
-### 2. CSS Styles (`frontend/public/styles/main.css`)
+### 2. CSS Styles (`frontend/src/App.vue` and component-scoped styles)
+
+> Note: legacy stylesheet path `frontend/public/styles/main.css` was removed during the Vue/Vite port.
 
 **Plugin Tabs**:
+
 - Tab navigation with active states
 - Smooth transitions
 
 **Plugin List**:
+
 - Card-based layout
 - State badges (loaded, failed, disabled, unloaded)
 - Hover effects
 
 **Plugin Details**:
+
 - Capability and hook badges
 - Error display
 - Action buttons (Enable/Disable, Settings, Reload)
 
 **Plugin Settings**:
+
 - Form inputs with validation
 - Toggle switches
 - Description text
@@ -198,9 +210,11 @@ setupPluginManager() {
 ## Backend API Endpoints Needed
 
 ### GET /api/plugins
+
 Returns list of all plugins with their status.
 
 **Response**:
+
 ```json
 [
   {
@@ -223,18 +237,23 @@ Returns list of all plugins with their status.
 ```
 
 ### GET /api/plugins/{plugin_id}
+
 Returns detailed information about a specific plugin.
 
 ### POST /api/plugins/{plugin_id}/toggle
+
 Enables or disables a plugin.
 
 ### POST /api/plugins/{plugin_id}/reload
+
 Reloads a plugin.
 
 ### PUT /api/plugins/{plugin_id}/config
+
 Updates plugin configuration.
 
 **Request Body**:
+
 ```json
 {
   "config": {

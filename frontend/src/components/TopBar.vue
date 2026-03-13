@@ -41,15 +41,50 @@
         title="Theme"
         @click="toggleTheme"
       />
+
+      <v-menu>
+        <template #activator="{ props }">
+          <v-btn
+            v-bind="props"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-account-circle-outline"
+          >
+            {{ username }}
+          </v-btn>
+        </template>
+
+        <v-list density="compact" min-width="220">
+          <v-list-item
+            prepend-icon="mdi-lock-reset"
+            title="Change password"
+            @click="goToChangePassword"
+          />
+          <v-list-item
+            v-if="authStore.isAdmin"
+            prepend-icon="mdi-account-multiple-plus-outline"
+            title="Manage users"
+            @click="goToAdminUsers"
+          />
+          <v-divider class="my-1" />
+          <v-list-item
+            prepend-icon="mdi-logout"
+            title="Sign out"
+            @click="signOut"
+          />
+        </v-list>
+      </v-menu>
     </template>
   </v-app-bar>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useVaultsStore } from '@/stores/vaults';
 import { usePreferencesStore } from '@/stores/preferences';
 import { useTabsStore } from '@/stores/tabs';
+import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/composables/useWebSocket';
 
 const emit = defineEmits<{
@@ -60,13 +95,30 @@ const emit = defineEmits<{
 const vaultsStore = useVaultsStore();
 const prefsStore = usePreferencesStore();
 const tabsStore = useTabsStore();
+const authStore = useAuthStore();
+const router = useRouter();
 const { connected } = useWebSocket();
 
 const dirtyCount = computed(() => tabsStore.dirtyTabs.length);
 const wsConnected = computed(() => connected.value);
+const username = computed(() => authStore.profile?.username ?? 'Account');
 
 function toggleTheme() {
   prefsStore.set('theme', prefsStore.prefs.theme === 'dark' ? 'light' : 'dark');
   prefsStore.save();
 }
+
+function goToChangePassword() {
+  void router.push('/change-password');
+}
+
+function goToAdminUsers() {
+  void router.push('/admin/users');
+}
+
+async function signOut() {
+  await authStore.logout();
+  await router.replace('/login');
+}
 </script>
+

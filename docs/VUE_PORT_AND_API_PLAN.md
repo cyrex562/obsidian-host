@@ -38,7 +38,7 @@
 - [x] **Step 4**: Update `src/assets.rs`:
 
   ```rust
-  // Change from:
+  // Change from (legacy):
   #[folder = "frontend/public/"]
   // To:
   #[folder = "target/frontend/"]
@@ -47,7 +47,7 @@
 - [x] **Step 5**: Update `src/main.rs` debug-mode static serve path:
 
   ```rust
-  // Change from:
+  // Change from (legacy):
   fs::Files::new("/", "./frontend/public").index_file("index.html")
   // To:
   fs::Files::new("/", "./target/frontend").index_file("index.html")
@@ -187,7 +187,7 @@
   - `components/modals/TemplateSelector.vue`
   - `components/modals/ConflictResolver.vue` — diff view for write conflicts
 
-- [x] **Step 29**: Port styles from `frontend/public/styles/main.css`:
+- [x] **Step 29**: Port styles from the legacy `frontend/public/styles/main.css` into Vue/Vuetify component styles:
   - Map CSS custom properties (`--background-primary`, `--text-normal`, etc.) to Vuetify theme tokens
   - Keep Obsidian dark aesthetic
   - Use scoped `<style>` blocks in components for component-specific styles
@@ -392,7 +392,7 @@
 | `frontend/vite.config.ts` | A | Create new |
 | `frontend/tsconfig.json` | A | Update for Vite |
 | `frontend/src/app.ts` | B/C | Source of truth for port — do not delete until Phase C complete |
-| `frontend/public/styles/main.css` | C | Port to Vuetify theme tokens |
+| `frontend/src/App.vue` + `frontend/src/**/*.vue` styles | C | Vuetify theme tokens + component-scoped styling |
 | `src/assets.rs` | A | Update `#[folder]` path |
 | `src/main.rs` | A, E | Update static path; register auth middleware |
 | `src/models/mod.rs` | D | Extract types to `obsidian-types` crate |

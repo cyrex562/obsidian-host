@@ -1,20 +1,50 @@
-use crate::error::AppResult;
+use crate::config::AppConfig;
+use crate::error::{AppError, AppResult};
+use crate::middleware::AuthenticatedUser;
 use crate::models::UserPreferences;
 use crate::routes::vaults::AppState;
-use actix_web::{get, post, put, web, HttpResponse};
+use actix_web::{get, post, put, web, HttpMessage, HttpRequest, HttpResponse};
+
+fn preference_scope_user_id(req: &HttpRequest, config: &AppConfig) -> AppResult<Option<String>> {
+    if !config.auth.enabled {
+        return Ok(None);
+    }
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    Ok(Some(user.user_id))
+}
 
 #[get("/api/preferences")]
-async fn get_preferences(state: web::Data<AppState>) -> AppResult<HttpResponse> {
-    let prefs = state.db.get_preferences().await?;
+async fn get_preferences(
+    state: web::Data<AppState>,
+    config: web::Data<AppConfig>,
+    req: HttpRequest,
+) -> AppResult<HttpResponse> {
+    let scope_user_id = preference_scope_user_id(&req, config.get_ref())?;
+    let prefs = state
+        .db
+        .get_preferences_for_user(scope_user_id.as_deref())
+        .await?;
     Ok(HttpResponse::Ok().json(prefs))
 }
 
 #[put("/api/preferences")]
 async fn update_preferences(
     state: web::Data<AppState>,
+    config: web::Data<AppConfig>,
+    req: HttpRequest,
     prefs: web::Json<UserPreferences>,
 ) -> AppResult<HttpResponse> {
-    state.db.update_preferences(&prefs).await?;
+    let scope_user_id = preference_scope_user_id(&req, config.get_ref())?;
+    state
+        .db
+        .update_preferences_for_user(scope_user_id.as_deref(), &prefs)
+        .await?;
     Ok(HttpResponse::Ok().json(&*prefs))
 }
 
@@ -44,9 +74,17 @@ async fn record_recent_file(
 }
 
 #[post("/api/preferences/reset")]
-async fn reset_preferences(state: web::Data<AppState>) -> AppResult<HttpResponse> {
+async fn reset_preferences(
+    state: web::Data<AppState>,
+    config: web::Data<AppConfig>,
+    req: HttpRequest,
+) -> AppResult<HttpResponse> {
+    let scope_user_id = preference_scope_user_id(&req, config.get_ref())?;
     let default = UserPreferences::default();
-    state.db.update_preferences(&default).await?;
+    state
+        .db
+        .update_preferences_for_user(scope_user_id.as_deref(), &default)
+        .await?;
     Ok(HttpResponse::Ok().json(default))
 }
 

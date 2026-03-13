@@ -5,7 +5,10 @@ import argparse
 import hashlib
 import json
 import platform
+import re
+import secrets
 import shutil
+import string
 import subprocess
 import tarfile
 import tempfile
@@ -102,10 +105,13 @@ class DeployResult:
     release_uploaded: bool
     release_activated: bool
     config_created: bool
+    config_updated: bool
     unit_updated: bool
     service_restarted: bool
     service_enabled: bool
     healthcheck_ok: bool
+    generated_admin_username: str | None = None
+    generated_admin_password: str | None = None
 
 
 @dataclass
@@ -226,6 +232,28 @@ def ensure_tool_exists(tool_name: str) -> None:
         raise DeployError(f"Required tool '{tool_name}' was not found on PATH")
 
 
+def ensure_docker_daemon_ready() -> None:
+    ensure_tool_exists("docker")
+    try:
+        run_command(
+            [
+                "docker",
+                "version",
+                "-f",
+                "{{ .Server.Os }},,,{{ .Server.Arch }}",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+        )
+    except DeployError as error:
+        raise DeployError(
+            "Docker is installed but the daemon is not reachable. "
+            "Start Docker Desktop (Linux engine) and retry local builds, "
+            "or use --remote-build to compile on the target VM. "
+            f"Details: {error}"
+        ) from error
+
+
 def build_frontend() -> None:
     ensure_tool_exists("npm")
     section("Building frontend")
@@ -235,6 +263,11 @@ def build_frontend() -> None:
     if not FRONTEND_BUILD_OUTPUT.exists():
         raise DeployError(
             f"Expected frontend build output missing: {FRONTEND_BUILD_OUTPUT}"
+        )
+    if not (FRONTEND_BUILD_OUTPUT / "index.html").exists():
+        raise DeployError(
+            "Frontend build output is incomplete: "
+            f"{FRONTEND_BUILD_OUTPUT / 'index.html'} is missing"
         )
     success(f"Frontend built into {FRONTEND_BUILD_OUTPUT}")
 
@@ -273,6 +306,11 @@ def create_source_archive(archive_path: Path) -> None:
 
 def build_server_release(target_triple: str = LINUX_SERVER_TARGET) -> Path:
     section("Building embedded backend")
+
+    # Force a rebuild of obsidian-server so freshly built frontend assets in
+    # target/frontend are always re-embedded into the release binary.
+    run_command(["cargo", "clean", "-p", "obsidian-server"], cwd=REPO_ROOT)
+
     if platform.system().lower() == "linux" and target_triple == LINUX_SERVER_TARGET:
         run_command(
             ["cargo", "build", "--release", "-p", "obsidian-server"], cwd=REPO_ROOT
@@ -280,6 +318,7 @@ def build_server_release(target_triple: str = LINUX_SERVER_TARGET) -> Path:
         binary = REPO_ROOT / "target" / "release" / "obsidian-host"
     else:
         ensure_tool_exists("cross")
+        ensure_docker_daemon_ready()
         run_command(
             [
                 "cross",
@@ -396,7 +435,11 @@ def build_supporting_crates() -> None:
 
 
 def render_remote_config(
-    target: DeploymentTarget, source_config: Path = CONFIG_TEMPLATE
+    target: DeploymentTarget,
+    source_config: Path = CONFIG_TEMPLATE,
+    *,
+    bootstrap_admin_username: str | None = None,
+    bootstrap_admin_password: str | None = None,
 ) -> str:
     lines = source_config.read_text(encoding="utf-8").splitlines()
     rendered: list[str] = []
@@ -414,9 +457,103 @@ def render_remote_config(
             rendered.append(f"port = {target.http_port}")
         elif current_section == "database" and stripped.startswith("path ="):
             rendered.append('path = "./obsidian-host.db"')
+        elif current_section == "auth" and stripped.startswith("enabled ="):
+            rendered.append("enabled = true")
+        elif (
+            current_section == "auth"
+            and stripped.startswith("bootstrap_admin_username =")
+            and bootstrap_admin_username is not None
+        ):
+            rendered.append(f'bootstrap_admin_username = "{bootstrap_admin_username}"')
+        elif (
+            current_section == "auth"
+            and stripped.startswith("bootstrap_admin_password =")
+            and bootstrap_admin_password is not None
+        ):
+            rendered.append(f'bootstrap_admin_password = "{bootstrap_admin_password}"')
         else:
             rendered.append(line)
     return "\n".join(rendered).strip() + "\n"
+
+
+def generate_bootstrap_admin_credentials() -> tuple[str, str]:
+    username = f"admin-{secrets.token_hex(4)}"
+    alphabet = string.ascii_letters + string.digits + "-_."
+    password = "".join(secrets.choice(alphabet) for _ in range(28))
+    return username, password
+
+
+def ensure_bootstrap_credentials_in_config(
+    config_text: str,
+) -> tuple[str, bool, str | None, str | None]:
+    lines = config_text.splitlines()
+    current_section = ""
+    username_pattern = re.compile(
+        r'^\s*bootstrap_admin_username\s*=\s*"(?P<value>[^"]*)"\s*(?:#.*)?$'
+    )
+    password_pattern = re.compile(
+        r'^\s*bootstrap_admin_password\s*=\s*"(?P<value>[^"]*)"\s*(?:#.*)?$'
+    )
+    enabled_pattern = re.compile(r"^\s*enabled\s*=\s*(true|false)\s*(?:#.*)?$")
+
+    username_index: int | None = None
+    password_index: int | None = None
+    enabled_index: int | None = None
+    existing_username: str | None = None
+    existing_password: str | None = None
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            current_section = stripped.strip("[]")
+            continue
+        if current_section != "auth":
+            continue
+
+        username_match = username_pattern.match(line)
+        if username_match:
+            username_index = index
+            existing_username = username_match.group("value")
+            continue
+
+        password_match = password_pattern.match(line)
+        if password_match:
+            password_index = index
+            existing_password = password_match.group("value")
+            continue
+
+        if enabled_pattern.match(line):
+            enabled_index = index
+
+    if username_index is None or password_index is None:
+        return config_text, False, None, None
+
+    generated_username: str | None = None
+    generated_password: str | None = None
+
+    if not existing_username:
+        generated_username, _ = generate_bootstrap_admin_credentials()
+    if not existing_password:
+        _, generated_password = generate_bootstrap_admin_credentials()
+
+    if generated_username is None and generated_password is None:
+        return config_text, False, None, None
+
+    final_username = existing_username or generated_username
+    final_password = existing_password or generated_password
+    if final_username is None or final_password is None:
+        return config_text, False, None, None
+
+    lines[username_index] = f'bootstrap_admin_username = "{final_username}"'
+    lines[password_index] = f'bootstrap_admin_password = "{final_password}"'
+    if enabled_index is not None:
+        lines[enabled_index] = "enabled = true"
+
+    updated = "\n".join(lines)
+    if config_text.endswith("\n"):
+        updated += "\n"
+
+    return updated, True, generated_username, generated_password
 
 
 def render_systemd_unit(target: DeploymentTarget) -> str:
@@ -683,13 +820,64 @@ def upload_release_if_needed(
     return True
 
 
-def ensure_remote_config(target: DeploymentTarget) -> bool:
+def ensure_remote_config(
+    target: DeploymentTarget,
+) -> tuple[bool, bool, str | None, str | None]:
     if remote_path_exists(target, target.remote_config_path):
-        info(f"Remote config exists at {target.remote_config_path}; preserving it")
-        return False
+        result = ssh_command(
+            target,
+            f"cat {shell_quote(target.remote_config_path)}",
+            capture_output=True,
+        )
+        existing_config = result.stdout
+        (
+            updated_config,
+            config_updated,
+            generated_username,
+            generated_password,
+        ) = ensure_bootstrap_credentials_in_config(existing_config)
+
+        if not config_updated:
+            info(f"Remote config exists at {target.remote_config_path}; preserving it")
+            return False, False, None, None
+
+        section("Updating remote config bootstrap admin")
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", delete=False, suffix=".toml"
+        ) as handle:
+            handle.write(updated_config)
+            temp_path = Path(handle.name)
+
+        try:
+            remote_tmp = f"{target.tmp_dir}/config.toml"
+            scp_upload(target, temp_path, remote_tmp)
+            ssh_command(
+                target,
+                " && ".join(
+                    [
+                        f"mv {shell_quote(remote_tmp)} {shell_quote(target.remote_config_path)}",
+                        f"chmod 640 {shell_quote(target.remote_config_path)}",
+                    ]
+                ),
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        success(f"Updated remote config at {target.remote_config_path}")
+        warn("Generated initial admin credentials (shown only this provisioning run):")
+        if generated_username:
+            print(f"  username: {generated_username}")
+        if generated_password:
+            print(f"  password: {generated_password}")
+        return False, True, generated_username, generated_password
 
     section("Creating remote config")
-    config_text = render_remote_config(target)
+    admin_username, admin_password = generate_bootstrap_admin_credentials()
+    config_text = render_remote_config(
+        target,
+        bootstrap_admin_username=admin_username,
+        bootstrap_admin_password=admin_password,
+    )
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", delete=False, suffix=".toml"
     ) as handle:
@@ -712,7 +900,10 @@ def ensure_remote_config(target: DeploymentTarget) -> bool:
         temp_path.unlink(missing_ok=True)
 
     success(f"Created remote config at {target.remote_config_path}")
-    return True
+    warn("Generated initial admin credentials (shown only this provisioning run):")
+    print(f"  username: {admin_username}")
+    print(f"  password: {admin_password}")
+    return True, False, admin_username, admin_password
 
 
 def ensure_systemd_unit(target: DeploymentTarget) -> bool:
@@ -819,24 +1010,32 @@ def deploy_to_target(
     ensure_tool_exists("scp")
     ensure_remote_layout(target)
     release_uploaded = upload_release_if_needed(target, artifacts)
-    config_created = ensure_remote_config(target)
+    (
+        config_created,
+        config_updated,
+        generated_admin_username,
+        generated_admin_password,
+    ) = ensure_remote_config(target)
     unit_updated = ensure_systemd_unit(target)
     release_activated = activate_release(target, artifacts)
     service_enabled, service_restarted = ensure_service_state(
         target,
         unit_updated=unit_updated,
         release_activated=release_activated,
-        config_created=config_created,
+        config_created=(config_created or config_updated),
     )
     healthcheck_ok = wait_for_healthcheck(target)
     return DeployResult(
         release_uploaded=release_uploaded,
         release_activated=release_activated,
         config_created=config_created,
+        config_updated=config_updated,
         unit_updated=unit_updated,
         service_restarted=service_restarted,
         service_enabled=service_enabled,
         healthcheck_ok=healthcheck_ok,
+        generated_admin_username=generated_admin_username,
+        generated_admin_password=generated_admin_password,
     )
 
 
@@ -864,6 +1063,24 @@ def run_preflight_checks(
         local_tool_check("cargo")
         if platform.system().lower() != "linux":
             local_tool_check("cross")
+            local_tool_check("docker")
+            if shutil.which("docker") is not None:
+                try:
+                    run_command(
+                        [
+                            "docker",
+                            "version",
+                            "-f",
+                            "{{ .Server.Os }},,,{{ .Server.Arch }}",
+                        ],
+                        cwd=REPO_ROOT,
+                        capture_output=True,
+                    )
+                    add_check("local:docker-daemon", True, "reachable")
+                except DeployError as error:
+                    add_check("local:docker-daemon", False, str(error))
+            else:
+                add_check("local:docker-daemon", False, "docker not found on PATH")
 
     try:
         result = ssh_command(target, "echo preflight-ok", capture_output=True)
@@ -968,11 +1185,7 @@ def resolve_target(
 def run_interactive_menu(targets: dict[str, DeploymentTarget]) -> int:
     target = choose_target_interactively(targets)
     artifacts: BuildArtifacts | None = None
-    menu_build_strategy = (
-        BUILD_STRATEGY_REMOTE
-        if platform.system().lower() != "linux"
-        else BUILD_STRATEGY_LOCAL
-    )
+    menu_build_strategy = BUILD_STRATEGY_LOCAL
 
     while True:
         section(f"Deployment menu ({target.name})")
@@ -1024,7 +1237,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--remote-build",
         action="store_true",
-        help="Check remote-build prerequisites explicitly",
+        help="Check remote-build prerequisites explicitly instead of the default local build flow",
     )
 
     build_parser = subparsers.add_parser("build", help="Build dist artifacts")
@@ -1037,7 +1250,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     build_parser.add_argument(
         "--remote-build",
         action="store_true",
-        help="Build frontend/backend on target VM and download release binary",
+        help="Build frontend/backend on target VM instead of the default local build flow",
     )
 
     deploy_parser = subparsers.add_parser(
@@ -1052,7 +1265,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument(
         "--remote-build",
         action="store_true",
-        help="When used with --build-first, build frontend/backend on target VM",
+        help="When used with --build-first, build frontend/backend on target VM instead of locally",
     )
 
     build_deploy_parser = subparsers.add_parser(
@@ -1067,7 +1280,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     build_deploy_parser.add_argument(
         "--remote-build",
         action="store_true",
-        help="Build frontend/backend on target VM and then deploy",
+        help="Build frontend/backend on target VM and then deploy, instead of using the default local build flow",
     )
     return parser
 
@@ -1086,8 +1299,6 @@ def main(argv: list[str] | None = None) -> int:
 
     target = resolve_target(getattr(args, "target", None), targets)
     build_strategy = BUILD_STRATEGY_LOCAL
-    if platform.system().lower() != "linux":
-        build_strategy = BUILD_STRATEGY_REMOTE
     if getattr(args, "remote_build", False):
         build_strategy = BUILD_STRATEGY_REMOTE
 

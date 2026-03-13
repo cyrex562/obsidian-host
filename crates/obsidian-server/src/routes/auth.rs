@@ -1,8 +1,15 @@
 use crate::config::AppConfig;
 use crate::error::{AppError, AppResult};
+use crate::middleware::AuthenticatedUser;
+use crate::models::AuthenticatedUserProfile;
+use crate::models::ChangePasswordRequest;
 use crate::routes::vaults::AppState;
-use actix_web::{post, web, HttpResponse};
-use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
+use crate::services::authenticate_username_password;
+use actix_web::{get, post, web, HttpMessage, HttpRequest, HttpResponse};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString},
+    Argon2, PasswordVerifier,
+};
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -34,6 +41,7 @@ pub struct LogoutResponse {
 struct Claims {
     sub: String,
     username: String,
+    auth_method: String,
     token_type: String,
     exp: i64,
     iat: i64,
@@ -54,20 +62,15 @@ async fn login(
         ));
     }
 
-    let user = state
-        .db
-        .get_user_auth_by_username(username)
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;
+    let principal =
+        authenticate_username_password(&state.db, &config.auth, username, password).await?;
 
-    let parsed_hash = PasswordHash::new(&user.2)
-        .map_err(|_| AppError::Unauthorized("Invalid username or password".to_string()))?;
-
-    Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::Unauthorized("Invalid username or password".to_string()))?;
-
-    let response = issue_tokens(&user.0, &user.1, &config.auth)?;
+    let response = issue_tokens(
+        &principal.user_id,
+        &principal.username,
+        &principal.auth_method,
+        &config.auth,
+    )?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -82,7 +85,12 @@ async fn refresh_access_token(
         return Err(AppError::Unauthorized("Invalid refresh token".to_string()));
     }
 
-    let response = issue_tokens(&claims.sub, &claims.username, &config.auth)?;
+    let response = issue_tokens(
+        &claims.sub,
+        &claims.username,
+        &claims.auth_method,
+        &config.auth,
+    )?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -92,9 +100,89 @@ async fn logout() -> AppResult<HttpResponse> {
     Ok(HttpResponse::Ok().json(LogoutResponse { success: true }))
 }
 
+#[get("/api/auth/me")]
+async fn me(
+    state: web::Data<AppState>,
+    config: web::Data<AppConfig>,
+    req: HttpRequest,
+) -> AppResult<HttpResponse> {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let groups = state.db.list_groups_for_user(&user.user_id).await?;
+    let is_admin = state.db.is_user_admin(&user.user_id).await?;
+    let must_change_password = state.db.user_must_change_password(&user.user_id).await?;
+
+    Ok(HttpResponse::Ok().json(AuthenticatedUserProfile {
+        id: user.user_id,
+        username: user.username,
+        is_admin,
+        must_change_password,
+        groups,
+        auth_method: config.auth.provider.clone(),
+    }))
+}
+
+#[post("/api/auth/change-password")]
+async fn change_password(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<ChangePasswordRequest>,
+) -> AppResult<HttpResponse> {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    let current_password = body.current_password.trim();
+    let new_password = body.new_password.trim();
+
+    if current_password.is_empty() || new_password.is_empty() {
+        return Err(AppError::InvalidInput(
+            "Current password and new password are required".to_string(),
+        ));
+    }
+
+    if new_password.len() < 12 {
+        return Err(AppError::InvalidInput(
+            "New password must be at least 12 characters".to_string(),
+        ));
+    }
+
+    let auth_row = state
+        .db
+        .get_user_auth_by_id(&user.user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
+
+    let parsed_hash = PasswordHash::new(&auth_row.2)
+        .map_err(|_| AppError::Unauthorized("Invalid credentials".to_string()))?;
+    Argon2::default()
+        .verify_password(current_password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::Unauthorized("Invalid current password".to_string()))?;
+
+    let salt = SaltString::generate(&mut OsRng);
+    let new_hash = Argon2::default()
+        .hash_password(new_password.as_bytes(), &salt)
+        .map_err(|e| AppError::InternalError(format!("Failed to hash password: {e}")))?
+        .to_string();
+
+    state
+        .db
+        .set_user_password(&user.user_id, &new_hash, false)
+        .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
 fn issue_tokens(
     user_id: &str,
     username: &str,
+    auth_method: &str,
     auth_cfg: &crate::config::AuthConfig,
 ) -> AppResult<LoginResponse> {
     let secret = effective_jwt_secret(auth_cfg);
@@ -103,6 +191,7 @@ fn issue_tokens(
     let access_claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
+        auth_method: auth_method.to_string(),
         token_type: "access".to_string(),
         iat: now,
         exp: now + auth_cfg.access_token_ttl as i64,
@@ -111,6 +200,7 @@ fn issue_tokens(
     let refresh_claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
+        auth_method: auth_method.to_string(),
         token_type: "refresh".to_string(),
         iat: now,
         exp: now + auth_cfg.refresh_token_ttl as i64,
@@ -167,6 +257,8 @@ fn effective_jwt_secret(auth_cfg: &crate::config::AuthConfig) -> String {
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
+        .service(me)
+    .service(change_password)
         .service(refresh_access_token)
         .service(logout);
 }
