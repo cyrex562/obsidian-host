@@ -7,8 +7,11 @@ use thiserror::Error;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use obsidian_types::{
-    CreateFileRequest, CreateUploadSessionRequest, CreateVaultRequest, FileContent, FileNode,
-    PagedSearchResult, UpdateFileRequest, UploadSessionResponse, UserPreferences, Vault,
+    ApplyOrganizationSuggestionRequest, ApplyOrganizationSuggestionResponse, CreateFileRequest,
+    CreateUploadSessionRequest, CreateVaultRequest, FileContent, FileNode,
+    GenerateOrganizationSuggestionsRequest, GenerateOutlineRequest, NoteOutlineResponse,
+    OrganizationSuggestionsResponse, PagedSearchResult, UndoMlActionResponse, UpdateFileRequest,
+    UploadSessionResponse, UserPreferences, Vault,
 };
 
 pub type WsStream =
@@ -141,9 +144,38 @@ pub struct RenderRequest {
     pub current_file: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BacklinkEntry {
+    pub path: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagEntry {
+    pub tag: String,
+    pub count: usize,
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ClientDeployment {
+    Cloud {
+        base_url: String,
+    },
+    Standalone {
+        base_url: String,
+    },
+    Hybrid {
+        cloud_base_url: String,
+        local_base_url: String,
+        prefer_local_reads: bool,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct ObsidianClient {
     base_url: String,
+    deployment: ClientDeployment,
     inner: Client,
     auth: Arc<RwLock<AuthState>>,
 }
@@ -157,10 +189,57 @@ struct AuthState {
 
 impl ObsidianClient {
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
+        Self::for_cloud(base_url)
+    }
+
+    pub fn for_cloud(base_url: impl Into<String>) -> Self {
+        Self::from_deployment(ClientDeployment::Cloud {
             base_url: base_url.into().trim_end_matches('/').to_string(),
+        })
+    }
+
+    pub fn for_standalone(base_url: impl Into<String>) -> Self {
+        Self::from_deployment(ClientDeployment::Standalone {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+        })
+    }
+
+    pub fn for_hybrid(
+        cloud_base_url: impl Into<String>,
+        local_base_url: impl Into<String>,
+    ) -> Self {
+        Self::from_deployment(ClientDeployment::Hybrid {
+            cloud_base_url: cloud_base_url.into().trim_end_matches('/').to_string(),
+            local_base_url: local_base_url.into().trim_end_matches('/').to_string(),
+            prefer_local_reads: true,
+        })
+    }
+
+    pub fn from_deployment(deployment: ClientDeployment) -> Self {
+        let base_url = match &deployment {
+            ClientDeployment::Cloud { base_url } | ClientDeployment::Standalone { base_url } => {
+                base_url.clone()
+            }
+            ClientDeployment::Hybrid { cloud_base_url, .. } => cloud_base_url.clone(),
+        };
+
+        Self {
+            base_url,
+            deployment,
             inner: Client::new(),
             auth: Arc::new(RwLock::new(AuthState::default())),
+        }
+    }
+
+    pub fn deployment(&self) -> &ClientDeployment {
+        &self.deployment
+    }
+
+    pub fn mode_label(&self) -> &'static str {
+        match self.deployment() {
+            ClientDeployment::Cloud { .. } => "cloud",
+            ClientDeployment::Standalone { .. } => "standalone",
+            ClientDeployment::Hybrid { .. } => "hybrid",
         }
     }
 
@@ -366,6 +445,18 @@ impl ObsidianClient {
         format!("{}/api/vaults/{vault_id}/raw/{file_path}", self.base_url)
     }
 
+    pub fn preferred_local_base_url(&self) -> Option<&str> {
+        match self.deployment() {
+            ClientDeployment::Cloud { .. } => None,
+            ClientDeployment::Standalone { base_url } => Some(base_url.as_str()),
+            ClientDeployment::Hybrid {
+                local_base_url,
+                prefer_local_reads,
+                ..
+            } => prefer_local_reads.then_some(local_base_url.as_str()),
+        }
+    }
+
     pub fn thumbnail_url(
         &self,
         vault_id: &str,
@@ -394,6 +485,75 @@ impl ObsidianClient {
             .await
     }
 
+    pub async fn generate_outline(
+        &self,
+        vault_id: &str,
+        file_path: &str,
+        content: Option<&str>,
+        max_sections: Option<usize>,
+    ) -> Result<NoteOutlineResponse, ClientError> {
+        let endpoint = format!("/api/vaults/{vault_id}/ml/outline");
+        self.send_json(
+            HttpMethod::Post,
+            &endpoint,
+            Some(&GenerateOutlineRequest {
+                file_path: file_path.to_string(),
+                content: content.map(ToString::to_string),
+                max_sections,
+            }),
+        )
+        .await
+    }
+
+    pub async fn generate_suggestions(
+        &self,
+        vault_id: &str,
+        file_path: &str,
+        content: Option<&str>,
+        max_suggestions: Option<usize>,
+    ) -> Result<OrganizationSuggestionsResponse, ClientError> {
+        let endpoint = format!("/api/vaults/{vault_id}/ml/suggestions");
+        self.send_json(
+            HttpMethod::Post,
+            &endpoint,
+            Some(&GenerateOrganizationSuggestionsRequest {
+                file_path: file_path.to_string(),
+                content: content.map(ToString::to_string),
+                max_suggestions,
+            }),
+        )
+        .await
+    }
+
+    pub async fn apply_suggestion(
+        &self,
+        vault_id: &str,
+        request: &ApplyOrganizationSuggestionRequest,
+    ) -> Result<ApplyOrganizationSuggestionResponse, ClientError> {
+        let endpoint = format!("/api/vaults/{vault_id}/ml/apply-suggestion");
+        self.send_json(HttpMethod::Post, &endpoint, Some(request))
+            .await
+    }
+
+    pub async fn undo_ml_action(
+        &self,
+        vault_id: &str,
+        receipt_id: &str,
+    ) -> Result<UndoMlActionResponse, ClientError> {
+        #[derive(Serialize)]
+        struct UndoRequest<'a> {
+            receipt_id: &'a str,
+        }
+
+        let endpoint = format!("/api/vaults/{vault_id}/ml/undo");
+        self.send_json(
+            HttpMethod::Post,
+            &endpoint,
+            Some(&UndoRequest { receipt_id }),
+        )
+        .await
+    }
+
     pub async fn reindex(&self, vault_id: &str) -> Result<ReindexResponse, ClientError> {
         let endpoint = format!("/api/vaults/{vault_id}/reindex");
         self.send_json(HttpMethod::Post, &endpoint, Option::<&()>::None)
@@ -401,13 +561,15 @@ impl ObsidianClient {
     }
 
     pub async fn render_markdown(&self, content: &str) -> Result<String, ClientError> {
-        self.send_json(
+        self.send_text_with_options(
             HttpMethod::Post,
             "/api/render",
             Some(&RenderRequest {
                 content: content.to_string(),
                 current_file: None,
             }),
+            false,
+            false,
         )
         .await
     }
@@ -419,13 +581,15 @@ impl ObsidianClient {
         current_file: Option<&str>,
     ) -> Result<String, ClientError> {
         let endpoint = format!("/api/vaults/{vault_id}/render");
-        self.send_json(
+        self.send_text_with_options(
             HttpMethod::Post,
             &endpoint,
             Some(&RenderRequest {
                 content: content.to_string(),
                 current_file: current_file.map(ToString::to_string),
             }),
+            true,
+            true,
         )
         .await
     }
@@ -494,6 +658,25 @@ impl ObsidianClient {
 
     pub async fn get_recent_files(&self, vault_id: &str) -> Result<Vec<String>, ClientError> {
         let endpoint = format!("/api/vaults/{vault_id}/recent");
+        self.send_json(HttpMethod::Get, &endpoint, Option::<&()>::None)
+            .await
+    }
+
+    pub async fn get_backlinks(
+        &self,
+        vault_id: &str,
+        path: &str,
+    ) -> Result<Vec<BacklinkEntry>, ClientError> {
+        let endpoint = format!(
+            "/api/vaults/{vault_id}/backlinks?path={}",
+            urlencoding::encode(path)
+        );
+        self.send_json(HttpMethod::Get, &endpoint, Option::<&()>::None)
+            .await
+    }
+
+    pub async fn get_tags(&self, vault_id: &str) -> Result<Vec<TagEntry>, ClientError> {
+        let endpoint = format!("/api/vaults/{vault_id}/tags");
         self.send_json(HttpMethod::Get, &endpoint, Option::<&()>::None)
             .await
     }
@@ -573,6 +756,33 @@ impl ObsidianClient {
     pub async fn list_plugins(&self) -> Result<PluginListResponse, ClientError> {
         self.send_json(HttpMethod::Get, "/api/plugins", Option::<&()>::None)
             .await
+    }
+
+    pub async fn download_file_bytes(
+        &self,
+        vault_id: &str,
+        file_path: &str,
+    ) -> Result<Vec<u8>, ClientError> {
+        self.ensure_token_fresh().await?;
+
+        let url = self.download_file_url(vault_id, file_path);
+        let mut req = self.inner.get(&url);
+        if let Some(token) = self.current_access_token()? {
+            req = req.headers(Self::auth_header(&token)?);
+        }
+        let response = req.send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "request failed".to_string());
+            return Err(ClientError::ApiError {
+                status: status.as_u16(),
+                message,
+            });
+        }
+        Ok(response.bytes().await?.to_vec())
     }
 
     pub async fn toggle_plugin(
@@ -693,6 +903,68 @@ impl ObsidianClient {
         }
 
         Ok(response.json::<T>().await?)
+    }
+
+    async fn send_text_with_options<B>(
+        &self,
+        method: HttpMethod,
+        path: &str,
+        body: Option<&B>,
+        attach_auth_header: bool,
+        auto_refresh_token: bool,
+    ) -> Result<String, ClientError>
+    where
+        B: Serialize + ?Sized,
+    {
+        if auto_refresh_token {
+            self.ensure_token_fresh().await?;
+        }
+
+        self.send_text_raw(method, path, body, attach_auth_header)
+            .await
+    }
+
+    async fn send_text_raw<B>(
+        &self,
+        method: HttpMethod,
+        path: &str,
+        body: Option<&B>,
+        attach_auth_header: bool,
+    ) -> Result<String, ClientError>
+    where
+        B: Serialize + ?Sized,
+    {
+        let url = format!("{}{}", self.base_url, path);
+
+        let mut request = match method {
+            HttpMethod::Get => self.inner.get(&url),
+            HttpMethod::Post => self.inner.post(&url),
+            HttpMethod::Put => self.inner.put(&url),
+            HttpMethod::Delete => self.inner.delete(&url),
+        };
+
+        if attach_auth_header {
+            if let Some(token) = self.current_access_token()? {
+                request = request.headers(Self::auth_header(&token)?);
+            }
+        }
+
+        if let Some(payload) = body {
+            request = request.json(payload);
+        }
+
+        let response = request.send().await?;
+        let status = response.status();
+        let text = response.text().await?;
+
+        if !status.is_success() {
+            return Err(ClientError::ApiError {
+                status: status.as_u16(),
+                message: text,
+            });
+        }
+
+        Ok(text)
     }
 
     async fn send_no_content(&self, method: HttpMethod, path: &str) -> Result<(), ClientError> {
