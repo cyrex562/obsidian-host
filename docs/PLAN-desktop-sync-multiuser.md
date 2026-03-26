@@ -157,26 +157,40 @@
 
 ## Priority Order
 
-### Phase 1 — Foundation (Highest Priority)
-1. Desktop: Tab system + split pane editor
-2. Desktop: All sidebar panels (outline, backlinks, tags, bookmarks, recent)
-3. Sync: ETag-based conflict detection + conflict resolver
-4. Auth: User deletion/deactivation, failed login tracking, audit logging
+### Phase 1 — Foundation (Highest Priority) ✅
+1. ~~Desktop: Tab system + split pane editor~~
+2. ~~Desktop: All sidebar panels (outline, backlinks, tags, bookmarks, recent)~~
+3. ~~Sync: ETag-based conflict detection + conflict resolver~~
+4. ~~Auth: User deletion/deactivation, failed login tracking, audit logging~~
 
-### Phase 2 — Feature Completeness
-5. Desktop: File viewers (image, PDF, audio/video)
-6. Desktop: All modals (search, quick switcher, vault manager, plugin manager)
-7. Sync: Change log API + client catch-up on reconnect
-8. Auth: Session management, password policy, admin UI improvements
+### Phase 2 — Feature Completeness ✅
+5. ~~Desktop: File viewers (image, PDF, audio/video)~~
+6. ~~Desktop: All modals (search, quick switcher, vault manager, plugin manager)~~
+7. ~~Sync: Change log API + client catch-up on reconnect~~
+8. ~~Auth: Session management, password policy, admin UI improvements~~
 
-### Phase 3 — Desktop Offline & Polish
-9. Desktop: Frontmatter editor, editor toolbar, rich markdown preview
-10. Desktop: Drag-and-drop file tree, sorting, resize handle
-11. Sync: Offline support with local cache + edit queue
-12. Desktop: Auth token persistence via OS keychain
+### Phase 3 — Desktop Offline & Polish ✅
+9. ~~Desktop: Frontmatter editor, editor toolbar, rich markdown preview~~
+10. ~~Desktop: File tree sorting, collapsible sidebar sections~~
+11. ~~Sync: Offline support with local cache + edit queue~~
+12. ~~Desktop: Auth token persistence + auto-login~~
 
-### Phase 4 — Advanced Features
-13. Sync: Selective sync, multi-device awareness
-14. Auth: 2FA, OAuth2/OIDC, LDAP
-15. Auth: Invitation system, API keys
-16. Desktop: Status indicators, theme toggle, admin panel
+### Phase 4a — Quick Wins & Foundation
+13. Auth: API key system (generate/revoke, middleware acceptance alongside JWT)
+14. Server: Per-user/IP rate limiting middleware (configurable in config.toml)
+15. Desktop: Theme toggle (wire preferences theme to Iced Theme enum)
+16. Server: Vault ownership transfer endpoint
+17. Server: Public/private vault toggle (anonymous read access for public vaults)
+
+### Phase 4b — Security & Collaboration
+18. Auth: TOTP 2FA (enrollment, QR code, verification on login, backup codes)
+19. Auth: Invitation system (invite links with role + expiration, acceptance endpoint)
+20. Server: Bulk user import (CSV/JSON endpoint for batch creation)
+
+### Phase 4c — Admin UX & Sync
+21. Desktop: Admin panel (user list, create/edit/deactivate/delete in Iced UI)
+22. Sync: Selective sync (config for which vaults/folders to sync, filter WS events)
+
+### Phase 4d — Enterprise Auth
+23. Auth: OAuth2/OIDC provider support (finish stubbed OIDC, Google/GitHub login)
+24. Auth: LDAP/Active Directory integration
