@@ -194,3 +194,39 @@
 ### Phase 4d — Enterprise Auth ✅
 23. ~~Auth: OAuth2/OIDC provider support (finish stubbed OIDC, Google/GitHub login)~~
 24. ~~Auth: LDAP/Active Directory integration~~
+
+---
+
+## Remaining TODO — Deployment & Polish
+
+### Deployment (before production use)
+- [ ] Set a stable JWT secret in config (tokens break on restart without one)
+- [ ] Set up TLS via reverse proxy (nginx/Caddy example in DEPLOYMENT.md)
+- [ ] Wire `create_session` into `issue_tokens` so the sessions table is actually populated on login
+- [ ] Allow anonymous read access for public vaults in auth middleware (visibility column exists, middleware doesn't check it yet)
+- [ ] Desktop binary packaging (AppImage for Linux, DMG for macOS, MSI/installer for Windows)
+- [ ] CI/CD pipeline (GitHub Actions: build, test, release binaries, Docker image push)
+
+### Testing
+- [ ] Frontend E2E tests (Playwright config exists, needs server fixture)
+- [ ] Add integration tests for new Phase 1-4 endpoints (TOTP, invitations, API keys, audit log, bulk import)
+- [ ] Load/stress testing for WebSocket sync under concurrent users
+- [ ] Test OIDC flow end-to-end with a real provider (Google/GitHub)
+- [ ] Test LDAP flow against a real directory (or dockerized OpenLDAP)
+
+### Server Polish
+- [ ] Clean up 10 compiler warnings (unused imports/variables)
+- [ ] Add `GET /api/version` endpoint returning build version/git hash
+- [ ] Add Prometheus `/metrics` endpoint for monitoring
+- [ ] Graceful shutdown handling (drain WebSocket connections, flush change log)
+- [ ] Request ID header for distributed tracing
+- [ ] Per-user rate limiting (current limiter is per-IP only)
+- [ ] Complete S3 storage backend (currently scaffolded but not functional)
+
+### Desktop Polish
+- [ ] Drag-and-drop file reorganization in file tree
+- [ ] Sidebar resize handle (draggable divider between sidebar and editor)
+- [ ] Collapsible toggles on all sidebar sections (currently only file tree)
+- [ ] Keyboard shortcut help overlay (show all shortcuts in a modal)
+- [ ] Multi-device presence indicators (show who else has a file open)
+
