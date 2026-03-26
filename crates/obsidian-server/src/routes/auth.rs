@@ -30,6 +30,10 @@ pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
+    /// If true, the user has TOTP enabled and must verify a code before the
+    /// tokens are fully authorized for protected endpoints.
+    #[serde(default)]
+    pub totp_required: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,12 +69,13 @@ async fn login(
     let principal =
         authenticate_username_password(&state.db, &config.auth, username, password).await?;
 
-    let response = issue_tokens(
+    let mut response = issue_tokens(
         &principal.user_id,
         &principal.username,
         &principal.auth_method,
         &config.auth,
     )?;
+    response.totp_required = principal.totp_required;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -233,6 +238,7 @@ fn issue_tokens(
         access_token,
         refresh_token: refresh_jwt,
         expires_in: auth_cfg.access_token_ttl,
+        totp_required: false,
     })
 }
 

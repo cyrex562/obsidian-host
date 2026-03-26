@@ -337,6 +337,8 @@ async fn main() -> std::io::Result<()> {
             .configure(obsidian_host::routes::bookmarks::configure)
             .configure(obsidian_host::routes::tags::configure)
             .configure(obsidian_host::routes::api_keys::configure)
+            .configure(obsidian_host::routes::totp::configure)
+            .configure(obsidian_host::routes::invitations::configure)
     })
     .bind((server_host.as_str(), server_port))?
     .run()

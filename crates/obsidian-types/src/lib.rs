@@ -75,6 +75,84 @@ pub struct SessionInfo {
     pub expires_at: DateTime<Utc>,
 }
 
+// ── TOTP 2FA types ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpEnrollResponse {
+    /// The otpauth:// URI for QR code generation.
+    pub otpauth_url: String,
+    /// The raw base32-encoded secret (for manual entry).
+    pub secret: String,
+    /// One-time backup codes.
+    pub backup_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpVerifyRequest {
+    pub code: String,
+}
+
+// ── Invitation types ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInviteRequest {
+    /// Role to grant when invite is accepted (editor, viewer).
+    pub role: String,
+    /// Vault to grant access to (optional — if omitted, server-level invite).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_id: Option<String>,
+    /// Expiration in hours from now. Default 72.
+    #[serde(default = "default_invite_hours")]
+    pub expires_in_hours: u64,
+}
+
+fn default_invite_hours() -> u64 {
+    72
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteInfo {
+    pub id: String,
+    pub token: String,
+    pub role: String,
+    pub vault_id: Option<String>,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub accepted: bool,
+    pub accepted_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcceptInviteRequest {
+    pub token: String,
+    pub username: String,
+    pub password: String,
+}
+
+// ── Bulk user import types ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkUserEntry {
+    pub username: String,
+    #[serde(default)]
+    pub is_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temporary_password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkImportResult {
+    pub created: Vec<String>,
+    pub failed: Vec<BulkImportError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkImportError {
+    pub username: String,
+    pub error: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKeyInfo {
     pub id: String,

@@ -477,6 +477,52 @@ impl Database {
         .execute(&self.pool)
         .await;
 
+        // ── Phase 4b: TOTP 2FA ──────────────────────────────────────────
+        let _ = sqlx::query(
+            "ALTER TABLE users ADD COLUMN totp_secret TEXT",
+        )
+        .execute(&self.pool)
+        .await;
+
+        let _ = sqlx::query(
+            "ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(&self.pool)
+        .await;
+
+        let _ = sqlx::query(
+            "ALTER TABLE users ADD COLUMN totp_backup_codes TEXT",
+        )
+        .execute(&self.pool)
+        .await;
+
+        // ── Phase 4b: Invitations ───────────────────────────────────────
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS invitations (
+                id TEXT PRIMARY KEY,
+                token TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL DEFAULT 'viewer',
+                vault_id TEXT,
+                created_by_user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                accepted INTEGER NOT NULL DEFAULT 0,
+                accepted_by_user_id TEXT,
+                FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token)",
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
@@ -2124,5 +2170,188 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    // ── TOTP 2FA ────────────────────────────────────────────────────────
+
+    /// Store a TOTP secret for a user (enrollment step).
+    pub async fn set_totp_secret(
+        &self,
+        user_id: &str,
+        secret: &str,
+        backup_codes: &[String],
+    ) -> AppResult<()> {
+        let codes_json = serde_json::to_string(backup_codes)
+            .map_err(|e| AppError::InternalError(format!("Failed to serialize backup codes: {e}")))?;
+        sqlx::query(
+            "UPDATE users SET totp_secret = ?, totp_backup_codes = ? WHERE id = ?",
+        )
+        .bind(secret)
+        .bind(&codes_json)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Enable TOTP after successful verification.
+    pub async fn enable_totp(&self, user_id: &str) -> AppResult<()> {
+        sqlx::query("UPDATE users SET totp_enabled = 1 WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Disable TOTP and clear the secret.
+    pub async fn disable_totp(&self, user_id: &str) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_backup_codes = NULL WHERE id = ?",
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get TOTP state for a user: (totp_enabled, totp_secret, backup_codes_json).
+    pub async fn get_totp_state(
+        &self,
+        user_id: &str,
+    ) -> AppResult<(bool, Option<String>, Option<String>)> {
+        let row: Option<(i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT totp_enabled, totp_secret, totp_backup_codes FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+
+        match row {
+            Some((enabled, secret, codes)) => Ok((enabled != 0, secret, codes)),
+            None => Err(AppError::NotFound("User not found".to_string())),
+        }
+    }
+
+    /// Consume a backup code (marks it as used by removing from the list).
+    pub async fn consume_backup_code(
+        &self,
+        user_id: &str,
+        code: &str,
+    ) -> AppResult<bool> {
+        let (_, _, codes_json) = self.get_totp_state(user_id).await?;
+        let Some(codes_json) = codes_json else {
+            return Ok(false);
+        };
+        let mut codes: Vec<String> = serde_json::from_str(&codes_json).unwrap_or_default();
+        if let Some(pos) = codes.iter().position(|c| c == code) {
+            codes.remove(pos);
+            let updated = serde_json::to_string(&codes)
+                .map_err(|e| AppError::InternalError(e.to_string()))?;
+            sqlx::query("UPDATE users SET totp_backup_codes = ? WHERE id = ?")
+                .bind(&updated)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    // ── Invitations ─────────────────────────────────────────────────────
+
+    /// Create an invitation.
+    pub async fn create_invitation(
+        &self,
+        id: &str,
+        token: &str,
+        role: &str,
+        vault_id: Option<&str>,
+        created_by: &str,
+        expires_at: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            INSERT INTO invitations (id, token, role, vault_id, created_by_user_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id)
+        .bind(token)
+        .bind(role)
+        .bind(vault_id)
+        .bind(created_by)
+        .bind(&now)
+        .bind(expires_at.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Look up an invitation by token.
+    pub async fn get_invitation_by_token(
+        &self,
+        token: &str,
+    ) -> AppResult<Option<(String, String, Option<String>, String, String, String, bool, Option<String>)>> {
+        let row = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, i64, Option<String>)>(
+            "SELECT id, role, vault_id, created_by_user_id, created_at, expires_at, accepted, accepted_by_user_id FROM invitations WHERE token = ?",
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+
+        Ok(row.map(|(id, role, vid, cby, cat, eat, acc, aby)| {
+            (id, role, vid, cby, cat, eat, acc != 0, aby)
+        }))
+    }
+
+    /// Mark an invitation as accepted.
+    pub async fn accept_invitation(
+        &self,
+        invite_id: &str,
+        accepted_by_user_id: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE invitations SET accepted = 1, accepted_by_user_id = ? WHERE id = ?",
+        )
+        .bind(accepted_by_user_id)
+        .bind(invite_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// List all invitations created by a user.
+    pub async fn list_invitations_by_creator(
+        &self,
+        user_id: &str,
+    ) -> AppResult<Vec<crate::models::InviteInfo>> {
+        let rows = sqlx::query_as::<_, (String, String, String, Option<String>, String, String, String, i64, Option<String>)>(
+            "SELECT id, token, role, vault_id, created_by_user_id, created_at, expires_at, accepted, accepted_by_user_id FROM invitations WHERE created_by_user_id = ? ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, token, role, vault_id, created_by, created_at, expires_at, accepted, accepted_by)| {
+                crate::models::InviteInfo {
+                    id,
+                    token,
+                    role,
+                    vault_id,
+                    created_by,
+                    created_at: parse_rfc3339_utc(&created_at),
+                    expires_at: parse_rfc3339_utc(&expires_at),
+                    accepted: accepted != 0,
+                    accepted_by,
+                }
+            })
+            .collect())
     }
 }

@@ -68,6 +68,8 @@ pub struct AuthenticatedPrincipal {
     pub user_id: String,
     pub username: String,
     pub auth_method: String,
+    /// If true, the user has TOTP enabled and a second factor code is required.
+    pub totp_required: bool,
 }
 
 pub async fn authenticate_username_password(
@@ -173,12 +175,24 @@ async fn authenticate_with_password_provider(
 
     // Successful login — clear any failed attempts.
     let _ = db.clear_failed_logins(user_id).await;
+
+    // Check if TOTP is enabled for this user.
+    let totp_required = db
+        .get_totp_state(user_id)
+        .await
+        .map(|(enabled, _, _)| enabled)
+        .unwrap_or(false);
+
     let _ = db
         .write_audit_log(
             Some(user_id),
             Some(username),
             "login_success",
-            None,
+            if totp_required {
+                Some("TOTP verification pending")
+            } else {
+                None
+            },
             None,
             true,
         )
@@ -188,5 +202,6 @@ async fn authenticate_with_password_provider(
         user_id: user.0,
         username: user.1,
         auth_method: AuthProviderKind::Password.as_str().to_string(),
+        totp_required,
     })
 }

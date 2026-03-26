@@ -278,6 +278,89 @@ struct AuditLogQuery {
     limit: Option<i64>,
 }
 
+/// Bulk import users from a JSON array.
+#[post("/api/admin/users/bulk-import")]
+async fn bulk_import_users(
+    state: web::Data<AppState>,
+    config: web::Data<crate::config::AppConfig>,
+    req: HttpRequest,
+    body: web::Json<Vec<crate::models::BulkUserEntry>>,
+) -> AppResult<HttpResponse> {
+    let admin = require_admin_user(&state, &req).await?;
+
+    let mut created = Vec::new();
+    let mut failed = Vec::new();
+
+    for entry in body.into_inner() {
+        let username = entry.username.trim().to_string();
+        if username.is_empty() {
+            failed.push(crate::models::BulkImportError {
+                username: username.clone(),
+                error: "Username cannot be empty".to_string(),
+            });
+            continue;
+        }
+
+        let password = entry
+            .temporary_password
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(generate_temporary_password);
+
+        if let Err(e) = crate::services::validate_password_policy(&password, &config.auth) {
+            failed.push(crate::models::BulkImportError {
+                username,
+                error: e.to_string(),
+            });
+            continue;
+        }
+
+        let password_hash = match hash_password(&password) {
+            Ok(h) => h,
+            Err(e) => {
+                failed.push(crate::models::BulkImportError {
+                    username,
+                    error: e.to_string(),
+                });
+                continue;
+            }
+        };
+
+        match state
+            .db
+            .create_user_with_options(&username, &password_hash, entry.is_admin, true)
+            .await
+        {
+            Ok(_) => created.push(username),
+            Err(e) => {
+                failed.push(crate::models::BulkImportError {
+                    username,
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    let _ = state
+        .db
+        .write_audit_log(
+            Some(&admin.user_id),
+            Some(&admin.username),
+            "bulk_user_import",
+            Some(&format!(
+                "Created {} user(s), {} failed",
+                created.len(),
+                failed.len()
+            )),
+            None,
+            true,
+        )
+        .await;
+
+    Ok(HttpResponse::Ok().json(crate::models::BulkImportResult { created, failed }))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(list_users)
         .service(create_user)
@@ -285,5 +368,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(deactivate_user)
         .service(reactivate_user)
         .service(delete_user)
-        .service(get_audit_log);
+        .service(get_audit_log)
+        .service(bulk_import_users);
 }

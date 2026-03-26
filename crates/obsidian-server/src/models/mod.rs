@@ -6,17 +6,19 @@ pub mod graph;
 pub mod plugin;
 
 pub use obsidian_types::{
-    AddGroupMemberRequest, AdminUser, ApiKeyInfo, AuditLogEntry, ApplyChange,
+    AcceptInviteRequest, AddGroupMemberRequest, AdminUser, ApiKeyInfo, AuditLogEntry,
+    BulkImportError, BulkImportResult, BulkUserEntry, ApplyChange,
     ApplyOrganizationSuggestionRequest,
     ApplyOrganizationSuggestionResponse, AuthenticatedUserProfile, ChangePasswordRequest,
-    CreateApiKeyRequest, CreateApiKeyResponse, CreateFileRequest, CreateGroupRequest,
+    CreateApiKeyRequest, CreateApiKeyResponse, CreateFileRequest, CreateGroupRequest, CreateInviteRequest,
     CreateUploadSessionRequest, CreateUserRequest,
     CreateUserResponse, CreateVaultRequest, EditorMode, FileChangeEvent, FileChangeType,
     FileContent, FileNode, GenerateOrganizationSuggestionsRequest, GenerateOutlineRequest,
-    GroupInfo, GroupMember, MlUndoReceipt, NoteOutlineResponse, OrganizationSuggestion,
+    GroupInfo, GroupMember, InviteInfo, MlUndoReceipt, NoteOutlineResponse, OrganizationSuggestion,
     OrganizationSuggestionKind, OrganizationSuggestionsResponse, OutlineSection, PagedSearchResult,
     ReverseAction, SearchMatch, SearchResult, SessionInfo, ShareVaultWithGroupRequest,
-    ShareVaultWithUserRequest, UndoMlActionResponse, UpdateFileRequest, UploadSessionResponse,
+    ShareVaultWithUserRequest, TotpEnrollResponse, TotpVerifyRequest, UndoMlActionResponse,
+    UpdateFileRequest, UploadSessionResponse,
     UserPreferences, Vault, VaultRole, VaultShareEntry, VaultShareList, WsMessage,
 };
 
