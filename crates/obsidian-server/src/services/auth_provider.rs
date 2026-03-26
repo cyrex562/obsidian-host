@@ -64,12 +64,81 @@ async fn authenticate_with_password_provider(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid username or password".to_string()))?;
 
+    let user_id = &user.0;
+
+    // Check if the account is active.
+    if !db.is_user_active(user_id).await? {
+        return Err(AppError::Unauthorized(
+            "Account is deactivated. Contact an administrator.".to_string(),
+        ));
+    }
+
+    // Check if the account is currently locked out.
+    if let Some(locked_until) = db.get_lockout_status(user_id).await? {
+        return Err(AppError::Unauthorized(format!(
+            "Account is temporarily locked until {}. Try again later.",
+            locked_until.format("%Y-%m-%d %H:%M:%S UTC")
+        )));
+    }
+
     let parsed_hash = PasswordHash::new(&user.2)
         .map_err(|_| AppError::Unauthorized("Invalid username or password".to_string()))?;
 
-    Argon2::default()
+    if Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::Unauthorized("Invalid username or password".to_string()))?;
+        .is_err()
+    {
+        // Record failed attempt and optionally lock the account.
+        let attempts = db.record_failed_login(user_id).await.unwrap_or(0);
+        const MAX_ATTEMPTS: i64 = 5;
+        const LOCKOUT_MINUTES: i64 = 15;
+
+        if attempts >= MAX_ATTEMPTS {
+            let until = chrono::Utc::now()
+                + chrono::Duration::minutes(LOCKOUT_MINUTES);
+            let _ = db.lock_user_until(user_id, until).await;
+            let _ = db
+                .write_audit_log(
+                    Some(user_id),
+                    Some(username),
+                    "account_locked",
+                    Some(&format!(
+                        "Locked after {attempts} failed attempts for {LOCKOUT_MINUTES} minutes"
+                    )),
+                    None,
+                    false,
+                )
+                .await;
+        }
+
+        let _ = db
+            .write_audit_log(
+                Some(user_id),
+                Some(username),
+                "login_failed",
+                None,
+                None,
+                false,
+            )
+            .await;
+
+        return Err(AppError::Unauthorized(
+            "Invalid username or password".to_string(),
+        ));
+    }
+
+    // Successful login — clear any failed attempts.
+    let _ = db.clear_failed_logins(user_id).await;
+    let _ = db
+        .write_audit_log(
+            Some(user_id),
+            Some(username),
+            "login_success",
+            None,
+            None,
+            true,
+        )
+        .await;
 
     Ok(AuthenticatedPrincipal {
         user_id: user.0,

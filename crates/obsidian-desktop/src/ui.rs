@@ -456,6 +456,12 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
         button("Save").on_press(Message::SaveNotePressed),
         button("Force Save").on_press(Message::SaveNoteForcePressed),
         button("Bookmark").on_press(Message::ToggleBookmarkPressed),
+        button(if state.split_pane_enabled {
+            "Close Split"
+        } else {
+            "Split Pane"
+        })
+        .on_press(Message::ToggleSplitPane),
     ]
     .spacing(8);
 
@@ -806,7 +812,7 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
     )
     .height(Length::Fill);
 
-    let workspace_body: Element<'_, Message> = match state.editor_mode {
+    let primary_pane: Element<'_, Message> = match state.editor_mode {
         EditorMode::Raw => container(editor).into(),
         EditorMode::Formatted => row![
             container(editor).width(Length::FillPortion(1)),
@@ -815,6 +821,71 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
         .spacing(8)
         .into(),
         EditorMode::Preview => container(column![text("Preview"), preview].spacing(6)).into(),
+    };
+
+    // Build the workspace — either single pane or split.
+    let workspace_body: Element<'_, Message> = if state.split_pane_enabled {
+        // Build a tab selector for the right pane and a read-only preview of the selected tab.
+        let split_tab_choices = state.open_tabs.iter().filter(|tab| {
+            state.active_tab_path.as_deref() != Some(tab.path.as_str())
+        });
+        let split_tabs = split_tab_choices.fold(
+            column![text("Right Pane")].spacing(4),
+            |col, tab| {
+                let is_active = state.split_pane_active_tab.as_deref() == Some(tab.path.as_str());
+                let label = if is_active {
+                    format!("• {}", tab.title)
+                } else {
+                    tab.title.clone()
+                };
+                col.push(
+                    button(text(label))
+                        .width(Length::Fill)
+                        .on_press(Message::SplitPaneTabSelected(tab.path.clone())),
+                )
+            },
+        );
+
+        let split_content: Element<'_, Message> =
+            if let Some(split_tab) = state.split_pane_active_tab.as_deref().and_then(|path| {
+                state.open_tabs.iter().find(|t| t.path == path)
+            }) {
+                let content_preview = text_input("", &split_tab.content)
+                    .width(Length::Fill)
+                    .padding(10)
+                    .size(
+                        state
+                            .preferences_font_size_input
+                            .parse::<u16>()
+                            .unwrap_or(14),
+                    );
+
+                container(
+                    column![
+                        text(format!("Split: {}", split_tab.title)).size(14),
+                        content_preview,
+                    ]
+                    .spacing(6),
+                )
+                .padding(8)
+                .height(Length::Fill)
+                .into()
+            } else {
+                container(text("Select a tab for the right pane"))
+                    .padding(12)
+                    .into()
+            };
+
+        row![
+            container(primary_pane).width(Length::FillPortion(1)),
+            container(column![split_tabs, split_content].spacing(6))
+                .width(Length::FillPortion(1))
+                .padding(4),
+        ]
+        .spacing(8)
+        .into()
+    } else {
+        primary_pane
     };
 
     column![
@@ -1032,12 +1103,20 @@ fn view_status_footer(state: &DesktopApp) -> Element<'_, Message> {
         "Disconnected"
     };
 
+    let word_count = if state.note_content.is_empty() {
+        0
+    } else {
+        state.note_content.split_whitespace().count()
+    };
+    let char_count = state.note_content.len();
+
     container(
         row![
             text(format!("Vault: {active_vault}")),
             text(format!("Tabs: {}", state.open_tabs.len())),
             text(format!("Active: {active_tab}")),
             text(save_state),
+            text(format!("{word_count} words · {char_count} chars")),
             text(format!("Sync: {sync_state}")),
             text(format!("Sync detail: {}", state.event_sync_last_message)),
             text(format!("Status: {}", state.status)),

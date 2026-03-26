@@ -176,6 +176,18 @@ async fn change_password(
         .set_user_password(&user.user_id, &new_hash, false)
         .await?;
 
+    let _ = state
+        .db
+        .write_audit_log(
+            Some(&user.user_id),
+            Some(&user.username),
+            "password_changed",
+            None,
+            None,
+            true,
+        )
+        .await;
+
     Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
 }
 

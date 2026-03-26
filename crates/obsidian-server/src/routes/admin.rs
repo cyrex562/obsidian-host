@@ -2,7 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::middleware::AuthenticatedUser;
 use crate::models::{CreateUserRequest, CreateUserResponse};
 use crate::routes::vaults::AppState;
-use actix_web::{get, post, web, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{delete, get, post, web, HttpMessage, HttpRequest, HttpResponse};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
@@ -103,6 +103,119 @@ async fn create_user(
     }))
 }
 
+#[post("/api/admin/users/{user_id}/deactivate")]
+async fn deactivate_user(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let admin = require_admin_user(&state, &req).await?;
+    let user_id = path.into_inner();
+
+    if admin.user_id == user_id {
+        return Err(AppError::InvalidInput(
+            "Cannot deactivate your own account".to_string(),
+        ));
+    }
+
+    state.db.deactivate_user(&user_id).await?;
+    state
+        .db
+        .write_audit_log(
+            Some(&admin.user_id),
+            Some(&admin.username),
+            "user_deactivated",
+            Some(&format!("Deactivated user {user_id}")),
+            None,
+            true,
+        )
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
+#[post("/api/admin/users/{user_id}/reactivate")]
+async fn reactivate_user(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let admin = require_admin_user(&state, &req).await?;
+    let user_id = path.into_inner();
+
+    state.db.reactivate_user(&user_id).await?;
+    state
+        .db
+        .write_audit_log(
+            Some(&admin.user_id),
+            Some(&admin.username),
+            "user_reactivated",
+            Some(&format!("Reactivated user {user_id}")),
+            None,
+            true,
+        )
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
+#[delete("/api/admin/users/{user_id}")]
+async fn delete_user(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let admin = require_admin_user(&state, &req).await?;
+    let user_id = path.into_inner();
+
+    if admin.user_id == user_id {
+        return Err(AppError::InvalidInput(
+            "Cannot delete your own account".to_string(),
+        ));
+    }
+
+    // Look up username before deletion for the audit log.
+    let username = state
+        .db
+        .get_user_by_id(&user_id)
+        .await?
+        .map(|(_, u)| u)
+        .unwrap_or_else(|| user_id.clone());
+
+    state.db.delete_user(&user_id).await?;
+    state
+        .db
+        .write_audit_log(
+            Some(&admin.user_id),
+            Some(&admin.username),
+            "user_deleted",
+            Some(&format!("Deleted user {username} ({user_id})")),
+            None,
+            true,
+        )
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
+#[get("/api/admin/audit-log")]
+async fn get_audit_log(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<AuditLogQuery>,
+) -> AppResult<HttpResponse> {
+    let _admin = require_admin_user(&state, &req).await?;
+    let entries = state.db.get_audit_log(query.limit).await?;
+    Ok(HttpResponse::Ok().json(entries))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AuditLogQuery {
+    limit: Option<i64>,
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(list_users).service(create_user);
+    cfg.service(list_users)
+        .service(create_user)
+        .service(deactivate_user)
+        .service(reactivate_user)
+        .service(delete_user)
+        .service(get_audit_log);
 }

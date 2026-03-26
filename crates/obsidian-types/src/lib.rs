@@ -63,7 +63,21 @@ pub struct AdminUser {
     pub username: String,
     pub is_admin: bool,
     pub must_change_password: bool,
+    #[serde(default = "default_true")]
+    pub is_active: bool,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub timestamp: DateTime<Utc>,
+    pub user_id: Option<String>,
+    pub username: Option<String>,
+    pub event_type: String,
+    pub detail: Option<String>,
+    pub ip_address: Option<String>,
+    pub success: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -205,6 +205,11 @@ pub(crate) struct DesktopApp {
     pub(crate) open_tabs: Vec<OpenTab>,
     pub(crate) active_tab_path: Option<String>,
 
+    /// When true, the editor workspace shows two side-by-side panes.
+    pub(crate) split_pane_enabled: bool,
+    /// The secondary (right/bottom) pane's active tab path.
+    pub(crate) split_pane_active_tab: Option<String>,
+
     pub(crate) note_path: String,
     pub(crate) new_file_path: String,
     pub(crate) new_folder_path: String,
@@ -234,6 +239,11 @@ pub(crate) struct DesktopApp {
     pub(crate) plugin_panel_visible: bool,
     pub(crate) plugins: Vec<PluginItem>,
     pub(crate) plugin_status: String,
+
+    /// Monotonically increasing counter bumped on each editor change; used
+    /// to implement debounced auto-save (the timer callback checks whether
+    /// the counter has moved since it was captured).
+    pub(crate) auto_save_generation: u64,
 
     pub(crate) import_export_visible: bool,
     pub(crate) import_local_path: String,
@@ -295,6 +305,8 @@ impl Default for DesktopApp {
             selected_tree_path: None,
             open_tabs: Vec::new(),
             active_tab_path: None,
+            split_pane_enabled: false,
+            split_pane_active_tab: None,
             note_path: String::new(),
             new_file_path: String::new(),
             new_folder_path: String::new(),
@@ -323,6 +335,7 @@ impl Default for DesktopApp {
             plugin_panel_visible: false,
             plugins: Vec::new(),
             plugin_status: String::new(),
+            auto_save_generation: 0,
             import_export_visible: false,
             import_local_path: String::new(),
             import_vault_path: String::new(),

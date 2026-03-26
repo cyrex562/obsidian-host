@@ -6,7 +6,7 @@ pub mod graph;
 pub mod plugin;
 
 pub use obsidian_types::{
-    AddGroupMemberRequest, AdminUser, ApplyChange, ApplyOrganizationSuggestionRequest,
+    AddGroupMemberRequest, AdminUser, AuditLogEntry, ApplyChange, ApplyOrganizationSuggestionRequest,
     ApplyOrganizationSuggestionResponse, AuthenticatedUserProfile, ChangePasswordRequest,
     CreateFileRequest, CreateGroupRequest, CreateUploadSessionRequest, CreateUserRequest,
     CreateUserResponse, CreateVaultRequest, EditorMode, FileChangeEvent, FileChangeType,

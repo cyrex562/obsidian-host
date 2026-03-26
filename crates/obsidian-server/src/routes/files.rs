@@ -373,10 +373,34 @@ async fn create_file(
 async fn update_file(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
+    http_req: HttpRequest,
     req: web::Json<UpdateFileRequest>,
 ) -> AppResult<HttpResponse> {
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
+
+    // Support If-Match header for ETag-based conflict detection.
+    // When present, read the current file and compare ETags before writing.
+    if let Some(if_match) = http_req.headers().get(actix_web::http::header::IF_MATCH) {
+        if let Ok(if_match_str) = if_match.to_str() {
+            if let Ok(current) = crate::services::FileService::read_file(&vault.path, &file_path) {
+                let current_etag = build_file_etag(&current);
+                let normalized_required = normalize_etag(if_match_str);
+                let normalized_current = normalize_etag(&current_etag);
+                if normalized_required != "*" && normalized_required != normalized_current {
+                    // 412 Precondition Failed — return the server's current content
+                    // so the client can display a conflict resolver.
+                    return Ok(HttpResponse::PreconditionFailed()
+                        .insert_header((actix_web::http::header::ETAG, current_etag))
+                        .json(serde_json::json!({
+                            "error": "precondition_failed",
+                            "message": "ETag mismatch: the file was modified since you last read it",
+                            "server_content": current,
+                        })));
+                }
+            }
+        }
+    }
 
     let content = state.storage.write_file(
         &vault.path,
@@ -406,7 +430,9 @@ async fn update_file(
             .update_file(&vault_id, &file_path, content.content.clone())?;
     }
 
-    Ok(HttpResponse::Ok().json(content))
+    Ok(HttpResponse::Ok()
+        .insert_header((actix_web::http::header::ETAG, etag))
+        .json(content))
 }
 
 #[delete("/api/vaults/{vault_id}/files/{file_path:.*}")]

@@ -181,6 +181,15 @@ enum Message {
     CreateVaultPressed,
     VaultCreated(Result<Vault, String>),
 
+    // ── split pane ──────────────────────────────────────────────────────
+    ToggleSplitPane,
+    /// Open a file in the secondary (split) pane.
+    SplitPaneTabSelected(String),
+
+    // ── auto-save ───────────────────────────────────────────────────────
+    /// Fired after a 2-second debounce; only saves if the generation matches.
+    AutoSaveTick(u64),
+
     // ── diagnostics / feature flags ──────────────────────────────────────
     DiagnosticsPanelToggled,
     FeatureFlagMlChanged(bool),
@@ -1269,6 +1278,18 @@ fn update(state: &mut DesktopApp, message: Message) -> Task<Message> {
             state.conflict_active = false;
             state.conflict_message.clear();
             sync_active_tab_from_editor(state);
+
+            // Bump auto-save generation and schedule a debounced save.
+            state.auto_save_generation = state.auto_save_generation.wrapping_add(1);
+            let generation = state.auto_save_generation;
+            let auto_save_task = Task::perform(
+                async move {
+                    sleep(Duration::from_secs(2)).await;
+                    generation
+                },
+                Message::AutoSaveTick,
+            );
+
             if matches!(
                 state.editor_mode,
                 EditorMode::Formatted | EditorMode::Preview
@@ -1276,9 +1297,13 @@ fn update(state: &mut DesktopApp, message: Message) -> Task<Message> {
                 Task::batch([
                     Task::done(Message::RenderPreviewRequested),
                     Task::done(Message::OutlineRefreshPressed),
+                    auto_save_task,
                 ])
             } else {
-                Task::done(Message::OutlineRefreshPressed)
+                Task::batch([
+                    Task::done(Message::OutlineRefreshPressed),
+                    auto_save_task,
+                ])
             }
         }
         Message::SaveNotePressed => save_note_task(state, false),
@@ -1572,6 +1597,44 @@ fn update(state: &mut DesktopApp, message: Message) -> Task<Message> {
             Task::none()
         }
 
+        // ── split pane ─────────────────────────────────────────────────────
+        Message::ToggleSplitPane => {
+            state.split_pane_enabled = !state.split_pane_enabled;
+            if !state.split_pane_enabled {
+                state.split_pane_active_tab = None;
+            }
+            state.status = if state.split_pane_enabled {
+                "Split pane enabled — select a tab for the right pane".to_string()
+            } else {
+                "Split pane disabled".to_string()
+            };
+            Task::none()
+        }
+        Message::SplitPaneTabSelected(path) => {
+            state.split_pane_active_tab = Some(path.clone());
+            state.status = format!("Right pane: {path}");
+            Task::none()
+        }
+
+        // ── auto-save ──────────────────────────────────────────────────────
+        Message::AutoSaveTick(generation) => {
+            // Only auto-save if the generation still matches (no new edits since
+            // the timer was scheduled), the note is dirty, and we have an active path.
+            if generation == state.auto_save_generation
+                && state.note_is_dirty
+                && !state.note_path.trim().is_empty()
+                && state.client.is_some()
+                && state.selected_vault_id.is_some()
+            {
+                debug!(path = %state.note_path, "Auto-save triggered");
+                state
+                    .diagnostics
+                    .push_log(format!("[auto-save] saving {}", state.note_path));
+                return save_note_task(state, false);
+            }
+            Task::none()
+        }
+
         // ── deployment mode / vault management ──────────────────────────────
         Message::DeploymentModeSelected(mode) => {
             state.deployment_mode = mode;
@@ -1735,6 +1798,10 @@ fn handle_window_event(state: &mut DesktopApp, event: Event) -> Task<Message> {
                 state.status = "Shortcut: connect sync".to_string();
                 Task::done(Message::ConnectEventsPressed)
             }
+        }
+        keyboard::Key::Character("\\") => {
+            state.status = "Shortcut: toggle split pane".to_string();
+            Task::done(Message::ToggleSplitPane)
         }
         keyboard::Key::Character("r") | keyboard::Key::Character("R") => {
             state.status = "Shortcut: refresh active note".to_string();
