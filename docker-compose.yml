@@ -8,14 +8,30 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Mount the data volume for database persistence
       - obsidian_data:/data
-      # Mount a local directory for vaults (optional, can be a volume too)
+      # Uncomment to mount local vault directory:
       # - ./my-vaults:/data/vaults
     environment:
+      - OBSIDIAN__SERVER__HOST=0.0.0.0
       - OBSIDIAN__SERVER__PORT=8080
+      - OBSIDIAN__DATABASE__PATH=/data/obsidian-host.db
+      - OBSIDIAN__VAULT__BASE_DIR=/data/vaults
+      - OBSIDIAN__AUTH__ENABLED=true
+      - OBSIDIAN__AUTH__BOOTSTRAP_ADMIN_USERNAME=admin
+      # IMPORTANT: Change this before first run, then remove it.
+      - OBSIDIAN__AUTH__BOOTSTRAP_ADMIN_PASSWORD=changeme-on-first-login
+      # Generate a stable secret: openssl rand -hex 32
+      # - OBSIDIAN__AUTH__JWT_SECRET=your-secret-here
       - RUST_LOG=info
+      # Rate limiting (requests per 60-second window per IP)
+      - RATE_LIMIT_REQUESTS=120
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   obsidian_data:

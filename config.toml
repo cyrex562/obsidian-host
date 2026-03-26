@@ -1,7 +1,10 @@
 # Obsidian Host Configuration
+# Copy this file and customize for your deployment.
 
 [server]
-# The host address to bind to (default: 127.0.0.1)
+# The host address to bind to.
+# Use "0.0.0.0" to accept connections from any interface (required for Docker).
+# Use "127.0.0.1" for local-only access behind a reverse proxy.
 host = "127.0.0.1"
 
 # The port to listen on (default: 8080)
@@ -13,44 +16,74 @@ path = "./obsidian-host.db"
 
 [vault]
 # Base directory where newly created vaults are stored when no explicit path is provided.
-# The UI creates vaults under this directory using the vault name.
 base_dir = "./vaults"
 
 # List of patterns to exclude from search indexing and file watcher
-# Default includes: .git, .obsidian, .trash, node_modules
 index_exclusions = [".git", ".obsidian", ".trash", "node_modules", "target"]
 
 [auth]
-# Authentication toggle and token settings
-enabled = false
-# Current provider options: "password" (implemented), "oidc" (planned), "mtls" (planned)
-provider = "password"
-jwt_secret = ""
-access_token_ttl = 3600
-refresh_token_ttl = 604800
+# Set to true to require authentication for all API endpoints.
+enabled = true
 
-# Step 35 bootstrap admin (used only when users table is empty)
-# Set these before first run to create the initial admin account.
-bootstrap_admin_username = ""
+# Authentication provider: "password" (built-in), "ldap", or "oidc"
+provider = "password"
+
+# JWT signing secret. REQUIRED for production — generate with:
+#   openssl rand -hex 32
+# If empty, a random ephemeral secret is generated (tokens won't survive restarts).
+jwt_secret = ""
+
+# Token lifetimes in seconds.
+access_token_ttl = 3600       # 1 hour
+refresh_token_ttl = 604800    # 7 days
+
+# Bootstrap admin account (used only when the users table is empty).
+# Set these before first run, then remove or leave empty.
+bootstrap_admin_username = "admin"
 bootstrap_admin_password = ""
 
+# Password policy (all optional).
+# min_password_length = 12
+# require_uppercase = false
+# require_lowercase = false
+# require_digit = false
+# require_special = false
+
+# Account lockout settings.
+# max_failed_logins = 5
+# lockout_minutes = 15
+
+# ── OIDC settings (when provider = "oidc") ──────────────────────────
+# oidc_issuer_url = "https://accounts.google.com"
+# oidc_client_id = ""
+# oidc_client_secret = ""
+# oidc_redirect_uri = "http://localhost:8080/api/auth/oidc/callback"
+
+# ── LDAP settings (when provider = "ldap") ───────────────────────────
+# ldap_url = "ldap://ldap.example.com:389"
+# ldap_base_dn = "ou=people,dc=example,dc=com"
+# ldap_bind_dn = "cn=admin,dc=example,dc=com"
+# ldap_bind_password = ""
+# ldap_user_attr = "uid"
+# ldap_search_filter = "(&(objectClass=inetOrgPerson)({attr}={username}))"
+
 [sync]
-# Keep file change log entries for this many days (used by /api/vaults/{vault_id}/changes)
+# Keep file change log entries for this many days.
 change_log_retention_days = 7
 
 [cors]
-# Allowed browser origins for API requests
-allowed_origins = ["http://localhost:5173"]
+# Allowed browser origins for API requests.
+# Add your frontend URL here. Use ["*"] to allow any origin (not recommended for production).
+allowed_origins = ["http://localhost:5173", "http://localhost:8080"]
 
 [storage]
-# Storage backend: "local" (implemented), "s3" (scaffolded)
+# Storage backend: "local" (default) or "s3"
 backend = "local"
 
-[storage.s3]
-# Optional S3/MinIO settings (used when storage.backend = "s3")
-endpoint = ""
-bucket = ""
-region = ""
-access_key = ""
-secret_key = ""
-path_style = true
+# [storage.s3]
+# endpoint = ""
+# bucket = ""
+# region = ""
+# access_key = ""
+# secret_key = ""
+# path_style = true

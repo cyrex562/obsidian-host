@@ -7,45 +7,44 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Build Backend
-FROM rust:1.84-slim-bullseye AS backend-builder
+FROM rust:1.86-slim-bookworm AS backend-builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y pkg-config libssl-dev gcc
+RUN apt-get update && apt-get install -y pkg-config libssl-dev gcc && rm -rf /var/lib/apt/lists/*
 COPY . .
-# Copy built frontend assets from stage 1 to the location expected by rust-embed
-# The rust-embed macro looks at "target/frontend/" relative to crates/obsidian-server.
+# Copy built frontend assets from stage 1 to the location expected by rust-embed.
 COPY --from=frontend-builder /app/target/frontend ./target/frontend
-
-# Build release binary
-# We use --release and --locked to ensure reproducible builds
-RUN cargo build --release --locked
+RUN cargo build --release --bin obsidian-host
 
 # Stage 3: Runtime
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libsqlite3-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary
+# Copy binary and default config
 COPY --from=backend-builder /app/target/release/obsidian-host .
-# Copy default config
 COPY config.toml .
 
-# Create directory for data
-RUN mkdir -p /data/vaults
+# Create directories for data
+RUN mkdir -p /data/vaults /app/logs
 
-# Set environment variables matching AppConfig (prefix OBSIDIAN__)
+# Environment defaults for Docker deployment
 ENV OBSIDIAN__SERVER__HOST=0.0.0.0
 ENV OBSIDIAN__SERVER__PORT=8080
 ENV OBSIDIAN__DATABASE__PATH=/data/obsidian-host.db
+ENV OBSIDIAN__VAULT__BASE_DIR=/data/vaults
+ENV RUST_LOG=info,obsidian_host=info,actix_web=info
 
-# Expose port
 EXPOSE 8080
 
-# Define volume for persistent data
 VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
 
 CMD ["./obsidian-host"]

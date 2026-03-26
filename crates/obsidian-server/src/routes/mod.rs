@@ -3,6 +3,7 @@ pub mod api_keys;
 pub mod auth;
 pub mod files;
 pub mod groups;
+pub mod health;
 pub mod invitations;
 pub mod markdown;
 pub mod oidc;
