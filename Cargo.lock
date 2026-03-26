@@ -3965,6 +3965,7 @@ dependencies = [
  "dotenv",
  "flate2",
  "futures",
+ "hex",
  "image",
  "jsonwebtoken",
  "mime_guess",

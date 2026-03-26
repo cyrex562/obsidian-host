@@ -1,7 +1,8 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AdminUser, AuditLogEntry, EditorMode, GroupInfo, GroupMember, MlUndoReceipt, ReverseAction,
-    SessionInfo, UserPreferences, Vault, VaultRole, VaultRow, VaultShareEntry, VaultShareList,
+    AdminUser, ApiKeyInfo, AuditLogEntry, EditorMode, GroupInfo, GroupMember, MlUndoReceipt,
+    ReverseAction, SessionInfo, UserPreferences, Vault, VaultRole, VaultRow, VaultShareEntry,
+    VaultShareList,
 };
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
@@ -441,6 +442,40 @@ impl Database {
         )
         .execute(&self.pool)
         .await?;
+
+        // API keys table for programmatic access.
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                prefix TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)")
+            .execute(&self.pool)
+            .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix)")
+            .execute(&self.pool)
+            .await?;
+
+        // Vault visibility: 'private' (default) or 'public'.
+        let _ = sqlx::query(
+            "ALTER TABLE vaults ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'",
+        )
+        .execute(&self.pool)
+        .await;
 
         Ok(())
     }
@@ -1944,5 +1979,150 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(result.rows_affected())
+    }
+
+    // ── API keys ────────────────────────────────────────────────────────
+
+    /// Store a new API key record (the hash, not the raw key).
+    pub async fn create_api_key(
+        &self,
+        id: &str,
+        name: &str,
+        prefix: &str,
+        key_hash: &str,
+        user_id: &str,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"
+            INSERT INTO api_keys (id, name, prefix, key_hash, user_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(id)
+        .bind(name)
+        .bind(prefix)
+        .bind(key_hash)
+        .bind(user_id)
+        .bind(&now)
+        .bind(expires_at.map(|t| t.to_rfc3339()))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Look up an API key by its prefix, returning (id, key_hash, user_id, expires_at, revoked).
+    pub async fn get_api_key_by_prefix(
+        &self,
+        prefix: &str,
+    ) -> AppResult<Option<(String, String, String, Option<String>, bool)>> {
+        let row: Option<(String, String, String, Option<String>, i64)> = sqlx::query_as(
+            "SELECT id, key_hash, user_id, expires_at, revoked FROM api_keys WHERE prefix = ?",
+        )
+        .bind(prefix)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+        Ok(row.map(|(id, hash, uid, exp, rev)| (id, hash, uid, exp, rev != 0)))
+    }
+
+    /// List all API keys for a user (without hashes).
+    pub async fn list_api_keys(&self, user_id: &str) -> AppResult<Vec<ApiKeyInfo>> {
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, Option<String>, i64)>(
+            "SELECT id, name, prefix, user_id, created_at, expires_at, revoked FROM api_keys WHERE user_id = ? ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, name, prefix, user_id, created_at, expires_at, revoked)| ApiKeyInfo {
+                id,
+                name,
+                prefix,
+                user_id,
+                created_at: parse_rfc3339_utc(&created_at),
+                expires_at: expires_at.map(|s| parse_rfc3339_utc(&s)),
+                revoked: revoked != 0,
+            })
+            .collect())
+    }
+
+    /// Revoke an API key.
+    pub async fn revoke_api_key(&self, key_id: &str, user_id: &str) -> AppResult<()> {
+        let result = sqlx::query(
+            "UPDATE api_keys SET revoked = 1 WHERE id = ? AND user_id = ?",
+        )
+        .bind(key_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("API key not found".to_string()));
+        }
+        Ok(())
+    }
+
+    // ── Vault visibility / ownership transfer ───────────────────────────
+
+    /// Set vault visibility to 'public' or 'private'.
+    pub async fn set_vault_visibility(
+        &self,
+        vault_id: &str,
+        visibility: &str,
+    ) -> AppResult<()> {
+        let result = sqlx::query("UPDATE vaults SET visibility = ? WHERE id = ?")
+            .bind(visibility)
+            .bind(vault_id)
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Vault not found".to_string()));
+        }
+        Ok(())
+    }
+
+    /// Get vault visibility ('public' or 'private').
+    pub async fn get_vault_visibility(&self, vault_id: &str) -> AppResult<String> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT visibility FROM vaults WHERE id = ?")
+                .bind(vault_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(AppError::from)?;
+        Ok(row.map(|(v,)| v).unwrap_or_else(|| "private".to_string()))
+    }
+
+    /// Transfer vault ownership to a new user.
+    pub async fn transfer_vault_ownership(
+        &self,
+        vault_id: &str,
+        new_owner_id: &str,
+    ) -> AppResult<()> {
+        // Set the new owner.
+        sqlx::query("UPDATE vaults SET owner_user_id = ? WHERE id = ?")
+            .bind(new_owner_id)
+            .bind(vault_id)
+            .execute(&self.pool)
+            .await?;
+
+        // Ensure the new owner has an 'owner' share entry.
+        sqlx::query(
+            r#"
+            INSERT INTO vault_user_shares (vault_id, user_id, role, created_at)
+            VALUES (?, ?, 'owner', ?)
+            ON CONFLICT (vault_id, user_id) DO UPDATE SET role = 'owner'
+            "#,
+        )
+        .bind(vault_id)
+        .bind(new_owner_id)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }

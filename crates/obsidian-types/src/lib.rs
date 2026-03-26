@@ -76,6 +76,34 @@ pub struct SessionInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKeyInfo {
+    pub id: String,
+    pub name: String,
+    pub prefix: String,
+    pub user_id: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    /// Optional expiration in days from now. None = never expires.
+    pub expires_in_days: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKeyResponse {
+    pub id: String,
+    pub name: String,
+    /// The full API key — only shown once at creation time.
+    pub api_key: String,
+    pub prefix: String,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLogEntry {
     pub id: i64,
     pub timestamp: DateTime<Utc>,

@@ -253,6 +253,110 @@ async fn revoke_vault_group_share(
     Ok(HttpResponse::Ok().json(shares))
 }
 
+/// Transfer vault ownership to another user.
+#[post("/api/vaults/{vault_id}/transfer-ownership")]
+async fn transfer_vault_ownership(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<TransferOwnershipRequest>,
+) -> crate::error::AppResult<HttpResponse> {
+    let user = req
+        .extensions()
+        .get::<crate::middleware::AuthenticatedUser>()
+        .cloned()
+        .ok_or_else(|| {
+            crate::error::AppError::Unauthorized("Authentication required".to_string())
+        })?;
+    let vault_id = path.into_inner();
+
+    // Verify caller is the current owner.
+    let role = state
+        .db
+        .get_vault_role_for_user(&vault_id, &user.user_id)
+        .await?;
+    if role != Some(crate::models::VaultRole::Owner) {
+        return Err(crate::error::AppError::Forbidden(
+            "Only the vault owner can transfer ownership".to_string(),
+        ));
+    }
+
+    state
+        .db
+        .transfer_vault_ownership(&vault_id, &body.new_owner_user_id)
+        .await?;
+
+    let _ = state
+        .db
+        .write_audit_log(
+            Some(&user.user_id),
+            Some(&user.username),
+            "vault_ownership_transferred",
+            Some(&format!(
+                "Transferred vault {vault_id} to user {}",
+                body.new_owner_user_id
+            )),
+            None,
+            true,
+        )
+        .await;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "success": true })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TransferOwnershipRequest {
+    new_owner_user_id: String,
+}
+
+/// Toggle vault visibility between 'public' and 'private'.
+#[post("/api/vaults/{vault_id}/visibility")]
+async fn set_vault_visibility(
+    state: web::Data<AppState>,
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<SetVisibilityRequest>,
+) -> crate::error::AppResult<HttpResponse> {
+    let user = req
+        .extensions()
+        .get::<crate::middleware::AuthenticatedUser>()
+        .cloned()
+        .ok_or_else(|| {
+            crate::error::AppError::Unauthorized("Authentication required".to_string())
+        })?;
+    let vault_id = path.into_inner();
+
+    let visibility = body.visibility.trim().to_ascii_lowercase();
+    if visibility != "public" && visibility != "private" {
+        return Err(crate::error::AppError::InvalidInput(
+            "Visibility must be 'public' or 'private'".to_string(),
+        ));
+    }
+
+    // Only owner can change visibility.
+    let role = state
+        .db
+        .get_vault_role_for_user(&vault_id, &user.user_id)
+        .await?;
+    if role != Some(crate::models::VaultRole::Owner) {
+        return Err(crate::error::AppError::Forbidden(
+            "Only the vault owner can change visibility".to_string(),
+        ));
+    }
+
+    state
+        .db
+        .set_vault_visibility(&vault_id, &visibility)
+        .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "visibility": visibility })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SetVisibilityRequest {
+    visibility: String,
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(create_vault)
         .service(list_vaults)
@@ -262,5 +366,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(share_vault_with_user)
         .service(share_vault_with_group)
         .service(revoke_vault_user_share)
-        .service(revoke_vault_group_share);
+        .service(revoke_vault_group_share)
+        .service(transfer_vault_ownership)
+        .service(set_vault_visibility);
 }

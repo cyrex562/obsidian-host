@@ -320,6 +320,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(obsidian_host::middleware::RequestLogging)
             .wrap(obsidian_host::middleware::AuthMiddleware)
+            .wrap(obsidian_host::middleware::RateLimitMiddleware)
             .wrap(middleware::Compress::default())
             .configure(obsidian_host::routes::auth::configure)
             .configure(obsidian_host::routes::admin::configure)
@@ -335,6 +336,7 @@ async fn main() -> std::io::Result<()> {
             .configure(configure_static)
             .configure(obsidian_host::routes::bookmarks::configure)
             .configure(obsidian_host::routes::tags::configure)
+            .configure(obsidian_host::routes::api_keys::configure)
     })
     .bind((server_host.as_str(), server_port))?
     .run()

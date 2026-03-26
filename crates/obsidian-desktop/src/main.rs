@@ -42,7 +42,23 @@ fn main() -> iced::Result {
     info!("Obsidian Desktop starting up");
 
     iced::application("Obsidian Desktop (Iced) Skeleton", update, ui::view)
-        .theme(|_| Theme::TokyoNight)
+        .theme(|state: &DesktopApp| match state.preferences_theme.as_str() {
+            "light" => Theme::Light,
+            "dark" => Theme::Dark,
+            "tokyo_night" | "tokyonight" => Theme::TokyoNight,
+            "dracula" => Theme::Dracula,
+            "nord" => Theme::Nord,
+            "solarized_light" => Theme::SolarizedLight,
+            "solarized_dark" => Theme::SolarizedDark,
+            "gruvbox_light" => Theme::GruvboxLight,
+            "gruvbox_dark" => Theme::GruvboxDark,
+            "catppuccin_latte" => Theme::CatppuccinLatte,
+            "catppuccin_mocha" => Theme::CatppuccinMocha,
+            "kanagawa_wave" => Theme::KanagawaWave,
+            "moonfly" => Theme::Moonfly,
+            "oxocarbon" => Theme::Oxocarbon,
+            _ => Theme::TokyoNight,
+        })
         .subscription(subscription)
         .run_with(|| {
             (
@@ -183,6 +199,9 @@ enum Message {
     MediaLoaded(Result<MediaLoadResult, String>),
     OpenMediaExternallyPressed,
     MediaExternalOpened(Result<String, String>),
+
+    /// Cycle through available themes.
+    CycleTheme,
 
     // ── deployment mode / vault management ──────────────────────────────
     DeploymentModeSelected(DesktopMode),
@@ -1929,6 +1948,22 @@ fn update(state: &mut DesktopApp, message: Message) -> Task<Message> {
                     .push_log(format!("[auto-save] saving {}", state.note_path));
                 return save_note_task(state, false);
             }
+            Task::none()
+        }
+
+        Message::CycleTheme => {
+            const THEMES: &[&str] = &[
+                "dark", "light", "tokyo_night", "dracula", "nord",
+                "solarized_dark", "gruvbox_dark", "catppuccin_mocha",
+                "kanagawa_wave", "moonfly", "oxocarbon",
+            ];
+            let current_idx = THEMES
+                .iter()
+                .position(|t| *t == state.preferences_theme)
+                .unwrap_or(0);
+            let next_idx = (current_idx + 1) % THEMES.len();
+            state.preferences_theme = THEMES[next_idx].to_string();
+            state.status = format!("Theme: {}", state.preferences_theme);
             Task::none()
         }
 

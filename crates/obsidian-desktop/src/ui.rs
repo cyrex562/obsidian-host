@@ -43,6 +43,7 @@ pub(crate) fn view(state: &DesktopApp) -> Element<'_, Message> {
             button("Preferences").on_press(Message::PreferencesPressed),
             button("Plugins").on_press(Message::PluginManagerPressed),
             button("Import/Export").on_press(Message::ImportExportPressed),
+            button(text(format!("Theme: {}", state.preferences_theme))).on_press(Message::CycleTheme),
             button(if state.feature_flags.diagnostics_panel {
                 "● Diag"
             } else {
