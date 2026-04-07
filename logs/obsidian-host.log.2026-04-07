@@ -1,0 +1,19 @@
+[2m2026-04-07T15:04:39.447456Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-04-07T15:04:39.448931Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-04-07T15:04:39.448966Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 127.0.0.1:8080
+[2m2026-04-07T15:04:39.449008Z[0m [33m WARN[0m [2mobsidian_host[0m[2m:[0m auth.jwt_secret is empty; generated an ephemeral runtime secret. Set [auth].jwt_secret in config.toml for persistent tokens across restarts.
+[2m2026-04-07T15:04:52.301038Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Logging initialized (format: text)
+[2m2026-04-07T15:04:52.302507Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting Obsidian Host server...
+[2m2026-04-07T15:04:52.302539Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Server config: 127.0.0.1:8080
+[2m2026-04-07T15:04:52.302593Z[0m [33m WARN[0m [2mobsidian_host[0m[2m:[0m auth.jwt_secret is empty; generated an ephemeral runtime secret. Set [auth].jwt_secret in config.toml for persistent tokens across restarts.
+[2m2026-04-07T15:04:52.354461Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Database initialized at ./obsidian-host.db
+[2m2026-04-07T15:04:52.355150Z[0m [33m WARN[0m [2mobsidian_host[0m[2m:[0m User bootstrap skipped: Invalid input: No users exist. Set auth.bootstrap_admin_password in config.toml. Configure [auth] bootstrap_admin_username/bootstrap_admin_password in config.toml to create the first admin.
+[2m2026-04-07T15:04:52.355191Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Search index initialized
+[2m2026-04-07T15:04:52.355324Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m File watcher initialized
+[2m2026-04-07T15:04:52.355650Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Loading vault: test vault 1 at C:\Users\cyrex\files\projects\obsidian-host\data\test_vault_1
+[2m2026-04-07T15:04:52.355687Z[0m [33m WARN[0m [2mobsidian_host[0m[2m:[0m Removing vault 567b7a70-7540-4f48-854d-7b392ba4c2b6 because path is missing: C:\Users\cyrex\files\projects\obsidian-host\data\test_vault_1
+[2m2026-04-07T15:04:52.366401Z[0m [32m INFO[0m [2mobsidian_host[0m[2m:[0m Starting HTTP server on 127.0.0.1:8080
+[2m2026-04-07T15:04:52.366760Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 32 workers
+[2m2026-04-07T15:04:52.366795Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2026-04-07T15:04:52.366811Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-127.0.0.1:8080", workers: 32, listening on: 127.0.0.1:8080
+[2m2026-04-07T15:04:54.514792Z[0m [32m INFO[0m [2mobsidian_host::middleware::logging[0m[2m:[0m API request completed [3mmethod[0m[2m=[0mGET [3mpath[0m[2m=[0m/api/version [3mquery[0m[2m=[0m [3mstatus[0m[2m=[0m200 [3mduration_ms[0m[2m=[0m0 [3mremote_addr[0m[2m=[0mSome("127.0.0.1:51058") [3muser_agent[0m[2m=[0mcurl/8.15.0

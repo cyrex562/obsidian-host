@@ -14,6 +14,7 @@ pub mod search;
 pub mod tags;
 pub mod totp;
 pub mod vaults;
+pub mod version;
 pub mod ws;
 pub mod bookmarks;
 

@@ -340,6 +340,7 @@ fn should_skip_auth(req: &ServiceRequest) -> bool {
     }
 
     if path == "/api/health"
+        || path == "/api/version"
         || path == "/api/auth/login"
         || path == "/api/auth/refresh"
         || path.starts_with("/api/auth/oidc/")

@@ -323,6 +323,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(obsidian_host::middleware::RateLimitMiddleware)
             .wrap(middleware::Compress::default())
             .configure(obsidian_host::routes::health::configure)
+            .configure(obsidian_host::routes::version::configure)
             .configure(obsidian_host::routes::auth::configure)
             .configure(obsidian_host::routes::admin::configure)
             .configure(obsidian_host::routes::groups::configure)
