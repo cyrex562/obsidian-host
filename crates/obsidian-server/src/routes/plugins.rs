@@ -1,6 +1,6 @@
 use crate::services::PluginService;
 use actix_web::{web, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]

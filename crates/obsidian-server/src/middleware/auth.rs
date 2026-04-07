@@ -159,7 +159,7 @@ where
                     .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid API key"))?;
 
                 // Resolve username for the authenticated user.
-                let username = state
+                let _username = state
                     .db
                     .get_user_by_id(&user_id)
                     .await

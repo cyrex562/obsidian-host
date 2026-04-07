@@ -7,7 +7,6 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
-use chrono::Utc;
 use rand::Rng;
 use uuid::Uuid;
 
@@ -118,12 +117,14 @@ async fn oidc_callback(
         .await;
 
     // Issue our own JWT tokens.
-    let response = crate::routes::auth::issue_tokens_public(
+    let (response, refresh_jti, refresh_exp) = crate::routes::auth::issue_tokens_public(
         &user_id,
         &username,
         "oidc",
         &config.auth,
     )?;
+
+    let _ = state.db.create_session(&refresh_jti, &user_id, refresh_exp).await;
 
     Ok(HttpResponse::Ok().json(response))
 }

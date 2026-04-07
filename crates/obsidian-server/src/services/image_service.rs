@@ -1,5 +1,4 @@
 use crate::error::{AppError, AppResult};
-use image::imageops::FilterType;
 use image::io::Reader as ImageReader;
 use image::ImageFormat;
 use std::io::Cursor;

@@ -8,7 +8,6 @@ use argon2::{
     Argon2,
 };
 use rand::{distr::Alphanumeric, Rng};
-use sqlx::Executor;
 
 fn require_authenticated_user(req: &HttpRequest) -> AppResult<AuthenticatedUser> {
     req.extensions()

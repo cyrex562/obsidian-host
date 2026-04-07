@@ -175,7 +175,7 @@ impl PluginApi {
     // Network Operations (if capability granted)
 
     /// Make HTTP GET request
-    pub async fn http_get(&self, url: &str) -> AppResult<String> {
+    pub async fn http_get(&self, _url: &str) -> AppResult<String> {
         self.check_capability(&PluginCapability::Network)?;
 
         // TODO: Implement HTTP client
@@ -185,7 +185,7 @@ impl PluginApi {
     }
 
     /// Make HTTP POST request
-    pub async fn http_post(&self, url: &str, body: String) -> AppResult<String> {
+    pub async fn http_post(&self, _url: &str, _body: String) -> AppResult<String> {
         self.check_capability(&PluginCapability::Network)?;
 
         // TODO: Implement HTTP client

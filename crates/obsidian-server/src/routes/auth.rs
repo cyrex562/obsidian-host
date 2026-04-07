@@ -49,6 +49,8 @@ struct Claims {
     token_type: String,
     exp: i64,
     iat: i64,
+    /// JWT ID — uniquely identifies this token for session tracking.
+    jti: String,
 }
 
 #[post("/api/auth/login")]
@@ -69,33 +71,51 @@ async fn login(
     let principal =
         authenticate_username_password(&state.db, &config.auth, username, password).await?;
 
-    let mut response = issue_tokens(
+    let (mut response, refresh_jti, refresh_exp) = issue_tokens(
         &principal.user_id,
         &principal.username,
         &principal.auth_method,
         &config.auth,
     )?;
     response.totp_required = principal.totp_required;
+
+    let _ = state
+        .db
+        .create_session(&refresh_jti, &principal.user_id, refresh_exp)
+        .await;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
 #[post("/api/auth/refresh")]
 async fn refresh_access_token(
+    state: web::Data<AppState>,
     config: web::Data<AppConfig>,
     req: web::Json<RefreshRequest>,
 ) -> AppResult<HttpResponse> {
-    let claims = decode_token(&req.refresh_token, &config.auth.jwt_secret)?;
+    let old_claims = decode_token(&req.refresh_token, &config.auth.jwt_secret)?;
 
-    if claims.token_type != "refresh" {
+    if old_claims.token_type != "refresh" {
         return Err(AppError::Unauthorized("Invalid refresh token".to_string()));
     }
 
-    let response = issue_tokens(
-        &claims.sub,
-        &claims.username,
-        &claims.auth_method,
+    // Reject the refresh if the session has been explicitly revoked.
+    if state.db.is_session_revoked(&old_claims.jti).await? {
+        return Err(AppError::Unauthorized("Session has been revoked".to_string()));
+    }
+
+    // Rotate: revoke the old session, issue fresh tokens.
+    let _ = state.db.revoke_session(&old_claims.jti).await;
+
+    let (response, refresh_jti, refresh_exp) = issue_tokens(
+        &old_claims.sub,
+        &old_claims.username,
+        &old_claims.auth_method,
         &config.auth,
     )?;
+
+    let _ = state.db.create_session(&refresh_jti, &old_claims.sub, refresh_exp).await;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -194,12 +214,14 @@ async fn change_password(
 }
 
 /// Public entry point so other route modules (e.g. OIDC callback) can issue tokens.
+/// Returns `(LoginResponse, refresh_jti, refresh_expires_at)` so callers can record
+/// the session in the database.
 pub fn issue_tokens_public(
     user_id: &str,
     username: &str,
     auth_method: &str,
     auth_cfg: &crate::config::AuthConfig,
-) -> AppResult<LoginResponse> {
+) -> AppResult<(LoginResponse, String, chrono::DateTime<Utc>)> {
     issue_tokens(user_id, username, auth_method, auth_cfg)
 }
 
@@ -208,9 +230,13 @@ fn issue_tokens(
     username: &str,
     auth_method: &str,
     auth_cfg: &crate::config::AuthConfig,
-) -> AppResult<LoginResponse> {
+) -> AppResult<(LoginResponse, String, chrono::DateTime<Utc>)> {
     let secret = effective_jwt_secret(auth_cfg);
     let now = Utc::now().timestamp();
+
+    let access_jti = uuid::Uuid::new_v4().to_string();
+    let refresh_jti = uuid::Uuid::new_v4().to_string();
+    let refresh_exp = now + auth_cfg.refresh_token_ttl as i64;
 
     let access_claims = Claims {
         sub: user_id.to_string(),
@@ -219,6 +245,7 @@ fn issue_tokens(
         token_type: "access".to_string(),
         iat: now,
         exp: now + auth_cfg.access_token_ttl as i64,
+        jti: access_jti,
     };
 
     let refresh_claims = Claims {
@@ -227,7 +254,8 @@ fn issue_tokens(
         auth_method: auth_method.to_string(),
         token_type: "refresh".to_string(),
         iat: now,
-        exp: now + auth_cfg.refresh_token_ttl as i64,
+        exp: refresh_exp,
+        jti: refresh_jti.clone(),
     };
 
     let access_token = encode(
@@ -244,12 +272,19 @@ fn issue_tokens(
     )
     .map_err(|e| AppError::InternalError(format!("Failed to issue refresh token: {e}")))?;
 
-    Ok(LoginResponse {
-        access_token,
-        refresh_token: refresh_jwt,
-        expires_in: auth_cfg.access_token_ttl,
-        totp_required: false,
-    })
+    let refresh_expires_at =
+        chrono::DateTime::<Utc>::from_timestamp(refresh_exp, 0).unwrap_or_else(Utc::now);
+
+    Ok((
+        LoginResponse {
+            access_token,
+            refresh_token: refresh_jwt,
+            expires_in: auth_cfg.access_token_ttl,
+            totp_required: false,
+        },
+        refresh_jti,
+        refresh_expires_at,
+    ))
 }
 
 fn decode_token(token: &str, jwt_secret: &str) -> AppResult<Claims> {
