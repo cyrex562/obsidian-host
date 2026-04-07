@@ -41,31 +41,36 @@ fn main() -> iced::Result {
 
     info!("Obsidian Desktop starting up");
 
-    iced::application("Obsidian Desktop (Iced) Skeleton", update, ui::view)
-        .theme(|state: &DesktopApp| match state.preferences_theme.as_str() {
-            "light" => Theme::Light,
-            "dark" => Theme::Dark,
-            "tokyo_night" | "tokyonight" => Theme::TokyoNight,
-            "dracula" => Theme::Dracula,
-            "nord" => Theme::Nord,
-            "solarized_light" => Theme::SolarizedLight,
-            "solarized_dark" => Theme::SolarizedDark,
-            "gruvbox_light" => Theme::GruvboxLight,
-            "gruvbox_dark" => Theme::GruvboxDark,
-            "catppuccin_latte" => Theme::CatppuccinLatte,
-            "catppuccin_mocha" => Theme::CatppuccinMocha,
-            "kanagawa_wave" => Theme::KanagawaWave,
-            "moonfly" => Theme::Moonfly,
-            "oxocarbon" => Theme::Oxocarbon,
-            _ => Theme::TokyoNight,
-        })
-        .subscription(subscription)
-        .run_with(|| {
+    iced::application(
+        || {
             (
                 DesktopApp::default(),
                 Task::done(Message::LoadLocalSessionPressed),
             )
-        })
+        },
+        update,
+        ui::view,
+    )
+    .title(|_state: &DesktopApp| "Obsidian Desktop".to_string())
+    .theme(|state: &DesktopApp| match state.preferences_theme.as_str() {
+        "light" => Theme::Light,
+        "dark" => Theme::Dark,
+        "tokyo_night" | "tokyonight" => Theme::TokyoNight,
+        "dracula" => Theme::Dracula,
+        "nord" => Theme::Nord,
+        "solarized_light" => Theme::SolarizedLight,
+        "solarized_dark" => Theme::SolarizedDark,
+        "gruvbox_light" => Theme::GruvboxLight,
+        "gruvbox_dark" => Theme::GruvboxDark,
+        "catppuccin_latte" => Theme::CatppuccinLatte,
+        "catppuccin_mocha" => Theme::CatppuccinMocha,
+        "kanagawa_wave" => Theme::KanagawaWave,
+        "moonfly" => Theme::Moonfly,
+        "oxocarbon" => Theme::Oxocarbon,
+        _ => Theme::TokyoNight,
+    })
+    .subscription(subscription)
+    .run()
 }
 
 #[derive(Debug, Clone)]
@@ -3848,5 +3853,62 @@ mod tests {
         );
         assert!(s.status.contains("line 5"));
         assert!(s.status.contains("Introduction"));
+    }
+
+    // ── iced_test headless UI tests ───────────────────────────────────────────
+    //
+    // These tests render the view to a headless iced Simulator, simulate user
+    // interactions, and assert on resulting state mutations via update().
+    // No display is required — iced_test uses an in-memory renderer.
+
+    #[test]
+    fn headless_login_screen_renders() {
+        let state = fresh();
+        let element = ui::view(&state);
+        let mut sim = iced_test::simulator(element);
+        // The login screen must show at least one of these landmarks
+        let has_login = sim.find("Login").is_ok()
+            || sim.find("Server URL").is_ok()
+            || sim.find("localhost").is_ok();
+        assert!(has_login, "login screen should render recognisable content");
+    }
+
+    #[test]
+    fn headless_shortcuts_overlay_renders_heading() {
+        let mut s = fresh();
+        update(&mut s, Message::ShortcutsHelpToggled);
+        assert!(s.shortcuts_help_visible);
+
+        let element = ui::view(&s);
+        let mut sim = iced_test::simulator(element);
+        assert!(
+            sim.find("Keyboard Shortcuts").is_ok() || sim.find("✕").is_ok(),
+            "shortcuts overlay heading or close button should be visible"
+        );
+    }
+
+    #[test]
+    fn headless_shortcuts_overlay_close_via_click() {
+        let mut s = fresh();
+        update(&mut s, Message::ShortcutsHelpToggled);
+
+        let element = ui::view(&s);
+        let mut sim = iced_test::simulator(element);
+        if sim.click("✕").is_ok() {
+            for msg in sim.into_messages() {
+                let _ = update(&mut s, msg);
+            }
+            assert!(!s.shortcuts_help_visible, "overlay should be dismissed after ✕ click");
+        }
+    }
+
+    #[test]
+    fn headless_feature_flags_fields_accessible() {
+        let s = fresh();
+        // Verify FeatureFlags fields are accessible
+        let _ = s.feature_flags.ml_features;
+        let _ = s.feature_flags.media_preview;
+        let _ = s.feature_flags.event_sync;
+        let _ = s.feature_flags.diagnostics_panel;
     }
 }

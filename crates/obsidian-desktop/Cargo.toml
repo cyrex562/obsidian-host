@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.13", features = ["tokio", "markdown", "image"] }
+iced = { version = "0.14", features = ["tokio", "markdown", "image"] }
 obsidian-client = { path = "../obsidian-client" }
 obsidian-types = { path = "../obsidian-types" }
 serde = { version = "1", features = ["derive"] }
@@ -17,3 +17,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 accesskit = "0.24.0"
+iced_test = "0.14.0"

@@ -120,7 +120,7 @@ pub(crate) fn view(state: &DesktopApp) -> Element<'_, Message> {
     };
 
     let resize_handle = mouse_area(
-        rule::Rule::vertical(6),
+        rule::vertical(6),
     )
     .on_press(Message::ResizeHandlePressed)
     .interaction(iced::mouse::Interaction::ResizingHorizontally);
@@ -868,8 +868,8 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
         .size(
             state
                 .preferences_font_size_input
-                .parse::<u16>()
-                .unwrap_or(14),
+                .parse::<f32>()
+                .unwrap_or(14.0),
         );
 
     let frontmatter_panel = container(
@@ -894,10 +894,9 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
 
     let preview_markdown = markdown::view(
         state.preview_markdown.iter(),
-        markdown::Settings::default(),
-        markdown::Style::from_palette(Theme::TokyoNight.palette()),
+        markdown::Settings::with_style(markdown::Style::from_palette(Theme::TokyoNight.palette())),
     )
-    .map(|url| Message::PreviewLinkClicked(url.to_string()));
+    .map(|url| Message::PreviewLinkClicked(url));
 
     let preview = scrollable(
         container(
@@ -960,8 +959,8 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
                     .size(
                         state
                             .preferences_font_size_input
-                            .parse::<u16>()
-                            .unwrap_or(14),
+                            .parse::<f32>()
+                            .unwrap_or(14.0),
                     );
 
                 container(
@@ -1664,7 +1663,7 @@ fn view_shortcuts_help<'a>() -> Element<'a, Message> {
             ]
             .align_y(iced::Alignment::Center)
             .spacing(8),
-            rule::Rule::horizontal(6),
+            rule::horizontal(6),
             rows,
         ]
         .spacing(10)
