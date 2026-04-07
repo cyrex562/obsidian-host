@@ -366,7 +366,9 @@ async fn create_file(
             .update_file(&vault_id, &req.path, content.content.clone())?;
     }
 
-    Ok(HttpResponse::Created().json(content))
+    Ok(HttpResponse::Created()
+        .insert_header((ETAG, etag))
+        .json(content))
 }
 
 #[put("/api/vaults/{vault_id}/files/{file_path:.*}")]

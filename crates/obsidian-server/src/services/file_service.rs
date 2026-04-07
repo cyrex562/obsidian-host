@@ -5,6 +5,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
+/// Convert a `SystemTime` to `DateTime<Utc>` preserving sub-second precision.
+/// Using `subsec_nanos()` ensures that two writes in the same second still
+/// produce distinct ETags as long as the filesystem has nanosecond mtime.
+fn system_time_to_datetime(t: std::time::SystemTime) -> Option<DateTime<Utc>> {
+    let dur = t.duration_since(std::time::UNIX_EPOCH).ok()?;
+    DateTime::from_timestamp(dur.as_secs() as i64, dur.subsec_nanos())
+}
+
 pub struct FileService;
 
 #[derive(Debug, PartialEq)]
@@ -67,12 +75,7 @@ impl FileService {
             .to_string_lossy()
             .to_string();
 
-        let modified = metadata.modified().ok().and_then(|t| {
-            DateTime::from_timestamp(
-                t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                0,
-            )
-        });
+        let modified = metadata.modified().ok().and_then(system_time_to_datetime);
 
         let is_directory = metadata.is_dir();
         let mut children = None;
@@ -140,15 +143,8 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| {
-                DateTime::from_timestamp(
-                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                    0,
-                )
-            })
+            .and_then(system_time_to_datetime)
             .unwrap_or_else(Utc::now);
-
-        // Parse frontmatter for markdown files
         let (frontmatter, content) = if file_path.ends_with(".md") {
             crate::services::frontmatter_service::parse_frontmatter(&raw_content)?
         } else {
@@ -196,15 +192,8 @@ impl FileService {
         if full_path.exists() && last_modified.is_some() {
             let metadata = fs::metadata(&full_path)?;
             if let Ok(modified_time) = metadata.modified() {
-                let file_modified = DateTime::from_timestamp(
-                    modified_time
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .ok()
-                        .ok_or(AppError::InternalError("Invalid timestamp".to_string()))?
-                        .as_secs() as i64,
-                    0,
-                )
-                .ok_or(AppError::InternalError("Invalid timestamp".to_string()))?;
+                let file_modified = system_time_to_datetime(modified_time)
+                    .ok_or(AppError::InternalError("Invalid timestamp".to_string()))?;
 
                 if let Some(last_mod) = last_modified {
                     // Allow 1 second tolerance for filesystem timestamp precision
@@ -239,12 +228,7 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| {
-                DateTime::from_timestamp(
-                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                    0,
-                )
-            })
+            .and_then(system_time_to_datetime)
             .unwrap_or_else(Utc::now);
 
         Ok(FileContent {
@@ -313,12 +297,7 @@ impl FileService {
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|t| {
-                DateTime::from_timestamp(
-                    t.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
-                    0,
-                )
-            })
+            .and_then(system_time_to_datetime)
             .unwrap_or_else(Utc::now);
 
         Ok(FileContent {

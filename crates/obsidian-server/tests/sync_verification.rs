@@ -105,9 +105,14 @@ async fn verify_etag_optimistic_locking_and_change_log() {
         .to_request();
     let create_resp = test::call_service(&app, create_req).await;
     assert!(create_resp.status().is_success());
-    let create_body: serde_json::Value = test::read_body_json(create_resp).await;
-    let original_etag = create_body["modified"].as_i64().unwrap();
-    let original_etag_str = format!("\"{:x}\"", original_etag);
+    let original_etag_str = create_resp
+        .headers()
+        .get(header::ETAG)
+        .expect("create_file must return an ETag header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let _: serde_json::Value = test::read_body_json(create_resp).await;
 
     // 2. Fetch changes API
     let changes_req = test::TestRequest::get()
@@ -134,9 +139,14 @@ async fn verify_etag_optimistic_locking_and_change_log() {
         .to_request();
     let update_resp = test::call_service(&app, update_req).await;
     assert!(update_resp.status().is_success());
-    let update_body: serde_json::Value = test::read_body_json(update_resp).await;
-    let second_etag = update_body["modified"].as_i64().unwrap();
-    let second_etag_str = format!("\"{:x}\"", second_etag);
+    let _second_etag_str = update_resp
+        .headers()
+        .get(header::ETAG)
+        .expect("update_file must return an ETag header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let _: serde_json::Value = test::read_body_json(update_resp).await;
 
     // 4. Stale write (Conflict) using OLD ETag
     let conflict_req = test::TestRequest::put()
