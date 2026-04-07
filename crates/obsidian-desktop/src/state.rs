@@ -148,6 +148,8 @@ pub(crate) struct CollapsedSections {
     pub(crate) tags: bool,
     pub(crate) recent_files: bool,
     pub(crate) file_tree: bool,
+    pub(crate) outline: bool,
+    pub(crate) backlinks: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

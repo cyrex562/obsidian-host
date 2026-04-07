@@ -1920,6 +1920,8 @@ fn update(state: &mut DesktopApp, message: Message) -> Task<Message> {
                 "tags" => cs.tags = !cs.tags,
                 "recent_files" => cs.recent_files = !cs.recent_files,
                 "file_tree" => cs.file_tree = !cs.file_tree,
+                "outline" => cs.outline = !cs.outline,
+                "backlinks" => cs.backlinks = !cs.backlinks,
                 _ => {}
             }
             Task::none()

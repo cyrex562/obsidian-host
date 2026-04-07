@@ -142,28 +142,39 @@ pub(crate) fn view(state: &DesktopApp) -> Element<'_, Message> {
 }
 
 fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
-    let vault_buttons = state
-        .vaults
-        .iter()
-        .fold(column![text("Vaults")].spacing(6), |col, vault| {
-            let label = if state.selected_vault_id.as_deref() == Some(vault.id.as_str()) {
-                format!("• {}", vault.name)
-            } else {
-                vault.name.clone()
-            };
-            col.push(button(text(label)).on_press(Message::VaultSelected(vault.id.clone())))
-        })
-        .push(button("Refresh Vaults").on_press(Message::LoadVaultsPressed))
-        .push(
-            row![
-                text_input("New vault name", &state.new_vault_name)
-                    .on_input(Message::NewVaultNameChanged)
-                    .width(Length::Fill),
-                button("+ Vault").on_press(Message::CreateVaultPressed),
-            ]
-            .spacing(6),
-        )
-        .push(button("Refresh Tree").on_press(Message::LoadTreePressed));
+    let vaults_header = row![
+        text("Vaults"),
+        button(if state.collapsed_sections.vaults { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("vaults".to_string())),
+    ]
+    .spacing(6);
+
+    let vault_buttons = if state.collapsed_sections.vaults {
+        column![vaults_header].spacing(6)
+    } else {
+        state
+            .vaults
+            .iter()
+            .fold(column![vaults_header].spacing(6), |col, vault| {
+                let label = if state.selected_vault_id.as_deref() == Some(vault.id.as_str()) {
+                    format!("• {}", vault.name)
+                } else {
+                    vault.name.clone()
+                };
+                col.push(button(text(label)).on_press(Message::VaultSelected(vault.id.clone())))
+            })
+            .push(button("Refresh Vaults").on_press(Message::LoadVaultsPressed))
+            .push(
+                row![
+                    text_input("New vault name", &state.new_vault_name)
+                        .on_input(Message::NewVaultNameChanged)
+                        .width(Length::Fill),
+                    button("+ Vault").on_press(Message::CreateVaultPressed),
+                ]
+                .spacing(6),
+            )
+            .push(button("Refresh Tree").on_press(Message::LoadTreePressed))
+    };
 
     let tree_header = row![
         text("Vault Tree"),
@@ -202,64 +213,84 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
         .height(Length::Fill)
     };
 
-    let quick_create = column![
+    let qa_header = row![
         text("Quick Actions"),
-        row![
-            button("Daily Note").on_press(Message::DailyNotePressed),
-            button("Random Note").on_press(Message::RandomNotePressed),
-        ]
-        .spacing(6),
-        row![
-            text_input("notes/new-note.md", &state.new_file_path)
-                .on_input(Message::NewFilePathChanged)
-                .width(Length::Fill),
-            button("New Note").on_press(Message::CreateFilePressed),
-        ]
-        .spacing(6),
-        row![
-            text_input("projects/new-folder", &state.new_folder_path)
-                .on_input(Message::NewFolderPathChanged)
-                .width(Length::Fill),
-            button("New Folder").on_press(Message::CreateFolderPressed),
-        ]
-        .spacing(6),
-        row![
-            text_input("from/path.md", &state.rename_from_path)
-                .on_input(Message::RenameFromPathChanged)
-                .width(Length::Fill),
-            text_input("to/path.md", &state.rename_to_path)
-                .on_input(Message::RenameToPathChanged)
-                .width(Length::Fill),
-            button("Rename / Move").on_press(Message::RenamePathPressed),
-        ]
-        .spacing(6),
-        row![
-            text_input("path/to/delete.md", &state.delete_target_path)
-                .on_input(Message::DeleteTargetPathChanged)
-                .width(Length::FillPortion(2)),
-            button(if state.delete_confirmation_armed {
-                "Confirm Delete"
-            } else {
-                "Arm Delete"
-            })
-            .on_press(if state.delete_confirmation_armed {
-                Message::DeletePathPressed
-            } else {
-                Message::ArmDeletePressed
-            }),
-            button("Cancel").on_press(Message::DeleteCanceled),
-        ]
-        .spacing(6),
+        button(if state.collapsed_sections.quick_actions { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("quick_actions".to_string())),
     ]
     .spacing(6);
 
-    let recent_files = if state.recent_files.is_empty() {
-        column![text("Recent Files"), text("No recent files yet")].spacing(4)
+    let quick_create = if state.collapsed_sections.quick_actions {
+        column![qa_header].spacing(6)
+    } else {
+        column![
+            qa_header,
+            row![
+                button("Daily Note").on_press(Message::DailyNotePressed),
+                button("Random Note").on_press(Message::RandomNotePressed),
+            ]
+            .spacing(6),
+            row![
+                text_input("notes/new-note.md", &state.new_file_path)
+                    .on_input(Message::NewFilePathChanged)
+                    .width(Length::Fill),
+                button("New Note").on_press(Message::CreateFilePressed),
+            ]
+            .spacing(6),
+            row![
+                text_input("projects/new-folder", &state.new_folder_path)
+                    .on_input(Message::NewFolderPathChanged)
+                    .width(Length::Fill),
+                button("New Folder").on_press(Message::CreateFolderPressed),
+            ]
+            .spacing(6),
+            row![
+                text_input("from/path.md", &state.rename_from_path)
+                    .on_input(Message::RenameFromPathChanged)
+                    .width(Length::Fill),
+                text_input("to/path.md", &state.rename_to_path)
+                    .on_input(Message::RenameToPathChanged)
+                    .width(Length::Fill),
+                button("Rename / Move").on_press(Message::RenamePathPressed),
+            ]
+            .spacing(6),
+            row![
+                text_input("path/to/delete.md", &state.delete_target_path)
+                    .on_input(Message::DeleteTargetPathChanged)
+                    .width(Length::FillPortion(2)),
+                button(if state.delete_confirmation_armed {
+                    "Confirm Delete"
+                } else {
+                    "Arm Delete"
+                })
+                .on_press(if state.delete_confirmation_armed {
+                    Message::DeletePathPressed
+                } else {
+                    Message::ArmDeletePressed
+                }),
+                button("Cancel").on_press(Message::DeleteCanceled),
+            ]
+            .spacing(6),
+        ]
+        .spacing(6)
+    };
+
+    let recent_header = row![
+        text("Recent Files"),
+        button(if state.collapsed_sections.recent_files { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("recent_files".to_string())),
+    ]
+    .spacing(6);
+
+    let recent_files = if state.collapsed_sections.recent_files {
+        column![recent_header].spacing(4)
+    } else if state.recent_files.is_empty() {
+        column![recent_header, text("No recent files yet")].spacing(4)
     } else {
         state
             .recent_files
             .iter()
-            .fold(column![text("Recent Files")].spacing(4), |col, path| {
+            .fold(column![recent_header].spacing(4), |col, path| {
                 col.push(
                     button(text(path.as_str()))
                         .width(Length::Fill)
@@ -268,13 +299,22 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
             })
     };
 
-    let bookmarks_panel = if state.bookmarks.is_empty() {
-        column![text("Bookmarks"), text("No bookmarks yet")].spacing(4)
+    let bookmarks_header = row![
+        text("Bookmarks"),
+        button(if state.collapsed_sections.bookmarks { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("bookmarks".to_string())),
+    ]
+    .spacing(6);
+
+    let bookmarks_panel = if state.collapsed_sections.bookmarks {
+        column![bookmarks_header].spacing(4)
+    } else if state.bookmarks.is_empty() {
+        column![bookmarks_header, text("No bookmarks yet")].spacing(4)
     } else {
         state
             .bookmarks
             .iter()
-            .fold(column![text("Bookmarks")].spacing(4), |col, path| {
+            .fold(column![bookmarks_header].spacing(4), |col, path| {
                 col.push(
                     button(text(path.as_str()))
                         .width(Length::Fill)
@@ -283,23 +323,20 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
             })
     };
 
-    let tags_panel = if state.tag_entries.is_empty() {
-        column![
-            row![
-                text("Tags"),
-                button("Refresh Tags").on_press(Message::LoadTagsPressed),
-            ]
-            .spacing(6),
-            text("No tags loaded").size(12),
-        ]
-        .spacing(4)
+    let tags_header = row![
+        text("Tags"),
+        button("Refresh Tags").on_press(Message::LoadTagsPressed),
+        button(if state.collapsed_sections.tags { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("tags".to_string())),
+    ]
+    .spacing(6);
+
+    let tags_panel = if state.collapsed_sections.tags {
+        column![tags_header].spacing(4)
+    } else if state.tag_entries.is_empty() {
+        column![tags_header, text("No tags loaded").size(12)].spacing(4)
     } else {
-        let mut panel = column![row![
-            text("Tags"),
-            button("Refresh Tags").on_press(Message::LoadTagsPressed),
-        ]
-        .spacing(6)]
-        .spacing(4);
+        let mut panel = column![tags_header].spacing(4);
 
         for tag in state.tag_entries.iter().take(12) {
             panel = panel.push(
@@ -312,26 +349,64 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
         panel
     };
 
-    let search_controls = column![
+    let search_header = row![
         text("Search"),
-        row![
-            text_input("Search notes", &state.search_query)
-                .on_input(Message::SearchQueryChanged)
-                .width(Length::Fill),
-            button("Search").on_press(Message::SearchPressed),
-        ]
-        .spacing(6),
-        row![
-            button("Prev").on_press(Message::SearchPrevPagePressed),
-            text(format!(
-                "Page {} · {} total",
-                state.search_page, state.search_total_count
-            )),
-            button("Next").on_press(Message::SearchNextPagePressed),
-        ]
-        .spacing(6),
+        button(if state.collapsed_sections.search { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("search".to_string())),
     ]
     .spacing(6);
+
+    let search_panel = if state.collapsed_sections.search {
+        column![search_header].spacing(6)
+    } else {
+        let mut panel = column![
+            search_header,
+            row![
+                text_input("Search notes", &state.search_query)
+                    .on_input(Message::SearchQueryChanged)
+                    .width(Length::Fill),
+                button("Search").on_press(Message::SearchPressed),
+            ]
+            .spacing(6),
+            row![
+                button("Prev").on_press(Message::SearchPrevPagePressed),
+                text(format!(
+                    "Page {} · {} total",
+                    state.search_page, state.search_total_count
+                )),
+                button("Next").on_press(Message::SearchNextPagePressed),
+            ]
+            .spacing(6),
+        ]
+        .spacing(6);
+
+        if state.search_results.is_empty() {
+            panel = panel.push(text("No results yet"));
+        } else {
+            panel = state.search_results.iter().fold(panel, |p, result| {
+                let snippet = result
+                    .matches
+                    .first()
+                    .map(|m| format!("L{}: {}", m.line_number, m.line_text.trim()))
+                    .unwrap_or_else(|| "No snippet".to_string());
+
+                p.push(
+                    container(
+                        column![
+                            button(text(result.path.as_str()))
+                                .width(Length::Fill)
+                                .on_press(Message::QuickReopenPressed(result.path.clone())),
+                            text(snippet).size(12),
+                        ]
+                        .spacing(2),
+                    )
+                    .padding(4),
+                )
+            });
+        }
+
+        panel
+    };
 
     let quick_switch_query = state.quick_switcher_query.trim().to_ascii_lowercase();
     let quick_switch_matches: Vec<_> = if quick_switch_query.is_empty() {
@@ -351,9 +426,18 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
             .collect()
     };
 
-    let quick_switcher_panel = if quick_switch_matches.is_empty() {
+    let qs_header = row![
+        text("Quick Switcher"),
+        button(if state.collapsed_sections.quick_switcher { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("quick_switcher".to_string())),
+    ]
+    .spacing(6);
+
+    let quick_switcher_panel = if state.collapsed_sections.quick_switcher {
+        column![qs_header].spacing(6)
+    } else if quick_switch_matches.is_empty() {
         column![
-            text("Quick Switcher"),
+            qs_header,
             row![
                 text_input("Jump to note path", &state.quick_switcher_query)
                     .on_input(Message::QuickSwitcherQueryChanged)
@@ -367,7 +451,7 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
         .spacing(6)
     } else {
         let matches_column = quick_switch_matches.into_iter().fold(
-            column![text("Quick Switcher")].spacing(4),
+            column![qs_header].spacing(4),
             |col, entry| {
                 col.push(
                     button(text(entry.path.as_str()))
@@ -389,39 +473,10 @@ fn view_sidebar(state: &DesktopApp) -> Element<'_, Message> {
         )
     };
 
-    let search_results_panel = if state.search_results.is_empty() {
-        column![text("Search Results"), text("No results yet")].spacing(4)
-    } else {
-        state.search_results.iter().fold(
-            column![text("Search Results")].spacing(4),
-            |col, result| {
-                let snippet = result
-                    .matches
-                    .first()
-                    .map(|m| format!("L{}: {}", m.line_number, m.line_text.trim()))
-                    .unwrap_or_else(|| "No snippet".to_string());
-
-                col.push(
-                    container(
-                        column![
-                            button(text(result.path.as_str()))
-                                .width(Length::Fill)
-                                .on_press(Message::QuickReopenPressed(result.path.clone())),
-                            text(snippet).size(12),
-                        ]
-                        .spacing(2),
-                    )
-                    .padding(4),
-                )
-            },
-        )
-    };
-
     column![
         vault_buttons,
         quick_switcher_panel,
-        search_controls,
-        search_results_panel,
+        search_panel,
         quick_create,
         bookmarks_panel,
         tags_panel,
@@ -556,18 +611,24 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
             .into()
     };
 
-    let outline_panel: Element<'_, Message> = if !state.feature_flags.ml_features {
+    let outline_header = row![
+        text("Outline"),
+        button("Refresh Outline").on_press(Message::OutlineRefreshPressed),
+        button(if state.collapsed_sections.outline { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("outline".to_string())),
+    ]
+    .spacing(6);
+
+    let outline_panel: Element<'_, Message> = if state.collapsed_sections.outline {
+        container(column![outline_header].spacing(4)).padding(8).into()
+    } else if !state.feature_flags.ml_features {
         container(text("ML features disabled — enable in Diagnostics panel").size(11))
             .padding(4)
             .into()
     } else if state.outline_sections.is_empty() {
         container(
             column![
-                row![
-                    text("Outline"),
-                    button("Refresh Outline").on_press(Message::OutlineRefreshPressed),
-                ]
-                .spacing(6),
+                outline_header,
                 text(if state.note_path.trim().is_empty() {
                     "Load a note to generate an outline"
                 } else {
@@ -582,11 +643,7 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
     } else {
         let sections = state.outline_sections.iter().fold(
             column![
-                row![
-                    text("Outline"),
-                    button("Refresh Outline").on_press(Message::OutlineRefreshPressed),
-                ]
-                .spacing(6),
+                outline_header,
                 text(state.outline_summary.as_str()).size(12),
             ]
             .spacing(4),
@@ -725,24 +782,21 @@ fn view_editor_workspace(state: &DesktopApp) -> Element<'_, Message> {
             })
     };
 
-    let backlinks_panel = if state.backlink_paths.is_empty() {
-        column![
-            row![
-                text("Backlinks"),
-                button("Refresh Backlinks").on_press(Message::BacklinksRefreshPressed),
-            ]
-            .spacing(6),
-            text("No backlinks").size(12),
-        ]
-        .spacing(4)
+    let backlinks_header = row![
+        text("Backlinks"),
+        button("Refresh Backlinks").on_press(Message::BacklinksRefreshPressed),
+        button(if state.collapsed_sections.backlinks { "▶" } else { "▼" })
+            .on_press(Message::ToggleSidebarSection("backlinks".to_string())),
+    ]
+    .spacing(6);
+
+    let backlinks_panel = if state.collapsed_sections.backlinks {
+        column![backlinks_header].spacing(4)
+    } else if state.backlink_paths.is_empty() {
+        column![backlinks_header, text("No backlinks").size(12)].spacing(4)
     } else {
         state.backlink_paths.iter().fold(
-            column![row![
-                text("Backlinks"),
-                button("Refresh Backlinks").on_press(Message::BacklinksRefreshPressed),
-            ]
-            .spacing(6),]
-            .spacing(4),
+            column![backlinks_header].spacing(4),
             |col, path| {
                 col.push(
                     button(text(path.as_str()))
