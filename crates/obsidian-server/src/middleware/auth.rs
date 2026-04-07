@@ -107,6 +107,43 @@ where
         let bearer = extract_access_token(&req);
 
         if bearer.is_none() && api_key_header.is_none() {
+            // Before returning 401, check whether this is an anonymous read request
+            // on a vault that has been made public.
+            let required_role = required_vault_role(&req);
+            let public_vault_id = match &required_role {
+                Some((vid, RequiredVaultRole::Read)) => Some(vid.clone()),
+                _ => None,
+            };
+
+            if let Some(vault_id) = public_vault_id {
+                let state_clone = state_for_api_key.clone();
+
+                return Box::pin(async move {
+                    let is_public = if let Some(state) = state_clone.as_ref() {
+                        state
+                            .db
+                            .get_vault_visibility(&vault_id)
+                            .await
+                            .map(|v| v == "public")
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    };
+
+                    if is_public {
+                        // Public vault — serve the read request without authentication.
+                        let fut = service.call(req);
+                        return Ok(fut.await?.map_into_left_body());
+                    }
+
+                    let response = HttpResponse::Unauthorized().json(serde_json::json!({
+                        "error": "UNAUTHORIZED",
+                        "message": "Missing or invalid Authorization header or API key"
+                    }));
+                    Ok(req.into_response(response).map_into_right_body())
+                });
+            }
+
             let response = HttpResponse::Unauthorized().json(serde_json::json!({
                 "error": "UNAUTHORIZED",
                 "message": "Missing or invalid Authorization header or API key"
@@ -118,14 +155,27 @@ where
 
         // If we have an API key, validate it asynchronously and resolve the user.
         if let Some(raw_key) = api_key_header {
-            let required_vault_role = required_vault_role(&req);
             let state_clone = state_for_api_key.clone();
-            let fut = service.call(req);
 
             return Box::pin(async move {
-                let state = state_clone.ok_or_else(|| {
-                    actix_web::error::ErrorInternalServerError("Missing app state")
-                })?;
+                macro_rules! unauthorized {
+                    ($msg:expr) => {{
+                        let response = HttpResponse::Unauthorized().json(serde_json::json!({
+                            "error": "UNAUTHORIZED",
+                            "message": $msg
+                        }));
+                        return Ok(req.into_response(response).map_into_right_body());
+                    }};
+                }
+
+                let Some(state) = state_clone else {
+                    let response = HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "INTERNAL_ERROR",
+                        "message": "Missing app state"
+                    }));
+                    return Ok(req.into_response(response).map_into_right_body());
+                };
+
                 let prefix: String = raw_key
                     .strip_prefix("obh_")
                     .unwrap_or(&raw_key)
@@ -133,33 +183,33 @@ where
                     .take(12)
                     .collect();
 
-                let row = state.db.get_api_key_by_prefix(&prefix).await.map_err(|_| {
-                    actix_web::error::ErrorUnauthorized("Invalid API key")
-                })?;
-                let Some((_id, key_hash, user_id, expires_at, revoked)) = row else {
-                    return Err(actix_web::error::ErrorUnauthorized("Invalid API key"));
+                let row = state.db.get_api_key_by_prefix(&prefix).await;
+                let Ok(Some((_id, key_hash, user_id, expires_at, revoked))) = row else {
+                    unauthorized!("Invalid API key");
                 };
                 if revoked {
-                    return Err(actix_web::error::ErrorUnauthorized("API key has been revoked"));
+                    unauthorized!("API key has been revoked");
                 }
                 if let Some(exp_str) = expires_at {
                     if let Ok(exp) = chrono::DateTime::parse_from_rfc3339(&exp_str) {
                         if exp < chrono::Utc::now() {
-                            return Err(actix_web::error::ErrorUnauthorized("API key has expired"));
+                            unauthorized!("API key has expired");
                         }
                     }
                 }
-                // Verify key hash.
-                let parsed_hash =
-                    argon2::password_hash::PasswordHash::new(&key_hash).map_err(|_| {
-                        actix_web::error::ErrorUnauthorized("Invalid API key")
-                    })?;
-                argon2::Argon2::default()
+                let Ok(parsed_hash) = argon2::password_hash::PasswordHash::new(&key_hash) else {
+                    unauthorized!("Invalid API key");
+                };
+                if argon2::Argon2::default()
                     .verify_password(raw_key.as_bytes(), &parsed_hash)
-                    .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid API key"))?;
+                    .is_err()
+                {
+                    unauthorized!("Invalid API key");
+                }
 
-                // Resolve username for the authenticated user.
-                let _username = state
+                // Resolve username and inject AuthenticatedUser into request extensions
+                // so downstream handlers (e.g. /api/auth/me) can identify the caller.
+                let username = state
                     .db
                     .get_user_by_id(&user_id)
                     .await
@@ -168,11 +218,13 @@ where
                     .map(|(_, u)| u)
                     .unwrap_or_else(|| user_id.clone());
 
-                // All good — proceed with the request.
-                // Note: we can't insert extensions here because req was moved to fut.
-                // Instead, the API key routes that need user info should use a different mechanism.
-                // For now, API key auth bypasses vault role checks.
-                let _ = (required_vault_role,);
+                req.extensions_mut().insert(UserId(user_id.clone()));
+                req.extensions_mut().insert(AuthenticatedUser {
+                    user_id: user_id.clone(),
+                    username,
+                });
+
+                let fut = service.call(req);
                 Ok(fut.await?.map_into_left_body())
             });
         }
