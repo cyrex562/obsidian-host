@@ -258,6 +258,7 @@ export class AppState {
     panes: { id: string; flex: number; activeTabId: string | null; }[] = [];
     activePaneId: string = 'pane-1';
     splitOrientation: 'vertical' | 'horizontal' = 'vertical';  // vertical = side-by-side, horizontal = stacked
+    splitPanelOrder: 'rendered-first' | 'raw-first' = 'rendered-first';
 
     constructor() {
         // Defaults will be overridden by loadPreferences()
@@ -2102,16 +2103,17 @@ export class UIManager {
 
 
     renderSideBySideEditor(container: HTMLElement, tab: Tab, paneId: string) {
-        // TODO: Make layout configurable:
-        // - Orientation: vertical (left/right) vs horizontal (top/bottom) - use splitOrientation setting
-        // - Order: rendered-first vs raw-first - add user preference
-        // - Currently: rendered (left) | raw (right)
+        const isVertical = this.state.splitOrientation === 'vertical';
+        const flexDir = isVertical ? 'row' : 'column';
+        const renderedFirst = this.state.splitPanelOrder !== 'raw-first';
+
+        const previewPane = `<div class="editor-preview markdown-content" id="preview-pane-${paneId}"></div>`;
+        const rawPane = `<div><textarea class="editor-raw" id="editor-textarea-${paneId}">${tab.content}</textarea></div>`;
+        const panesHtml = renderedFirst ? `${previewPane}${rawPane}` : `${rawPane}${previewPane}`;
+
         container.innerHTML = `
-            <div class="editor-side-by-side">
-                <div class="editor-preview markdown-content" id="preview-pane-${paneId}"></div>
-                <div>
-                    <textarea class="editor-raw" id="editor-textarea-${paneId}">${tab.content}</textarea>
-                </div>
+            <div class="editor-side-by-side" style="flex-direction:${flexDir}">
+                ${panesHtml}
             </div>
         `;
 
@@ -4412,7 +4414,7 @@ export class UIManager {
                 const target = e.target as HTMLElement;
                 const pluginId = target.getAttribute('data-plugin-id');
                 if (pluginId) {
-                    this.showPluginSettings(pluginId);
+                    this.showPluginSettings(pluginId).catch(console.error);
                 }
             });
         });
@@ -4438,26 +4440,137 @@ export class UIManager {
         }
     }
 
-    showPluginSettings(pluginId: string) {
+    async showPluginSettings(pluginId: string) {
         // Switch to Settings tab
         this.switchPluginTab('settings');
 
-        // Show plugin settings
         const settingsContainer = document.getElementById('plugin-tab-settings');
-        if (settingsContainer) {
+        if (!settingsContainer) return;
+
+        settingsContainer.innerHTML = `<p class="loading-text">Loading settings…</p>`;
+
+        let plugin: any;
+        try {
+            const res = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            plugin = await res.json();
+        } catch (err) {
             settingsContainer.innerHTML = `
                 <div class="plugin-settings-container">
-                    <h3>Settings for ${this.escapeHtml(pluginId)}</h3>
-                    <p>Plugin settings configuration coming soon...</p>
-                    <button class="btn-secondary" id="back-to-installed">← Back to Installed</button>
-                </div>
-            `;
-
-            const backBtn = document.getElementById('back-to-installed');
-            backBtn?.addEventListener('click', () => {
-                this.switchPluginTab('installed');
-            });
+                    <p class="error-text">Failed to load plugin settings.</p>
+                    <button class="btn-secondary" id="back-to-installed">← Back</button>
+                </div>`;
+            document.getElementById('back-to-installed')?.addEventListener('click', () => this.switchPluginTab('installed'));
+            return;
         }
+
+        const schema = plugin.manifest?.config_schema;
+        const currentConfig: Record<string, any> = plugin.config ?? {};
+
+        let fieldsHtml: string;
+        if (schema?.properties && typeof schema.properties === 'object') {
+            // Schema-driven form — render one field per declared property
+            const required: string[] = schema.required ?? [];
+            fieldsHtml = Object.entries(schema.properties as Record<string, any>).map(([key, prop]) => {
+                const value = currentConfig[key] ?? prop.default ?? '';
+                const label = prop.title ?? key;
+                const hint = prop.description ? `<small class="field-hint">${this.escapeHtml(prop.description)}</small>` : '';
+                const req = required.includes(key) ? ' *' : '';
+
+                if (prop.type === 'boolean') {
+                    const checked = value === true ? 'checked' : '';
+                    return `<label class="settings-field settings-field--checkbox">
+                        <input type="checkbox" name="${this.escapeHtml(key)}" ${checked}>
+                        ${this.escapeHtml(label)}${req}
+                        ${hint}
+                    </label>`;
+                }
+                if (prop.enum) {
+                    const options = (prop.enum as any[]).map(opt =>
+                        `<option value="${this.escapeHtml(String(opt))}" ${String(opt) === String(value) ? 'selected' : ''}>${this.escapeHtml(String(opt))}</option>`
+                    ).join('');
+                    return `<label class="settings-field">
+                        ${this.escapeHtml(label)}${req}
+                        <select name="${this.escapeHtml(key)}">${options}</select>
+                        ${hint}
+                    </label>`;
+                }
+                return `<label class="settings-field">
+                    ${this.escapeHtml(label)}${req}
+                    <input type="text" name="${this.escapeHtml(key)}" value="${this.escapeHtml(String(value))}">
+                    ${hint}
+                </label>`;
+            }).join('');
+        } else {
+            // No schema — fall back to raw JSON textarea
+            fieldsHtml = `
+                <label class="settings-field">
+                    Configuration (JSON)
+                    <textarea name="__raw_json__" rows="10" style="font-family:monospace">${this.escapeHtml(JSON.stringify(currentConfig, null, 2))}</textarea>
+                </label>`;
+        }
+
+        settingsContainer.innerHTML = `
+            <div class="plugin-settings-container">
+                <h3>Settings — ${this.escapeHtml(pluginId)}</h3>
+                <form id="plugin-settings-form">
+                    ${fieldsHtml}
+                    <div class="settings-actions">
+                        <button type="submit" class="btn-primary">Save</button>
+                        <button type="button" class="btn-secondary" id="back-to-installed">← Back</button>
+                    </div>
+                    <p id="plugin-settings-status" class="status-text"></p>
+                </form>
+            </div>`;
+
+        document.getElementById('back-to-installed')?.addEventListener('click', () => this.switchPluginTab('installed'));
+
+        document.getElementById('plugin-settings-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target as HTMLFormElement;
+            const status = document.getElementById('plugin-settings-status')!;
+            let newConfig: Record<string, any>;
+
+            if (schema?.properties) {
+                newConfig = {};
+                for (const [key, prop] of Object.entries(schema.properties as Record<string, any>)) {
+                    const el = form.elements.namedItem(key);
+                    if (!el) continue;
+                    if (prop.type === 'boolean') {
+                        newConfig[key] = (el as HTMLInputElement).checked;
+                    } else if (prop.type === 'number' || prop.type === 'integer') {
+                        newConfig[key] = Number((el as HTMLInputElement).value);
+                    } else {
+                        newConfig[key] = (el as HTMLInputElement | HTMLSelectElement).value;
+                    }
+                }
+            } else {
+                try {
+                    newConfig = JSON.parse((form.elements.namedItem('__raw_json__') as HTMLTextAreaElement).value);
+                } catch {
+                    status.textContent = 'Invalid JSON — please fix before saving.';
+                    status.className = 'status-text error-text';
+                    return;
+                }
+            }
+
+            try {
+                const res = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({ error: res.statusText }));
+                    throw new Error(err.error ?? res.statusText);
+                }
+                status.textContent = 'Settings saved.';
+                status.className = 'status-text success-text';
+            } catch (err: any) {
+                status.textContent = `Save failed: ${err.message}`;
+                status.className = 'status-text error-text';
+            }
+        });
     }
 
     switchPluginTab(tabName: string) {
@@ -5105,6 +5218,7 @@ export class UIManager {
     setupPanes() {
         const splitViewBtn = document.getElementById('split-view-btn');
         const toggleOrientationBtn = document.getElementById('toggle-orientation-btn');
+        const togglePanelOrderBtn = document.getElementById('toggle-panel-order-btn');
 
         // Split view button - adds a new pane
         splitViewBtn?.addEventListener('click', () => {
@@ -5118,13 +5232,22 @@ export class UIManager {
             this.savePreferences();
         });
 
+        // Toggle panel order (rendered-first ↔ raw-first)
+        togglePanelOrderBtn?.addEventListener('click', () => {
+            this.state.splitPanelOrder = this.state.splitPanelOrder === 'rendered-first' ? 'raw-first' : 'rendered-first';
+            this.renderEditor();
+            this.savePreferences();
+        });
+
         // Initial setup
         this.renderEditor();
 
         if (this.state.panes.length > 1) {
             toggleOrientationBtn?.classList.remove('hidden');
+            togglePanelOrderBtn?.classList.remove('hidden');
         } else {
             toggleOrientationBtn?.classList.add('hidden');
+            togglePanelOrderBtn?.classList.add('hidden');
         }
     }
 
@@ -5137,6 +5260,7 @@ export class UIManager {
         });
 
         document.getElementById('toggle-orientation-btn')?.classList.remove('hidden');
+        document.getElementById('toggle-panel-order-btn')?.classList.remove('hidden');
         this.renderEditor();
         this.savePreferences();
     }
@@ -5157,6 +5281,7 @@ export class UIManager {
 
         if (this.state.panes.length <= 1) {
             document.getElementById('toggle-orientation-btn')?.classList.add('hidden');
+            document.getElementById('toggle-panel-order-btn')?.classList.add('hidden');
         }
 
         this.renderEditor();
@@ -5644,6 +5769,7 @@ export class UIManager {
                         // Validate panes
                         this.state.panes = layout.panes;
                         this.state.splitOrientation = layout.splitOrientation || 'vertical';
+                        this.state.splitPanelOrder = layout.splitPanelOrder || 'rendered-first';
                         this.state.activePaneId = layout.activePaneId || (this.state.panes[0]?.id || 'pane-1');
 
                         // We need to clear tabs that might be referenced in panes but not open? 
@@ -5674,6 +5800,7 @@ export class UIManager {
         const layout = {
             panes: this.state.panes,
             splitOrientation: this.state.splitOrientation,
+            splitPanelOrder: this.state.splitPanelOrder,
             activePaneId: this.state.activePaneId
         };
 

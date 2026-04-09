@@ -8,7 +8,7 @@ use codex::db::Database;
 use codex::middleware::AuthMiddleware;
 use codex::models::{CreateVaultRequest, CreateFileRequest, UpdateFileRequest};
 use codex::routes::{auth, files, vaults, AppState};
-use codex::services::{default_storage_backend, MarkdownParser, SearchIndex};
+use codex::services::{MarkdownParser, SearchIndex};
 use codex::watcher::FileWatcher;
 use serde_json::json;
 use std::sync::Arc;
@@ -42,7 +42,6 @@ async fn verify_etag_optimistic_locking_and_change_log() {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,

@@ -43,7 +43,6 @@ pub enum AuthProviderKind {
     Password,
     Oidc,
     Ldap,
-    Mtls,
 }
 
 impl AuthProviderKind {
@@ -51,7 +50,9 @@ impl AuthProviderKind {
         match value.trim().to_ascii_lowercase().as_str() {
             "oidc" => Self::Oidc,
             "ldap" | "active_directory" | "ad" => Self::Ldap,
-            "mtls" | "m_tls" | "mutual_tls" => Self::Mtls,
+            // "mtls" was removed — mutual TLS requires transport-layer cert
+            // extraction (e.g. a reverse proxy forwarding X-Client-Cert headers)
+            // and cannot be implemented as a plain auth provider.
             _ => Self::Password,
         }
     }
@@ -61,7 +62,6 @@ impl AuthProviderKind {
             Self::Password => "password",
             Self::Oidc => "oidc",
             Self::Ldap => "ldap",
-            Self::Mtls => "mtls",
         }
     }
 }
@@ -90,9 +90,6 @@ pub async fn authenticate_username_password(
         }
         AuthProviderKind::Oidc => Err(AppError::Unauthorized(
             "OIDC uses redirect-based login. Use /api/auth/oidc/authorize instead.".to_string(),
-        )),
-        AuthProviderKind::Mtls => Err(AppError::Unauthorized(
-            "mTLS authentication is not yet implemented".to_string(),
         )),
     }
 }

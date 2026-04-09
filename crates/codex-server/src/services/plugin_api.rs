@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
 /// Plugin API provides controlled access to host functionality
 pub struct PluginApi {
     context: PluginContext,
     event_bus: Arc<RwLock<EventBus>>,
     storage: Arc<RwLock<PluginStorage>>,
+    http_client: reqwest::Client,
 }
 
 impl PluginApi {
@@ -24,6 +24,7 @@ impl PluginApi {
             context,
             event_bus,
             storage,
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -175,23 +176,57 @@ impl PluginApi {
     // Network Operations (if capability granted)
 
     /// Make HTTP GET request
-    pub async fn http_get(&self, _url: &str) -> AppResult<String> {
+    pub async fn http_get(&self, url: &str) -> AppResult<String> {
         self.check_capability(&PluginCapability::Network)?;
 
-        // TODO: Implement HTTP client
-        Err(AppError::InternalError(
-            "HTTP client not yet implemented".to_string(),
-        ))
+        let response = self
+            .http_client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| AppError::InternalError(format!("HTTP GET failed: {e}")))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| AppError::InternalError(format!("HTTP GET body read failed: {e}")))?;
+
+        if !status.is_success() {
+            return Err(AppError::InternalError(format!(
+                "HTTP GET {url} returned {status}"
+            )));
+        }
+
+        Ok(body)
     }
 
     /// Make HTTP POST request
-    pub async fn http_post(&self, _url: &str, _body: String) -> AppResult<String> {
+    pub async fn http_post(&self, url: &str, body: String) -> AppResult<String> {
         self.check_capability(&PluginCapability::Network)?;
 
-        // TODO: Implement HTTP client
-        Err(AppError::InternalError(
-            "HTTP client not yet implemented".to_string(),
-        ))
+        let response = self
+            .http_client
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| AppError::InternalError(format!("HTTP POST failed: {e}")))?;
+
+        let status = response.status();
+        let response_body = response
+            .text()
+            .await
+            .map_err(|e| AppError::InternalError(format!("HTTP POST body read failed: {e}")))?;
+
+        if !status.is_success() {
+            return Err(AppError::InternalError(format!(
+                "HTTP POST {url} returned {status}"
+            )));
+        }
+
+        Ok(response_body)
     }
 
     // UI Extension Points
@@ -397,6 +432,18 @@ impl Default for PluginStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::plugin::PluginContext;
+
+    fn make_api(capabilities: Vec<PluginCapability>) -> PluginApi {
+        let context = PluginContext {
+            plugin_id: "test.plugin".to_string(),
+            vault_id: None,
+            capabilities,
+        };
+        let event_bus = Arc::new(RwLock::new(EventBus::new()));
+        let storage = Arc::new(RwLock::new(PluginStorage::new()));
+        PluginApi::new(context, event_bus, storage)
+    }
 
     #[test]
     fn test_plugin_storage() {
@@ -426,5 +473,20 @@ mod tests {
         assert!(sub_id.starts_with("sub_"));
 
         bus.unsubscribe(&sub_id);
+    }
+
+    #[test]
+    fn http_get_requires_network_capability() {
+        let api = make_api(vec![]); // no Network capability
+        // Capability check is sync — extract it without running the async part
+        let result = api.check_capability(&PluginCapability::Network);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn http_get_passes_capability_check_with_network() {
+        let api = make_api(vec![PluginCapability::Network]);
+        let result = api.check_capability(&PluginCapability::Network);
+        assert!(result.is_ok());
     }
 }

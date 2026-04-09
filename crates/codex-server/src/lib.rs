@@ -15,8 +15,8 @@ use config::AppConfig;
 use db::Database;
 use routes::AppState;
 use services::{
-    build_storage_backend, EntityTypeRegistry, LabelService, MarkdownParser, ReindexService,
-    RelationTypeRegistry, SchemaService, SearchIndex,
+    EntityTypeRegistry, LabelService, MarkdownParser, ReindexService, RelationTypeRegistry,
+    SchemaService, SearchIndex,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,6 +25,11 @@ use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
 use watcher::FileWatcher;
+use anyhow::Context as _;
+
+// TLS support — only imported when actually needed at runtime
+use rustls::ServerConfig as RustlsServerConfig;
+use rustls_pemfile::{certs, private_key};
 
 #[cfg(not(debug_assertions))]
 use actix_web::{HttpResponse, Result as WebResult};
@@ -314,8 +319,6 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     });
 
     // --- Vault loading -----------------------------------------------------
-    let storage =
-        build_storage_backend(&config.storage).expect("Failed to initialize storage backend");
     let vaults = db.list_vaults().await.expect("Failed to list vaults");
     for vault in vaults {
         info!("Loading vault: {} at {}", vault.name, vault.path);
@@ -343,15 +346,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         }
         drop(w);
 
-        let index_result = if config.storage.backend.trim().to_ascii_lowercase() == "s3" {
-            match storage.list_markdown_files(&vault.path) {
-                Ok(files) => search_index.index_vault_with_files(&vault.id, files),
-                Err(e) => Err(e),
-            }
-        } else {
-            search_index.index_vault(&vault.id, &vault.path)
-        };
-        match index_result {
+        match search_index.index_vault(&vault.id, &vault.path) {
             Ok(count) => info!("Indexed {} files in vault {}", count, vault.name),
             Err(e) => error!("Failed to index vault {}: {}", vault.id, e),
         }
@@ -398,7 +393,6 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let app_state = web::Data::new(AppState {
         db,
         search_index,
-        storage,
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: ws_tx,
@@ -415,10 +409,9 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let server_host = config.server.host.clone();
     let server_port = config.server.port;
     let cors_allowed_origins = config.cors.allowed_origins.clone();
+    let tls_config = config.tls.clone();
 
-    info!("Starting HTTP server on {}:{}", server_host, server_port);
-
-    let server = HttpServer::new(move || {
+    let http_server = HttpServer::new(move || {
         let mut cors = Cors::default()
             .allow_any_header()
             .allow_any_method()
@@ -463,9 +456,46 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
             .configure(routes::invitations::configure)
             .configure(routes::oidc::configure)
     })
-    .shutdown_timeout(10)
-    .bind((server_host.as_str(), server_port))?
-    .run();
+    .shutdown_timeout(10);
+
+    // Bind with TLS if cert_file + key_file are both configured; otherwise plain HTTP.
+    let server = match (tls_config.cert_file.as_deref(), tls_config.key_file.as_deref()) {
+        (Some(cert_path), Some(key_path)) => {
+            info!("TLS enabled — loading certificate from {cert_path}");
+            let cert_bytes = std::fs::read(cert_path)
+                .with_context(|| format!("Failed to read TLS certificate: {cert_path}"))?;
+            let key_bytes = std::fs::read(key_path)
+                .with_context(|| format!("Failed to read TLS private key: {key_path}"))?;
+
+            let cert_chain: Vec<rustls::pki_types::CertificateDer<'static>> =
+                certs(&mut std::io::BufReader::new(cert_bytes.as_slice()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .with_context(|| "Failed to parse TLS certificate chain")?;
+
+            let private_key = private_key(&mut std::io::BufReader::new(key_bytes.as_slice()))
+                .with_context(|| "Failed to parse TLS private key")?
+                .ok_or_else(|| anyhow::anyhow!("No private key found in {key_path}"))?;
+
+            let rustls_cfg = RustlsServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(cert_chain, private_key)
+                .with_context(|| "Failed to build rustls server config")?;
+
+            info!("Starting HTTPS server on {}:{}", server_host, server_port);
+            http_server
+                .bind_rustls_0_23((server_host.as_str(), server_port), rustls_cfg)?
+                .run()
+        }
+        (None, None) => {
+            info!("Starting HTTP server on {}:{}", server_host, server_port);
+            http_server.bind((server_host.as_str(), server_port))?.run()
+        }
+        _ => {
+            anyhow::bail!(
+                "TLS configuration error: both `tls.cert_file` and `tls.key_file` must be set (or neither)"
+            );
+        }
+    };
 
     let server_handle = server.handle();
 

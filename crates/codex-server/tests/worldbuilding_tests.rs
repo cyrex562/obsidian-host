@@ -5,7 +5,7 @@ use codex::db::Database;
 use codex::models::EntityTypeSchema;
 use codex::routes::{entities, AppState};
 use codex::services::{
-    default_storage_backend, EntityService, EntityTypeRegistry, LabelService, MarkdownParser, ReindexService,
+    EntityService, EntityTypeRegistry, LabelService, MarkdownParser, ReindexService,
     RelationService, RelationTypeRegistry, SearchIndex,
 };
 use codex::watcher::FileWatcher;
@@ -30,7 +30,6 @@ async fn setup(temp_dir: &TempDir) -> (web::Data<AppState>, String) {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,

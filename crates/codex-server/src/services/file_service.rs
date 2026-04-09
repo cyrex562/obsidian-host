@@ -1,9 +1,21 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{FileContent, FileNode};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
+
+/// Represents a file that has been moved to the vault's `.trash/` folder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrashItem {
+    /// The timestamped filename inside `.trash/` (e.g. `20240101_120000.000_notes.md`).
+    pub trash_name: String,
+    /// The original vault-relative path before the file was trashed.
+    pub original_path: String,
+    /// RFC-3339 timestamp of when the file was trashed.
+    pub trashed_at: String,
+}
 
 /// Convert a `SystemTime` to `DateTime<Utc>` preserving sub-second precision.
 /// Using `subsec_nanos()` ensures that two writes in the same second still
@@ -314,7 +326,8 @@ impl FileService {
         Self::move_to_trash(vault_path, file_path)
     }
 
-    /// Move file to .trash folder
+    /// Move file to .trash folder, writing a sidecar `.meta.json` with the original path
+    /// so the file can later be restored.
     pub fn move_to_trash(vault_path: &str, file_path: &str) -> AppResult<()> {
         let full_path = Self::resolve_path(vault_path, file_path)?;
 
@@ -327,35 +340,131 @@ impl FileService {
             fs::create_dir(&trash_dir)?;
         }
 
-        // Preserve original structure in trash or flat structure?
-        // Flat structure with timestamp is easier to implement for simple restoration logic
-        // But for true restore, we need original path.
-        // Let's implement flat structure with encoded original path for now
-
-        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S%.3f");
         let file_name = full_path.file_name().unwrap_or_default().to_string_lossy();
-        let trash_name = format!("{}_{}", timestamp, file_name);
-
-        // We could store metadata about original path in a sidecar file or DB,
-        // but for now let's just move it.
-        // NOTE: This simple implementation doesn't support full "restore" to original location
-        // without more state.
-        //
-        // Improvement: Move to .trash/original_path structure
+        let trash_name = format!("{timestamp}_{file_name}");
 
         let dest_path = trash_dir.join(&trash_name);
-
         fs::rename(&full_path, &dest_path)?;
+
+        // Write sidecar so we can restore the original path later
+        let meta = serde_json::json!({
+            "original_path": file_path,
+            "trashed_at": Utc::now().to_rfc3339(),
+        });
+        let meta_path = trash_dir.join(format!("{trash_name}.meta.json"));
+        fs::write(&meta_path, serde_json::to_vec_pretty(&meta)?)?;
 
         Ok(())
     }
 
-    /// Restore file from trash (Placeholder - requires ID/Path lookup)
-    pub fn restore_file(_vault_path: &str, _trash_id: &str) -> AppResult<()> {
-        // Implementation would require tracking original paths
-        Err(AppError::InternalError(
-            "Restore not fully implemented yet".to_string(),
-        ))
+    /// List items currently in the vault's .trash folder.
+    ///
+    /// Returns `(trash_name, original_path, trashed_at)` for each trashed file.
+    pub fn list_trash(vault_path: &str) -> AppResult<Vec<TrashItem>> {
+        let trash_dir = Path::new(vault_path).join(".trash");
+        if !trash_dir.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut items = Vec::new();
+        for entry in fs::read_dir(&trash_dir)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            // Only process meta sidecars; skip actual content files
+            if !name.ends_with(".meta.json") {
+                continue;
+            }
+            let trash_name = name.trim_end_matches(".meta.json").to_string();
+            let meta_bytes = fs::read(entry.path())?;
+            let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)
+                .unwrap_or(serde_json::Value::Null);
+            items.push(TrashItem {
+                trash_name,
+                original_path: meta["original_path"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string(),
+                trashed_at: meta["trashed_at"].as_str().unwrap_or("").to_string(),
+            });
+        }
+        items.sort_by(|a, b| b.trashed_at.cmp(&a.trashed_at));
+        Ok(items)
+    }
+
+    /// Restore a file from trash to its original location.
+    ///
+    /// `trash_name` is the timestamped filename in `.trash/` (as returned by `list_trash`).
+    pub fn restore_file(vault_path: &str, trash_name: &str) -> AppResult<()> {
+        // Validate that trash_name contains no path separators (basic traversal guard)
+        if trash_name.contains('/') || trash_name.contains('\\') || trash_name.contains("..") {
+            return Err(AppError::InvalidInput(
+                "Invalid trash_name: must be a plain file name with no path components".to_string(),
+            ));
+        }
+
+        let trash_dir = Path::new(vault_path).join(".trash");
+        let trashed_file = trash_dir.join(trash_name);
+        let meta_file = trash_dir.join(format!("{trash_name}.meta.json"));
+
+        if !trashed_file.exists() {
+            return Err(AppError::NotFound(format!(
+                "Trashed file not found: {trash_name}"
+            )));
+        }
+        if !meta_file.exists() {
+            return Err(AppError::NotFound(format!(
+                "Trash metadata not found for: {trash_name}. File may have been trashed before restore support was added."
+            )));
+        }
+
+        let meta_bytes = fs::read(&meta_file)?;
+        let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)
+            .map_err(|e| AppError::InternalError(format!("Corrupt trash metadata: {e}")))?;
+        let original_path = meta["original_path"]
+            .as_str()
+            .ok_or_else(|| AppError::InternalError("Missing original_path in trash metadata".to_string()))?;
+
+        let restore_path = Self::resolve_path(vault_path, original_path)?;
+
+        // Ensure the parent directory exists
+        if let Some(parent) = restore_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        if restore_path.exists() {
+            return Err(AppError::Conflict(format!(
+                "Cannot restore: a file already exists at '{original_path}'"
+            )));
+        }
+
+        fs::rename(&trashed_file, &restore_path)?;
+        fs::remove_file(&meta_file)?;
+
+        Ok(())
+    }
+
+    /// Permanently delete a file from trash (no recovery possible).
+    pub fn delete_from_trash(vault_path: &str, trash_name: &str) -> AppResult<()> {
+        if trash_name.contains('/') || trash_name.contains('\\') || trash_name.contains("..") {
+            return Err(AppError::InvalidInput(
+                "Invalid trash_name: must be a plain file name with no path components".to_string(),
+            ));
+        }
+
+        let trash_dir = Path::new(vault_path).join(".trash");
+        let trashed_file = trash_dir.join(trash_name);
+        let meta_file = trash_dir.join(format!("{trash_name}.meta.json"));
+
+        if !trashed_file.exists() {
+            return Err(AppError::NotFound(format!(
+                "Trashed file not found: {trash_name}"
+            )));
+        }
+
+        fs::remove_file(&trashed_file)?;
+        let _ = fs::remove_file(&meta_file); // best-effort; meta may be missing for old items
+        Ok(())
     }
 
     /// Create a directory
@@ -537,6 +646,144 @@ impl FileService {
             }
             Ok(full_path)
         }
+    }
+
+    // ── Upload-session helpers ────────────────────────────────────────────
+
+    /// Creates the temp directory and empty file for a chunked upload session.
+    pub fn create_upload_session_temp(vault_path: &str, session_id: &str) -> AppResult<()> {
+        let upload_dir = Path::new(vault_path).join(".obsidian").join("uploads");
+        std::fs::create_dir_all(&upload_dir)?;
+        let temp_file_path = upload_dir.join(session_id);
+        std::fs::File::create(temp_file_path)?;
+        Ok(())
+    }
+
+    /// Appends a chunk of bytes to an in-progress upload session.
+    /// Returns the new total byte size.
+    pub fn append_upload_chunk(vault_path: &str, session_id: &str, bytes: &[u8]) -> AppResult<u64> {
+        use std::io::Write;
+        use std::fs::OpenOptions;
+        let temp_file_path = upload_temp_file_path(vault_path, session_id);
+        if !temp_file_path.exists() {
+            return Err(AppError::NotFound("Upload session not found".to_string()));
+        }
+        let mut file = OpenOptions::new().append(true).open(&temp_file_path)?;
+        file.write_all(bytes)?;
+        Ok(file.metadata()?.len())
+    }
+
+    /// Returns the current byte size of an upload session temp file.
+    pub fn get_upload_session_size(vault_path: &str, session_id: &str) -> AppResult<u64> {
+        let temp_file_path = upload_temp_file_path(vault_path, session_id);
+        if !temp_file_path.exists() {
+            return Err(AppError::NotFound("Upload session not found".to_string()));
+        }
+        Ok(std::fs::metadata(temp_file_path)?.len())
+    }
+
+    /// Moves the upload session temp file to its final destination.
+    /// Returns the vault-relative final path.
+    pub fn finalize_upload_session(
+        vault_path: &str,
+        session_id: &str,
+        target_dir: &str,
+        filename: &str,
+    ) -> AppResult<String> {
+        validate_upload_filename(filename)?;
+
+        let temp_file_path = upload_temp_file_path(vault_path, session_id);
+        if !temp_file_path.exists() {
+            return Err(AppError::NotFound("Upload session not found".to_string()));
+        }
+
+        let safe_target_dir = if target_dir.is_empty() {
+            Path::new(vault_path).to_path_buf()
+        } else {
+            FileService::resolve_path(vault_path, target_dir)?
+        };
+
+        if !safe_target_dir.exists() {
+            std::fs::create_dir_all(&safe_target_dir)?;
+        } else if !safe_target_dir.is_dir() {
+            return Err(AppError::InvalidInput(
+                "Target path is not a directory".to_string(),
+            ));
+        }
+
+        let final_path = safe_target_dir.join(filename);
+        if let Some(parent) = final_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        if std::fs::rename(&temp_file_path, &final_path).is_err() {
+            std::fs::copy(&temp_file_path, &final_path)?;
+            std::fs::remove_file(&temp_file_path)?;
+        }
+
+        let relative = final_path
+            .strip_prefix(vault_path)
+            .unwrap_or(&final_path)
+            .to_string_lossy()
+            .to_string();
+
+        Ok(relative)
+    }
+
+    /// Removes the upload session temp file (on abort or after finalize).
+    pub fn delete_upload_session_temp(vault_path: &str, session_id: &str) -> AppResult<()> {
+        let temp_file_path = upload_temp_file_path(vault_path, session_id);
+        if temp_file_path.exists() {
+            std::fs::remove_file(temp_file_path)?;
+        }
+        Ok(())
+    }
+
+    /// Walk the vault and return (vault-relative-path, content) for every .md file.
+    pub fn list_markdown_files(vault_path: &str) -> AppResult<Vec<(String, String)>> {
+        use walkdir::WalkDir;
+        let mut files = Vec::new();
+        for entry in WalkDir::new(vault_path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with('.') {
+                    continue;
+                }
+            }
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    let rel = path
+                        .strip_prefix(vault_path)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .to_string();
+                    files.push((rel, content));
+                }
+            }
+        }
+        Ok(files)
+    }
+}
+
+fn upload_temp_file_path(vault_path: &str, session_id: &str) -> std::path::PathBuf {
+    Path::new(vault_path)
+        .join(".obsidian")
+        .join("uploads")
+        .join(session_id)
+}
+
+fn validate_upload_filename(filename: &str) -> AppResult<()> {
+    let file_name_path = Path::new(filename);
+    let mut components = file_name_path.components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(_)), None) => Ok(()),
+        _ => Err(AppError::InvalidInput(
+            "Invalid upload filename".to_string(),
+        )),
     }
 }
 

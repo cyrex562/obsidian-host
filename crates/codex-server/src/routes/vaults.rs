@@ -19,7 +19,6 @@ use tokio::sync::{broadcast, Mutex};
 pub struct AppState {
     pub db: Database,
     pub search_index: SearchIndex,
-    pub storage: Arc<dyn crate::services::StorageBackend>,
     pub watcher: Arc<Mutex<FileWatcher>>,
     pub event_broadcaster: broadcast::Sender<FileChangeEvent>,
     /// General-purpose WebSocket message broadcaster.

@@ -1,7 +1,7 @@
 use actix_web::{test, web, App};
 use codex::db::Database;
 use codex::routes::{ml, AppState};
-use codex::services::{default_storage_backend, MarkdownParser, SearchIndex};
+use codex::services::{MarkdownParser, SearchIndex};
 use codex::watcher::FileWatcher;
 use serde_json::json;
 use std::collections::HashMap;
@@ -39,7 +39,6 @@ async fn apply_tag_and_undo_restores_file_and_receipt_is_single_use() {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,
@@ -135,7 +134,6 @@ async fn apply_move_and_undo_restores_original_path() {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,
@@ -217,7 +215,6 @@ async fn undo_receipt_persists_across_app_reinitialization() {
         let state = web::Data::new(AppState {
             db: db.clone(),
             search_index,
-            storage: default_storage_backend(),
             watcher,
             event_broadcaster: event_tx,
             ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,
@@ -266,7 +263,6 @@ async fn undo_receipt_persists_across_app_reinitialization() {
         let state = web::Data::new(AppState {
             db: db.clone(),
             search_index,
-            storage: default_storage_backend(),
             watcher,
             event_broadcaster: event_tx,
             ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,

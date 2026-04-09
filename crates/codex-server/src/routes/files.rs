@@ -3,7 +3,7 @@ use crate::models::{
     CreateFileRequest, CreateUploadSessionRequest, UpdateFileRequest, UploadSessionResponse,
 };
 use crate::routes::vaults::AppState;
-use crate::services::{FileService, ImageService, WikiLinkResolver};
+use crate::services::{file_service::TrashItem, FileService, ImageService, WikiLinkResolver};
 use actix_multipart::Multipart;
 use actix_web::http::header::{ETAG, IF_NONE_MATCH};
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse};
@@ -27,7 +27,7 @@ async fn get_file_tree(
     let vault_id = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let tree = state.storage.get_file_tree(&vault.path)?;
+    let tree = FileService::get_file_tree(&vault.path)?;
     Ok(HttpResponse::Ok().json(tree))
 }
 
@@ -40,7 +40,7 @@ async fn read_file(
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content = state.storage.read_file(&vault.path, &file_path)?;
+    let content = FileService::read_file(&vault.path, &file_path)?;
     let etag = build_file_etag(&content);
 
     if if_none_match_matches(req.headers().get(IF_NONE_MATCH), &etag) {
@@ -95,7 +95,7 @@ async fn serve_raw_file(
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let raw_content = state.storage.read_raw(&vault.path, &file_path)?;
+    let raw_content = FileService::read_raw_file(&vault.path, &file_path)?;
 
     // Determine MIME type based on file extension
     let mime_type = get_mime_type(&file_path);
@@ -342,9 +342,8 @@ async fn create_file(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content = state
-        .storage
-        .create_file(&vault.path, &req.path, req.content.as_deref())?;
+    let content =
+        FileService::create_file(&vault.path, &req.path, req.content.as_deref())?;
     let etag = build_file_etag(&content);
 
     state
@@ -404,7 +403,7 @@ async fn update_file(
         }
     }
 
-    let content = state.storage.write_file(
+    let content = FileService::write_file(
         &vault.path,
         &file_path,
         &req.content,
@@ -445,7 +444,7 @@ async fn delete_file(
     let (vault_id, file_path) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    state.storage.delete_file(&vault.path, &file_path)?;
+    FileService::delete_file(&vault.path, &file_path)?;
 
     state
         .db
@@ -474,7 +473,7 @@ async fn create_directory(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    state.storage.create_directory(&vault.path, &req.path)?;
+    FileService::create_directory(&vault.path, &req.path)?;
 
     Ok(HttpResponse::Created().json(serde_json::json!({
         "path": req.path,
@@ -508,7 +507,7 @@ async fn rename_file(
         _ => crate::services::RenameStrategy::Fail,
     };
 
-    let new_path = state.storage.rename_file(&vault.path, from, to, strategy)?;
+    let new_path = FileService::rename(&vault.path, from, to, strategy)?;
 
     state
         .db
@@ -527,7 +526,7 @@ async fn rename_file(
         state.search_index.remove_file(&vault_id, from)?;
     }
     if new_path.ends_with(".md") {
-        if let Ok(content) = state.storage.read_file(&vault.path, &new_path) {
+        if let Ok(content) = FileService::read_file(&vault.path, &new_path) {
             state
                 .search_index
                 .update_file(&vault_id, &new_path, content.content)?;
@@ -580,9 +579,7 @@ async fn upload_files(
         }
 
         let session_id = Uuid::new_v4().to_string();
-        state
-            .storage
-            .create_upload_session_temp(&vault.path, &session_id)?;
+        FileService::create_upload_session_temp(&vault.path, &session_id)?;
 
         let mut total_size = 0;
 
@@ -593,21 +590,17 @@ async fn upload_files(
 
             if total_size > max_file_size {
                 // Clean up partial upload session temp file
-                let _ = state
-                    .storage
-                    .delete_upload_session_temp(&vault.path, &session_id);
+                let _ = FileService::delete_upload_session_temp(&vault.path, &session_id);
                 return Err(AppError::InvalidInput(format!(
                     "File {} exceeds maximum size of 100MB",
                     filename
                 )));
             }
 
-            state
-                .storage
-                .append_upload_chunk(&vault.path, &session_id, &data)?;
+            FileService::append_upload_chunk(&vault.path, &session_id, &data)?;
         }
 
-        let final_path_str = state.storage.finalize_upload_session(
+        let final_path_str = FileService::finalize_upload_session(
             &vault.path,
             &session_id,
             &requested_target_path,
@@ -1080,9 +1073,7 @@ async fn create_upload_session(
     let vault = state.db.get_vault(&vault_id).await?;
 
     let session_id = Uuid::new_v4().to_string();
-    state
-        .storage
-        .create_upload_session_temp(&vault.path, &session_id)?;
+    FileService::create_upload_session_temp(&vault.path, &session_id)?;
 
     Ok(HttpResponse::Created().json(UploadSessionResponse {
         session_id,
@@ -1099,9 +1090,7 @@ async fn upload_chunk(
 ) -> AppResult<HttpResponse> {
     let (vault_id, session_id) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
-    let uploaded_bytes = state
-        .storage
-        .append_upload_chunk(&vault.path, &session_id, &body)?;
+    let uploaded_bytes = FileService::append_upload_chunk(&vault.path, &session_id, &body)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "uploaded_bytes": uploaded_bytes
@@ -1115,9 +1104,7 @@ async fn get_upload_status(
 ) -> AppResult<HttpResponse> {
     let (vault_id, session_id) = path.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
-    let uploaded_bytes = state
-        .storage
-        .get_upload_session_size(&vault.path, &session_id)?;
+    let uploaded_bytes = FileService::get_upload_session_size(&vault.path, &session_id)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "session_id": session_id,
@@ -1167,7 +1154,7 @@ async fn finish_upload_session(
         (req.path.clone(), req.filename.clone())
     };
 
-    let final_path_str = state.storage.finalize_upload_session(
+    let final_path_str = FileService::finalize_upload_session(
         &vault.path,
         &session_id,
         &effective_path,
@@ -1423,6 +1410,44 @@ async fn download_tar(
         .body(tar_gz_data))
 }
 
+// ── Trash endpoints ─────────────────────────────────────────────────────────
+
+/// List the files currently sitting in the vault's `.trash/` folder.
+#[get("/api/vaults/{vault_id}/trash")]
+async fn list_trash(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    let vault_id = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+    let items: Vec<TrashItem> = FileService::list_trash(&vault.path)?;
+    Ok(HttpResponse::Ok().json(items))
+}
+
+/// Restore a trashed file to its original vault location.
+#[post("/api/vaults/{vault_id}/trash/{trash_name}/restore")]
+async fn restore_trash_file(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, trash_name) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+    FileService::restore_file(&vault.path, &trash_name)?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// Permanently delete a file from trash (no recovery possible).
+#[delete("/api/vaults/{vault_id}/trash/{trash_name}")]
+async fn delete_from_trash(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> AppResult<HttpResponse> {
+    let (vault_id, trash_name) = path.into_inner();
+    let vault = state.db.get_vault(&vault_id).await?;
+    FileService::delete_from_trash(&vault.path, &trash_name)?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(get_file_tree)
         .service(get_file_tree_html)
@@ -1449,5 +1474,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(get_random_file)
         .service(get_daily_note)
         .service(resolve_wiki_link)
-        .service(batch_resolve_wiki_links);
+        .service(batch_resolve_wiki_links)
+        .service(list_trash)
+        .service(restore_trash_file)
+        .service(delete_from_trash);
 }

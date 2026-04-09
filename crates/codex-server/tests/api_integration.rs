@@ -7,7 +7,7 @@ use codex::config::AppConfig;
 use codex::db::Database;
 use codex::middleware::AuthMiddleware;
 use codex::routes::{auth, api_keys, files, vaults, AppState};
-use codex::services::{default_storage_backend, MarkdownParser, SearchIndex};
+use codex::services::{MarkdownParser, SearchIndex};
 use codex::watcher::FileWatcher;
 use serde_json::json;
 use std::sync::Arc;
@@ -41,7 +41,6 @@ async fn verify_api_keys_and_totp() {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,
@@ -157,7 +156,6 @@ async fn test_public_vault_allows_anonymous_reads() {
     let state = web::Data::new(AppState {
         db: db.clone(),
         search_index,
-        storage: default_storage_backend(),
         watcher,
         event_broadcaster: event_tx,
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,

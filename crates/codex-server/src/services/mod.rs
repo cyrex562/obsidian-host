@@ -14,7 +14,6 @@ pub mod reindex_service;
 pub mod relation_service;
 pub mod schema_service;
 pub mod search_service;
-pub mod storage;
 pub mod template_service;
 pub mod wiki_link_service;
 
@@ -34,6 +33,5 @@ pub use reindex_service::ReindexService;
 pub use relation_service::{Relation, RelationService};
 pub use schema_service::{EntityTypeRegistry, RelationTypeRegistry, SchemaService};
 pub use search_service::SearchIndex;
-pub use storage::{build_storage_backend, default_storage_backend, StorageBackend};
 pub use template_service::TemplateService;
 pub use wiki_link_service::{FileIndex, ResolvedLink, WikiLinkResolver};

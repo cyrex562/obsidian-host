@@ -333,7 +333,8 @@ impl PluginService {
         Ok(())
     }
 
-    /// Update plugin configuration
+    /// Update plugin configuration, validating against the plugin's JSON Schema if one
+    /// is declared in its manifest.
     pub fn update_plugin_config(
         &mut self,
         plugin_id: &str,
@@ -344,7 +345,21 @@ impl PluginService {
             .get_mut(plugin_id)
             .ok_or_else(|| format!("Plugin not found: {}", plugin_id))?;
 
-        // TODO: Validate config against schema if present
+        if let Some(schema) = &plugin.manifest.config_schema {
+            let validator = jsonschema::validator_for(schema)
+                .map_err(|e| format!("Invalid config schema for plugin {plugin_id}: {e}"))?;
+            let errors: Vec<String> = validator
+                .iter_errors(&config)
+                .map(|e| e.to_string())
+                .collect();
+            if !errors.is_empty() {
+                return Err(format!(
+                    "Config validation failed for plugin {plugin_id}: {}",
+                    errors.join("; ")
+                ));
+            }
+        }
+
         plugin.config = config;
         Ok(())
     }
@@ -462,5 +477,87 @@ mod tests {
         assert!(!version_satisfies("2.0.0", "^1.0.0"));
         assert!(version_satisfies("1.2.5", "~1.2.0"));
         assert!(!version_satisfies("1.3.0", "~1.2.0"));
+    }
+
+    fn make_plugin_with_schema(schema: Option<serde_json::Value>) -> (PluginService, String) {
+        use crate::models::plugin::{PluginManifest, PluginState, PluginType};
+        let plugin_id = "test.plugin".to_string();
+        let manifest = PluginManifest {
+            id: plugin_id.clone(),
+            name: "Test Plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: None,
+            author: None,
+            license: None,
+            main: "main.js".to_string(),
+            plugin_type: PluginType::JavaScript,
+            styles: vec![],
+            min_host_version: None,
+            dependencies: Default::default(),
+            capabilities: vec![],
+            hooks: vec![],
+            config_schema: schema,
+            entity_types: vec![],
+            relation_types: vec![],
+            labels: vec![],
+        };
+        let plugin = Plugin {
+            manifest,
+            path: "/tmp/test-plugin".to_string(),
+            enabled: true,
+            state: PluginState::Loaded,
+            config: serde_json::Value::Null,
+            last_error: None,
+        };
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut svc = PluginService::new(dir.path());
+        svc.plugins.insert(plugin_id.clone(), plugin);
+        (svc, plugin_id)
+    }
+
+    #[test]
+    fn update_plugin_config_no_schema_accepts_anything() {
+        let (mut svc, id) = make_plugin_with_schema(None);
+        let result = svc.update_plugin_config(&id, serde_json::json!({"key": "value"}));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn update_plugin_config_valid_config_passes_schema() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "level": { "type": "number" } },
+            "required": ["level"]
+        });
+        let (mut svc, id) = make_plugin_with_schema(Some(schema));
+        let result = svc.update_plugin_config(&id, serde_json::json!({"level": 3}));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn update_plugin_config_invalid_config_rejected_by_schema() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "level": { "type": "number" } },
+            "required": ["level"]
+        });
+        let (mut svc, id) = make_plugin_with_schema(Some(schema));
+        // "level" is required but missing
+        let result = svc.update_plugin_config(&id, serde_json::json!({"other": "field"}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("validation failed"));
+    }
+
+    #[test]
+    fn update_plugin_config_wrong_type_rejected() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "level": { "type": "number" } },
+            "required": ["level"]
+        });
+        let (mut svc, id) = make_plugin_with_schema(Some(schema));
+        // "level" should be a number, not a string
+        let result = svc.update_plugin_config(&id, serde_json::json!({"level": "high"}));
+        assert!(result.is_err());
     }
 }

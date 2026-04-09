@@ -2,22 +2,27 @@ use crate::error::{AppError, AppResult};
 use crate::models::{PagedSearchResult, SearchMatch, SearchResult};
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use tantivy::collector::TopDocs;
+use tantivy::query::{AllQuery, QueryParser};
+use tantivy::schema::{
+    Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING,
+};
+use tantivy::{doc, Index, IndexReader, ReloadPolicy, TantivyDocument, Term};
+use tantivy::schema::Value as TantivyValue;
 use walkdir::WalkDir;
 
-/// Metadata derived from an entity file, stored alongside content for search enrichment.
+// ── Entity metadata ──────────────────────────────────────────────────────────
+
 #[derive(Clone, Default)]
 struct EntityMeta {
     entity_type: Option<String>,
     labels: Vec<String>,
-    /// Extra searchable text from entity field values (appended to content score)
     extra_text: String,
 }
 
 fn extract_entity_meta(content: &str) -> EntityMeta {
-    // Fast path: if no frontmatter, skip
     if !content.starts_with("---") {
         return EntityMeta::default();
     }
@@ -28,26 +33,26 @@ fn extract_entity_meta(content: &str) -> EntityMeta {
     if end < 4 {
         return EntityMeta::default();
     }
-    let yaml_block = &content[4..end]; // skip leading "---\n"
+    let yaml_block = &content[4..end];
 
-    // Extract codex_type
-    let entity_type = yaml_block
-        .lines()
-        .find_map(|line| {
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("codex_type:") {
-                let val = rest.trim().trim_matches('"').trim_matches('\'');
-                if !val.is_empty() { Some(val.to_string()) } else { None }
+    let entity_type = yaml_block.lines().find_map(|line| {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("codex_type:") {
+            let val = rest.trim().trim_matches('"').trim_matches('\'');
+            if !val.is_empty() {
+                Some(val.to_string())
             } else {
                 None
             }
-        });
+        } else {
+            None
+        }
+    });
 
     if entity_type.is_none() {
         return EntityMeta::default();
     }
 
-    // Extract codex_labels (YAML list)
     let mut labels = Vec::new();
     let mut in_labels = false;
     for line in yaml_block.lines() {
@@ -65,8 +70,6 @@ fn extract_entity_meta(content: &str) -> EntityMeta {
         }
     }
 
-    // Collect string/text field values as extra searchable text
-    // (simple heuristic: any YAML string value that's not a reserved key)
     let reserved = ["codex_type", "codex_labels", "codex_plugin"];
     let mut extra_parts: Vec<String> = Vec::new();
     for line in yaml_block.lines() {
@@ -74,7 +77,11 @@ fn extract_entity_meta(content: &str) -> EntityMeta {
         if let Some(colon_pos) = trimmed.find(':') {
             let key = trimmed[..colon_pos].trim();
             let val = trimmed[colon_pos + 1..].trim();
-            if !reserved.contains(&key) && !val.is_empty() && !val.starts_with('[') && !val.starts_with('{') {
+            if !reserved.contains(&key)
+                && !val.is_empty()
+                && !val.starts_with('[')
+                && !val.starts_with('{')
+            {
                 let clean = val.trim_matches('"').trim_matches('\'');
                 if !clean.is_empty() {
                     extra_parts.push(clean.to_string());
@@ -90,128 +97,268 @@ fn extract_entity_meta(content: &str) -> EntityMeta {
     }
 }
 
-/// Simple in-memory search index
+// ── Tantivy schema ───────────────────────────────────────────────────────────
+
+struct IndexFields {
+    path: Field,
+    title: Field,
+    body: Field,
+    entity_type: Field,
+    labels: Field,
+}
+
+fn build_schema() -> (Schema, IndexFields) {
+    let mut sb = Schema::builder();
+
+    let text_opts = TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("default")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored();
+
+    let path_field = sb.add_text_field("path", STRING | STORED);
+    let title_field = sb.add_text_field("title", text_opts.clone());
+    let body_field = sb.add_text_field("body", text_opts);
+    let entity_type_field = sb.add_text_field("entity_type", STORED);
+    let labels_field = sb.add_text_field("labels", STORED);
+
+    let schema = sb.build();
+    let fields = IndexFields {
+        path: path_field,
+        title: title_field,
+        body: body_field,
+        entity_type: entity_type_field,
+        labels: labels_field,
+    };
+    (schema, fields)
+}
+
+// ── VaultIndex ───────────────────────────────────────────────────────────────
+
+struct VaultIndex {
+    index: Index,
+    reader: IndexReader,
+    vault_path: String,
+    fields: IndexFields,
+}
+
+// ── SearchIndex ──────────────────────────────────────────────────────────────
+
+/// Tantivy-backed full-text search index, one per vault.
 #[derive(Clone)]
 pub struct SearchIndex {
-    // vault_id -> (file_path -> content)
-    indices: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
-    // vault_id -> (file_path -> entity metadata)
-    entity_meta: Arc<RwLock<HashMap<String, HashMap<String, EntityMeta>>>>,
+    vaults: Arc<RwLock<HashMap<String, VaultIndex>>>,
+    /// `None` → in-RAM index (test mode). `Some(path)` → disk MmapDirectory.
+    base_dir: Option<PathBuf>,
 }
 
 impl SearchIndex {
     pub fn new() -> Self {
+        #[cfg(test)]
+        let base_dir: Option<PathBuf> = None;
+
+        #[cfg(not(test))]
+        let base_dir: Option<PathBuf> = {
+            let dir = PathBuf::from("./data/indices");
+            std::fs::create_dir_all(&dir).ok();
+            Some(dir)
+        };
+
         Self {
-            indices: Arc::new(RwLock::new(HashMap::new())),
-            entity_meta: Arc::new(RwLock::new(HashMap::new())),
+            vaults: Arc::new(RwLock::new(HashMap::new())),
+            base_dir,
         }
     }
 
-    /// Index all markdown files in a vault
-    pub fn index_vault(&self, vault_id: &str, vault_path: &str) -> AppResult<usize> {
-        let mut file_count = 0;
-        let mut index = HashMap::new();
-        let mut entity_meta_map: HashMap<String, EntityMeta> = HashMap::new();
+    fn open_index(&self, vault_id: &str, schema: Schema) -> AppResult<Index> {
+        match &self.base_dir {
+            Some(base) => {
+                let dir = base.join(vault_id);
+                std::fs::create_dir_all(&dir).map_err(|e| {
+                    AppError::InternalError(format!("Failed to create index dir: {e}"))
+                })?;
+                let idx = match Index::open_in_dir(&dir) {
+                    Ok(existing) => existing,
+                    Err(_) => Index::create_in_dir(&dir, schema).map_err(|e| {
+                        AppError::InternalError(format!("Failed to create index: {e}"))
+                    })?,
+                };
+                Ok(idx)
+            }
+            None => Ok(Index::create_in_ram(schema)),
+        }
+    }
 
+    // ── Public API ───────────────────────────────────────────────────────────
+
+    /// Index all markdown files in a vault. Returns the count of indexed files.
+    pub fn index_vault(&self, vault_id: &str, vault_path: &str) -> AppResult<usize> {
+        let (schema, fields) = build_schema();
+        let index = self.open_index(vault_id, schema)?;
+
+        let mut writer = index
+            .writer::<TantivyDocument>(50_000_000)
+            .map_err(|e| AppError::InternalError(format!("Writer error: {e}")))?;
+
+        writer
+            .delete_all_documents()
+            .map_err(|e| AppError::InternalError(format!("Delete all error: {e}")))?;
+
+        let mut count = 0usize;
         for entry in WalkDir::new(vault_path)
             .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-
-            // Skip hidden files and directories
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 if name.starts_with('.') {
                     continue;
                 }
             }
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    let rel = path
+                        .strip_prefix(vault_path)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .to_string();
+                    let title = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let meta = extract_entity_meta(&content);
 
-            // Only index markdown files
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "md" {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            let relative_path = path
-                                .strip_prefix(vault_path)
-                                .unwrap_or(path)
-                                .to_string_lossy()
-                                .to_string();
-
-                            let meta = extract_entity_meta(&content);
-                            index.insert(relative_path.clone(), content);
-                            entity_meta_map.insert(relative_path, meta);
-                            file_count += 1;
-                        }
-                    }
+                    writer
+                        .add_document(doc!(
+                            fields.path => rel,
+                            fields.title => title,
+                            fields.body => content,
+                            fields.entity_type => meta.entity_type.unwrap_or_default(),
+                            fields.labels => meta.labels.join(" "),
+                        ))
+                        .map_err(|e| AppError::InternalError(format!("Add doc error: {e}")))?;
+                    count += 1;
                 }
             }
         }
 
-        let mut indices = self
-            .indices
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        indices.insert(vault_id.to_string(), index);
-        drop(indices);
+        writer
+            .commit()
+            .map_err(|e| AppError::InternalError(format!("Commit error: {e}")))?;
 
-        let mut meta_store = self
-            .entity_meta
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        meta_store.insert(vault_id.to_string(), entity_meta_map);
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual)
+            .try_into()
+            .map_err(|e| AppError::InternalError(format!("Reader error: {e}")))?;
 
-        Ok(file_count)
+        let mut vaults = self
+            .vaults
+            .write()
+            .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+        vaults.insert(
+            vault_id.to_string(),
+            VaultIndex {
+                index,
+                reader,
+                vault_path: vault_path.to_string(),
+                fields,
+            },
+        );
+
+        Ok(count)
     }
 
-    /// Update a single file in the index
+    /// Update (or insert) a single file in the index.
     pub fn update_file(&self, vault_id: &str, file_path: &str, content: String) -> AppResult<()> {
+        let vaults = self
+            .vaults
+            .read()
+            .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+        let vi = match vaults.get(vault_id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        let mut writer = vi
+            .index
+            .writer::<TantivyDocument>(50_000_000)
+            .map_err(|e| AppError::InternalError(format!("Writer error: {e}")))?;
+
+        writer.delete_term(Term::from_field_text(vi.fields.path, file_path));
+
+        let title = Path::new(file_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
         let meta = extract_entity_meta(&content);
 
-        let mut indices = self
-            .indices
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        let vault_index = indices
-            .entry(vault_id.to_string())
-            .or_insert_with(HashMap::new);
-        vault_index.insert(file_path.to_string(), content);
-        drop(indices);
+        writer
+            .add_document(doc!(
+                vi.fields.path => file_path.to_string(),
+                vi.fields.title => title,
+                vi.fields.body => content,
+                vi.fields.entity_type => meta.entity_type.unwrap_or_default(),
+                vi.fields.labels => meta.labels.join(" "),
+            ))
+            .map_err(|e| AppError::InternalError(format!("Add doc error: {e}")))?;
 
-        let mut meta_store = self
-            .entity_meta
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        meta_store
-            .entry(vault_id.to_string())
-            .or_insert_with(HashMap::new)
-            .insert(file_path.to_string(), meta);
+        writer
+            .commit()
+            .map_err(|e| AppError::InternalError(format!("Commit error: {e}")))?;
+
+        vi.reader
+            .reload()
+            .map_err(|e| AppError::InternalError(format!("Reload error: {e}")))?;
+
         Ok(())
     }
 
-    /// Remove a file from the index
+    /// Remove a single file from the index.
     pub fn remove_file(&self, vault_id: &str, file_path: &str) -> AppResult<()> {
-        let mut indices = self
-            .indices
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        if let Some(vault_index) = indices.get_mut(vault_id) {
-            vault_index.remove(file_path);
-        }
-        drop(indices);
+        let vaults = self
+            .vaults
+            .read()
+            .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+        let vi = match vaults.get(vault_id) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
 
-        let mut meta_store = self
-            .entity_meta
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        if let Some(vault_meta) = meta_store.get_mut(vault_id) {
-            vault_meta.remove(file_path);
-        }
+        let mut writer = vi
+            .index
+            .writer::<TantivyDocument>(50_000_000)
+            .map_err(|e| AppError::InternalError(format!("Writer error: {e}")))?;
+
+        writer.delete_term(Term::from_field_text(vi.fields.path, file_path));
+
+        writer
+            .commit()
+            .map_err(|e| AppError::InternalError(format!("Commit error: {e}")))?;
+
+        vi.reader
+            .reload()
+            .map_err(|e| AppError::InternalError(format!("Reload error: {e}")))?;
 
         Ok(())
     }
 
-    /// Search for a query in a vault with pagination
+    /// Remove an entire vault from the in-memory map.
+    pub fn remove_vault(&self, vault_id: &str) -> AppResult<()> {
+        let mut vaults = self
+            .vaults
+            .write()
+            .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+        vaults.remove(vault_id);
+        Ok(())
+    }
+
+    /// Full-text search with pagination.
     pub fn search(
         &self,
         vault_id: &str,
@@ -219,44 +366,85 @@ impl SearchIndex {
         page: usize,
         page_size: usize,
     ) -> AppResult<PagedSearchResult> {
-        let indices = self
-            .indices
-            .read()
-            .map_err(|_| AppError::InternalError("Failed to acquire read lock".to_string()))?;
-
-        let vault_index = indices.get(vault_id).ok_or(AppError::NotFound(format!(
-            "Vault index not found: {}",
-            vault_id
-        )))?;
-
-        // Grab entity metadata snapshot (best-effort — don't fail search if unavailable)
-        let meta_snapshot: HashMap<String, EntityMeta> = self
-            .entity_meta
-            .read()
-            .ok()
-            .and_then(|m| m.get(vault_id).cloned())
-            .unwrap_or_default();
+        use tantivy::DocAddress;
 
         let query_lower = query.to_lowercase();
 
-        // Use parallel iterator for searching files
-        let mut results: Vec<SearchResult> = vault_index
-            .par_iter()
-            .filter_map(|(file_path, content)| {
-                let mut matches = Vec::new();
-                let mut score = 0.0f32;
+        // Phase 1: Acquire lock, clone everything needed, release lock immediately.
+        let (searcher, vault_path, fp_field, title_field, body_field, et_field, lbl_field, index) = {
+            let vaults = self
+                .vaults
+                .read()
+                .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+            let vi = vaults
+                .get(vault_id)
+                .ok_or_else(|| AppError::NotFound(format!("Vault index not found: {vault_id}")))?;
+            let searcher = vi.reader.searcher();
+            (
+                searcher,
+                vi.vault_path.clone(),
+                vi.fields.path,
+                vi.fields.title,
+                vi.fields.body,
+                vi.fields.entity_type,
+                vi.fields.labels,
+                vi.index.clone(),
+            )
+        };
 
-                // Search in file name/title
+        // Phase 2: Tantivy query — collect (path, doc_address) pairs.
+        let candidates: Vec<(String, DocAddress)> = if query.is_empty() {
+            searcher
+                .search(&AllQuery, &TopDocs::with_limit(10_000))
+                .map_err(|e| AppError::InternalError(format!("Search error: {e}")))?
+                .into_iter()
+                .filter_map(|(_, addr)| {
+                    let doc: TantivyDocument = searcher.doc(addr).ok()?;
+                    let path = TantivyValue::as_str(&doc.get_first(fp_field)?)?.to_string();
+                    Some((path, addr))
+                })
+                .collect()
+        } else {
+            let mut qp = QueryParser::for_index(&index, vec![title_field, body_field]);
+            qp.set_field_boost(title_field, 3.0);
+
+            match qp.parse_query(&query_lower) {
+                Ok(tq) => searcher
+                    .search(&tq, &TopDocs::with_limit(1_000))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|(_, addr)| {
+                        let doc: TantivyDocument = searcher.doc(addr).ok()?;
+                        let path = TantivyValue::as_str(&doc.get_first(fp_field)?)?.to_string();
+                        Some((path, addr))
+                    })
+                    .collect(),
+                Err(_) => Vec::new(),
+            }
+        };
+
+        // Phase 3: Build results using stored body content from tantivy
+        // (avoids stale disk reads when update_file is called without updating disk).
+        let mut results: Vec<SearchResult> = candidates
+            .iter()
+            .filter_map(|(file_path, doc_addr)| {
+                let doc: TantivyDocument = searcher.doc(*doc_addr).ok()?;
+                let content = TantivyValue::as_str(&doc.get_first(body_field)?)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+
                 let file_name = Path::new(file_path)
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
 
+                let mut matches: Vec<SearchMatch> = Vec::new();
+                let mut score = 0.0f32;
+
                 if file_name.to_lowercase().contains(&query_lower) {
                     score += 10.0;
                 }
 
-                // Search in content
                 for (line_num, line) in content.lines().enumerate() {
                     let line_lower = line.to_lowercase();
                     if let Some(pos) = line_lower.find(&query_lower) {
@@ -267,45 +455,52 @@ impl SearchIndex {
                             match_end: pos + query.len(),
                         });
                         score += 1.0;
-
-                        // Limit matches per file
                         if matches.len() >= 10 {
                             break;
                         }
                     }
                 }
 
-                if !matches.is_empty() || score > 0.0 {
-                    Some(SearchResult {
-                        path: file_path.clone(),
-                        title: file_name.to_string(),
-                        matches,
-                        score,
-                        // Populated below after collect
-                        entity_type: None,
-                        labels: Vec::new(),
-                    })
-                } else {
-                    None
+                if matches.is_empty() && score == 0.0 {
+                    if query.is_empty() {
+                        score = 1.0;
+                    } else {
+                        return None;
+                    }
                 }
+
+                // Entity metadata from stored fields.
+                let entity_type = doc
+                    .get_first(et_field)
+                    .and_then(|v| TantivyValue::as_str(&v))
+                    .and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
+                let labels_str = doc
+                    .get_first(lbl_field)
+                    .and_then(|v| TantivyValue::as_str(&v))
+                    .unwrap_or("");
+                let labels: Vec<String> = labels_str
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect();
+
+                Some(SearchResult {
+                    path: file_path.clone(),
+                    title: file_name.to_string(),
+                    matches,
+                    score,
+                    entity_type,
+                    labels,
+                })
             })
             .collect();
 
-        // Enrich results with entity metadata (sequential — avoids parallel borrow)
-        for result in &mut results {
-            if let Some(meta) = meta_snapshot.get(&result.path) {
-                if meta.entity_type.is_some() {
-                    result.entity_type = meta.entity_type.clone();
-                    result.labels = meta.labels.clone();
-                    // Boost score if query matches entity field values
-                    if !meta.extra_text.is_empty() && meta.extra_text.to_lowercase().contains(&query_lower) {
-                        result.score += 2.0;
-                    }
-                }
-            }
+        // Phase 4: Fallback disk scan — only for queries that tantivy's tokenizer
+        // strips entirely (e.g. emoji). Tokenizable queries trust tantivy's result.
+        if results.is_empty() && !query.is_empty() && !has_tokenizable_chars(&query_lower) {
+            results = Self::fallback_disk_search(&vault_path, query)?;
         }
 
-        // Sort by score (descending)
+        // ── Sort descending by score ──────────────────────────────────────────
         results.par_sort_unstable_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
@@ -313,11 +508,9 @@ impl SearchIndex {
         });
 
         let total_count = results.len();
-
-        let page = if page < 1 { 1 } else { page };
-
-        // Pagination logic
+        let page = page.max(1);
         let start = (page - 1) * page_size;
+
         if start >= total_count {
             return Ok(PagedSearchResult {
                 results: Vec::new(),
@@ -328,92 +521,123 @@ impl SearchIndex {
         }
 
         let end = std::cmp::min(start + page_size, total_count);
-        let paged_results = results[start..end].to_vec();
-
         Ok(PagedSearchResult {
-            results: paged_results,
+            results: results[start..end].to_vec(),
             total_count,
             page,
             page_size,
         })
     }
 
-    /// Remove entire vault index
-    pub fn remove_vault(&self, vault_id: &str) -> AppResult<()> {
-        let mut indices = self
-            .indices
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        indices.remove(vault_id);
-        drop(indices);
-
-        let mut meta_store = self
-            .entity_meta
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        meta_store.remove(vault_id);
-        Ok(())
-    }
-
-    /// Index all markdown files provided externally (used for non-local-FS backends like S3).
-    pub fn index_vault_with_files(
-        &self,
-        vault_id: &str,
-        files: Vec<(String, String)>,
-    ) -> AppResult<usize> {
-        let count = files.len();
-        let mut meta_map: HashMap<String, EntityMeta> = HashMap::with_capacity(count);
-        let index: HashMap<String, String> = files
-            .into_iter()
-            .map(|(path, content)| {
-                let meta = extract_entity_meta(&content);
-                meta_map.insert(path.clone(), meta);
-                (path, content)
-            })
-            .collect();
-
-        let mut indices = self
-            .indices
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        indices.insert(vault_id.to_string(), index);
-        drop(indices);
-
-        let mut meta_store = self
-            .entity_meta
-            .write()
-            .map_err(|_| AppError::InternalError("Failed to acquire write lock".to_string()))?;
-        meta_store.insert(vault_id.to_string(), meta_map);
-        Ok(count)
-    }
-
-    /// Get a random markdown file from the vault
+    /// Return a random markdown file path from the vault.
     pub fn get_random_file(&self, vault_id: &str) -> AppResult<Option<String>> {
-        let indices = self
-            .indices
-            .read()
-            .map_err(|_| AppError::InternalError("Failed to acquire read lock".to_string()))?;
+        let (searcher, fp_field) = {
+            let vaults = self
+                .vaults
+                .read()
+                .map_err(|_| AppError::InternalError("Lock error".to_string()))?;
+            let vi = match vaults.get(vault_id) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            (vi.reader.searcher(), vi.fields.path)
+        };
 
-        if let Some(vault_index) = indices.get(vault_id) {
-            if vault_index.is_empty() {
-                return Ok(None);
+        let top_docs = searcher
+            .search(&AllQuery, &TopDocs::with_limit(10_000))
+            .map_err(|e| AppError::InternalError(format!("Search error: {e}")))?;
+
+        if top_docs.is_empty() {
+            return Ok(None);
+        }
+
+        use rand::seq::IndexedRandom;
+        let mut rng = rand::rng();
+        if let Some((_, addr)) = top_docs.choose(&mut rng) {
+            if let Ok(doc) = searcher.doc::<TantivyDocument>(*addr) {
+                let path = doc
+                    .get_first(fp_field)
+                    .and_then(|v| TantivyValue::as_str(&v))
+                    .map(|s| s.to_string());
+                return Ok(path);
             }
+        }
+        Ok(None)
+    }
 
-            // Collect keys into a vector to pick a random one
-            // Note: This is O(n), but for reasonable vault sizes it's fine.
-            // Optimization: Maintain a separate Vec of keys if performance becomes an issue.
-            let keys: Vec<&String> = vault_index.keys().collect();
+    // ── Internal helpers ─────────────────────────────────────────────────────
 
-            use rand::seq::IndexedRandom;
-            let mut rng = rand::rng();
+    /// Linear substring scan used as fallback when tantivy finds nothing
+    /// (e.g. emoji, certain special characters stripped by tokenizer).
+    fn fallback_disk_search(vault_path: &str, query: &str) -> AppResult<Vec<SearchResult>> {
+        let query_lower = query.to_lowercase();
+        let mut results = Vec::new();
 
-            if let Some(random_key) = keys.choose(&mut rng) {
-                return Ok(Some(random_key.to_string()));
+        for entry in WalkDir::new(vault_path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with('.') {
+                    continue;
+                }
+            }
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    let rel = path
+                        .strip_prefix(vault_path)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .to_string();
+                    let file_name =
+                        path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+
+                    let mut matches = Vec::new();
+                    let mut score = 0.0f32;
+
+                    if file_name.to_lowercase().contains(&query_lower) {
+                        score += 10.0;
+                    }
+
+                    for (line_num, line) in content.lines().enumerate() {
+                        let line_lower = line.to_lowercase();
+                        if let Some(pos) = line_lower.find(&query_lower) {
+                            matches.push(SearchMatch {
+                                line_number: line_num + 1,
+                                line_text: line.to_string(),
+                                match_start: pos,
+                                match_end: pos + query.len(),
+                            });
+                            score += 1.0;
+                            if matches.len() >= 10 {
+                                break;
+                            }
+                        }
+                    }
+
+                    if !matches.is_empty() || score > 0.0 {
+                        let meta = extract_entity_meta(&content);
+                        results.push(SearchResult {
+                            path: rel,
+                            title: file_name.to_string(),
+                            matches,
+                            score,
+                            entity_type: meta.entity_type,
+                            labels: meta.labels,
+                        });
+                    }
+                }
             }
         }
 
-        Ok(None)
+        Ok(results)
     }
+}
+
+fn has_tokenizable_chars(s: &str) -> bool {
+    s.chars().any(|c| c.is_alphanumeric())
 }
 
 impl Default for SearchIndex {
@@ -422,16 +646,18 @@ impl Default for SearchIndex {
     }
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
 
     fn create_test_vault() -> TempDir {
         let temp_dir = TempDir::new().unwrap();
         let vault = temp_dir.path();
 
-        // Create test markdown files
         fs::write(
             vault.join("Note.md"),
             "# My Note\n\nThis is a test note about Rust programming.\nIt contains multiple lines.",
@@ -450,7 +676,6 @@ mod tests {
         )
         .unwrap();
 
-        // Create subdirectory with files
         fs::create_dir(vault.join("folder")).unwrap();
         fs::write(
             vault.join("folder/Nested.md"),
@@ -458,10 +683,7 @@ mod tests {
         )
         .unwrap();
 
-        // Create a non-markdown file (should be ignored)
         fs::write(vault.join("readme.txt"), "This is a text file.").unwrap();
-
-        // Create hidden file (should be ignored)
         fs::write(
             vault.join(".hidden.md"),
             "# Hidden\n\nThis should be ignored.",
@@ -476,11 +698,7 @@ mod tests {
         let temp = create_test_vault();
         let vault_path = temp.path().to_str().unwrap();
         let index = SearchIndex::new();
-
         let count = index.index_vault("test-vault", vault_path).unwrap();
-
-        // Should index 4 markdown files (Note.md, Another.md, CaseTest.md, folder/Nested.md)
-        // Should NOT index readme.txt or .hidden.md
         assert_eq!(count, 4);
     }
 
@@ -492,10 +710,8 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
-
-        // Should find matches in Note.md, Another.md, CaseTest.md, and folder/Nested.md
         assert!(!results.is_empty());
-        assert!(results.len() >= 3); // At least 3 files mention "rust"
+        assert!(results.len() >= 3);
     }
 
     #[test]
@@ -505,7 +721,6 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Search with different cases should return same results
         let results_lower = index.search("test-vault", "rust", 1, 10).unwrap().results;
         let results_upper = index.search("test-vault", "RUST", 1, 10).unwrap().results;
         let results_mixed = index.search("test-vault", "RuSt", 1, 10).unwrap().results;
@@ -522,12 +737,8 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         let results = index.search("test-vault", "note", 1, 10).unwrap().results;
-
-        // Files with "Note" in the filename should have higher scores
         assert!(!results.is_empty());
 
-        // The first result should be a file with "Note" in the name
-        // (since filename match adds 10 points)
         let first = &results[0];
         assert!(
             first.title.to_lowercase().contains("note"),
@@ -543,10 +754,7 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // CaseTest.md has multiple "rust" matches on one line
         let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
-
-        // Find CaseTest result
         let case_test = results.iter().find(|r| r.path.contains("CaseTest"));
         assert!(case_test.is_some());
     }
@@ -562,8 +770,6 @@ mod tests {
             .search("test-vault", "programming", 1, 10)
             .unwrap()
             .results;
-
-        // Should find "programming" in content
         assert!(!results.is_empty());
 
         let result = &results[0];
@@ -582,9 +788,6 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         let results = index.search("test-vault", "", 1, 10).unwrap().results;
-
-        // Empty query matches everything (empty string is contained in all strings)
-        // This is current behavior - might want to handle differently
         assert!(!results.is_empty());
     }
 
@@ -599,7 +802,6 @@ mod tests {
             .search("test-vault", "xyznonexistent123", 1, 10)
             .unwrap()
             .results;
-
         assert!(results.is_empty());
     }
 
@@ -610,12 +812,10 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Search for something that matches multiple files but limit to page size 2
         let search_res = index.search("test-vault", "note", 1, 2).unwrap();
         let results = search_res.results;
 
         assert!(results.len() <= 2);
-        // We expect more total count if there are more matches
         assert!(search_res.total_count >= results.len());
     }
 
@@ -628,7 +828,6 @@ mod tests {
 
         let results = index.search("test-vault", "rust", 1, 10).unwrap().results;
 
-        // Verify results are sorted by score descending
         for i in 1..results.len() {
             assert!(
                 results[i - 1].score >= results[i].score,
@@ -646,14 +845,12 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Initially no "uniqueword" matches
         let results_before = index
             .search("test-vault", "uniqueword", 1, 10)
             .unwrap()
             .results;
         assert!(results_before.is_empty());
 
-        // Update a file with new content
         index
             .update_file(
                 "test-vault",
@@ -662,7 +859,6 @@ mod tests {
             )
             .unwrap();
 
-        // Now should find the match
         let results_after = index
             .search("test-vault", "uniqueword", 1, 10)
             .unwrap()
@@ -678,14 +874,11 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Search for Python (only in Another.md)
         let results_before = index.search("test-vault", "python", 1, 10).unwrap().results;
         assert_eq!(results_before.len(), 1);
 
-        // Remove the file from index
         index.remove_file("test-vault", "Another.md").unwrap();
 
-        // Now should not find Python
         let results_after = index.search("test-vault", "python", 1, 10).unwrap().results;
         assert!(results_after.is_empty());
     }
@@ -697,14 +890,11 @@ mod tests {
         let index = SearchIndex::new();
         index.index_vault("test-vault", vault_path).unwrap();
 
-        // Search works before removal
         let results_before = index.search("test-vault", "rust", 1, 10);
         assert!(results_before.is_ok());
 
-        // Remove the vault
         index.remove_vault("test-vault").unwrap();
 
-        // Search should fail after removal (vault not found)
         let results_after = index.search("test-vault", "rust", 1, 10);
         assert!(results_after.is_err());
     }
@@ -712,9 +902,7 @@ mod tests {
     #[test]
     fn test_search_nonexistent_vault() {
         let index = SearchIndex::new();
-
         let result = index.search("nonexistent-vault", "test", 1, 10);
-
         assert!(result.is_err());
     }
 
@@ -726,8 +914,6 @@ mod tests {
         index.index_vault("test-vault", vault_path).unwrap();
 
         let results = index.search("test-vault", "nested", 1, 10).unwrap().results;
-
-        // Should find the nested file
         assert!(!results.is_empty());
 
         let nested_result = results
@@ -750,8 +936,6 @@ mod tests {
             .search("test-vault", "multiple", 1, 10)
             .unwrap()
             .results;
-
-        // "multiple" appears in Note.md on line 4 ("It contains multiple lines.")
         assert!(!results.is_empty());
 
         let note_result = results.iter().find(|r| r.path == "Note.md");
@@ -759,7 +943,8 @@ mod tests {
 
         let match_info = &note_result.unwrap().matches[0];
         assert_eq!(
-            match_info.line_number, 4,
+            match_info.line_number,
+            4,
             "Expected line 4, got {}",
             match_info.line_number
         );
@@ -770,7 +955,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let vault = temp_dir.path();
 
-        // Create a file with many occurrences of the same word
         let mut content = String::from("# Many Matches\n\n");
         for i in 0..20 {
             content.push_str(&format!("Line {} has the word test in it.\n", i));
@@ -783,8 +967,6 @@ mod tests {
             .unwrap();
 
         let results = index.search("test-vault", "test", 1, 10).unwrap().results;
-
-        // Should have at most 10 matches per file
         for result in &results {
             assert!(
                 result.matches.len() <= 10,
@@ -810,7 +992,6 @@ mod tests {
             .index_vault("test-vault", vault.to_str().unwrap())
             .unwrap();
 
-        // Search for strings with special characters
         let results_cpp = index.search("test-vault", "c++", 1, 10).unwrap().results;
         assert!(!results_cpp.is_empty(), "Should find C++");
 
@@ -828,7 +1009,7 @@ mod tests {
 
         fs::write(
             vault.join("Unicode.md"),
-            "# Unicode Test\n\nこんにちは means hello.\nEmoji: 🦀 is a crab.",
+            "# Unicode Test\n\n\u{3053}\u{3093}\u{306B}\u{3061}\u{306F} means hello.\nEmoji: \u{1F980} is a crab.",
         )
         .unwrap();
 
@@ -838,12 +1019,12 @@ mod tests {
             .unwrap();
 
         let results_jp = index
-            .search("test-vault", "こんにちは", 1, 10)
+            .search("test-vault", "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}", 1, 10)
             .unwrap()
             .results;
         assert!(!results_jp.is_empty(), "Should find Japanese text");
 
-        let results_emoji = index.search("test-vault", "🦀", 1, 10).unwrap().results;
+        let results_emoji = index.search("test-vault", "\u{1F980}", 1, 10).unwrap().results;
         assert!(!results_emoji.is_empty(), "Should find emoji");
     }
 
@@ -859,7 +1040,6 @@ mod tests {
         let index_clone1 = index.clone();
         let index_clone2 = index.clone();
 
-        // Spawn threads that read concurrently
         let handle1 = thread::spawn(move || {
             for _ in 0..100 {
                 let _ = index_clone1.search("test-vault", "rust", 1, 10);
@@ -874,11 +1054,9 @@ mod tests {
 
         handle1.join().unwrap();
         handle2.join().unwrap();
-
-        // If we get here without panicking, concurrent access works
     }
 
-    // ── extract_entity_meta tests ─────────────────────────────────────────
+    // ── extract_entity_meta tests ─────────────────────────────────────────────
 
     #[test]
     fn test_extract_entity_meta_no_frontmatter() {
@@ -906,7 +1084,8 @@ mod tests {
 
     #[test]
     fn test_extract_entity_meta_with_labels() {
-        let content = "---\ncodex_type: character\ncodex_labels:\n- graphable\n- person\n---\n# Content";
+        let content =
+            "---\ncodex_type: character\ncodex_labels:\n- graphable\n- person\n---\n# Content";
         let meta = extract_entity_meta(content);
         assert_eq!(meta.entity_type.as_deref(), Some("character"));
         assert!(meta.labels.contains(&"graphable".to_string()));
@@ -916,7 +1095,8 @@ mod tests {
 
     #[test]
     fn test_extract_entity_meta_extra_text_from_string_fields() {
-        let content = "---\ncodex_type: character\nfull_name: Alice Smith\nstatus: Active\n---\n# Content";
+        let content =
+            "---\ncodex_type: character\nfull_name: Alice Smith\nstatus: Active\n---\n# Content";
         let meta = extract_entity_meta(content);
         assert!(meta.extra_text.contains("Alice Smith"));
         assert!(meta.extra_text.contains("Active"));
@@ -924,9 +1104,9 @@ mod tests {
 
     #[test]
     fn test_extract_entity_meta_reserved_keys_not_in_extra_text() {
-        let content = "---\ncodex_type: character\ncodex_plugin: worldbuilding\nfull_name: Alice\n---\n# Content";
+        let content =
+            "---\ncodex_type: character\ncodex_plugin: worldbuilding\nfull_name: Alice\n---\n# Content";
         let meta = extract_entity_meta(content);
-        // reserved keys must not be included as extra text
         assert!(!meta.extra_text.contains("worldbuilding"));
         assert!(!meta.extra_text.contains("character"));
     }

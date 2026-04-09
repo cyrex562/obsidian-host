@@ -19,7 +19,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub cors: CorsConfig,
     #[serde(default)]
-    pub storage: StorageConfig,
+    pub tls: TlsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +59,11 @@ fn default_document_format() -> String {
 pub struct AuthConfig {
     #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
+    /// Authentication provider. Valid values: `"password"` (default), `"ldap"`, `"oidc"`.
+    ///
+    /// Note: `"mtls"` was removed — mutual TLS requires a reverse proxy to extract and
+    /// forward the client certificate; it cannot be implemented as an application-layer
+    /// auth provider.
     #[serde(default = "default_auth_provider")]
     pub provider: String,
     #[serde(default = "default_jwt_secret")]
@@ -137,28 +142,26 @@ pub struct CorsConfig {
     pub allowed_origins: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorageConfig {
-    #[serde(default = "default_storage_backend")]
-    pub backend: String,
-    #[serde(default)]
-    pub s3: S3StorageConfig,
-}
-
+/// Optional TLS configuration for the HTTP server.
+///
+/// When both `cert_file` and `key_file` are provided the server binds with
+/// TLS (HTTPS) instead of plain HTTP.  Both files must be PEM-encoded.
+/// If only one is set the server will refuse to start.
+///
+/// Example `config.toml`:
+/// ```toml
+/// [tls]
+/// cert_file = "/etc/codex/tls/server.crt"
+/// key_file  = "/etc/codex/tls/server.key"
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct S3StorageConfig {
+pub struct TlsConfig {
+    /// Path to the PEM-encoded TLS certificate (or chain).
     #[serde(default)]
-    pub endpoint: Option<String>,
+    pub cert_file: Option<String>,
+    /// Path to the PEM-encoded private key.
     #[serde(default)]
-    pub bucket: Option<String>,
-    #[serde(default)]
-    pub region: Option<String>,
-    #[serde(default)]
-    pub access_key: Option<String>,
-    #[serde(default)]
-    pub secret_key: Option<String>,
-    #[serde(default = "default_s3_path_style")]
-    pub path_style: bool,
+    pub key_file: Option<String>,
 }
 
 fn default_host() -> String {
@@ -214,14 +217,6 @@ fn default_cors_allowed_origins() -> Vec<String> {
     vec!["http://localhost:5173".to_string()]
 }
 
-fn default_storage_backend() -> String {
-    "local".to_string()
-}
-
-fn default_s3_path_style() -> bool {
-    true
-}
-
 fn default_ldap_user_attr() -> String {
     "uid".to_string()
 }
@@ -264,10 +259,7 @@ impl Default for AppConfig {
             cors: CorsConfig {
                 allowed_origins: default_cors_allowed_origins(),
             },
-            storage: StorageConfig {
-                backend: default_storage_backend(),
-                s3: S3StorageConfig::default(),
-            },
+            tls: TlsConfig::default(),
         }
     }
 }
@@ -342,15 +334,6 @@ impl Default for CorsConfig {
     fn default() -> Self {
         Self {
             allowed_origins: default_cors_allowed_origins(),
-        }
-    }
-}
-
-impl Default for StorageConfig {
-    fn default() -> Self {
-        Self {
-            backend: default_storage_backend(),
-            s3: S3StorageConfig::default(),
         }
     }
 }
@@ -466,7 +449,6 @@ mod tests {
             config.cors.allowed_origins,
             vec!["http://localhost:5173".to_string()]
         );
-        assert_eq!(config.storage.backend, "local");
     }
 
     #[test]
