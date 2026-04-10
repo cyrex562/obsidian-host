@@ -11,10 +11,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 function setTauriEnv(active: boolean) {
     if (active) {
-        (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     } else {
-        delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
-        delete (window as Record<string, unknown>).__TAURI__;
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+        delete (window as unknown as Record<string, unknown>).__TAURI__;
     }
 }
 

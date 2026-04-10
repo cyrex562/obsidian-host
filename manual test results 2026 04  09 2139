@@ -1,0 +1,306 @@
+Manual Testing Checklist
+
+✅ Works / ❌ Broken / ⚠️ Partial / 🔲 Not tested 
+
+1. 🔐 Authentication
+
+1.1. Navigate to app URL — redirected to login page: ⚠️ partial
+
+The name of the app should be codex not "Obsidian host"
+
+1.2. Login with wrong password — error shown: ✅ Works
+
+1.3. Login with correct credentials — lands on main UI: ✅ Works
+
+1.4. Refresh page — session persists (no re-login required): ✅ Works
+
+1.5. Logout — redirected back to login: ✅ Works
+
+1.6. Change password (via profile/settings) — re-login with new password works: ❌ Broken
+
+Clicking on change password doesnt do anything
+
+1.7. Admin: navigate to Admin → Users page — can see user list: ✅ Works
+
+1.8.  Admin: create a new user, login as that user, login works: ❌ Broken
+
+When the username "test-user-1" and password "test" were entered and "create user" was clicked on, an error message "INVALID_INPUT" was displayed.
+
+1.9.  Admin: delete/deactivate a user — that user can no longer log in: 🔲 Not tested 
+
+Unable to create user to test.
+
+--------------------------------------------------------------------------------------------------
+
+2. 🗄️ Vault Management
+
+2.1. Click "Manage Vaults" — modal opens: ✅ Works
+
+2.2. Register a vault with a valid absolute path — vault appears in list: ⚠️ Partial
+
+Able to create a vault from a custom path i control
+
+Creating a traditional vault without custom path only shows what looks like a relative path - there needs to be an indicator of where the other vaults are stored.
+
+Improvement: also provide a folder selection button and dialog to visually select the vault location.
+
+2.3.  Register a vault with an invalid path — error shown: ⚠️ Partial
+
+Trying to create a vault in a folder i dont control `/usr/local/3` doesnt work, but no error message or indicator is displayed beyond clicking the add button and nothing happening
+
+2.4.  Switch between two registered vaults — file tree updates: ⚠️ Partial
+
+Switching works but the most recently created note stays open from the other vault. I think it should probably close.
+
+2.5.  Delete/unregister a vault — removed from list, no data deleted from disk: ✅ Works
+
+--------------------------------------------------------------------------------------------------
+
+3. 📁 File Tree & Navigation
+
+3.1. File tree populates after vault selection: ✅ Works
+
+3.2. Click a folder — expands/collapses: ✅ Works 
+
+3.3. Click a .md file — opens in editor tab: ✅ Works
+
+3.4. Click an image file — opens in image viewer: 🔲 Not tested 
+
+3.5. Click a PDF — opens in PDF viewer: 🔲 Not tested 
+
+3.6. Click an audio/video file — opens player: 🔲 Not tested 
+
+3.7. Click a code file (.js, .py, etc.) — opens with syntax highlighting: 🔲 Not tested 
+
+3.8. Sidebar is resizable by dragging the divider: ✅ Works
+
+3.9. Sidebar collapse/expand toggle works: ❌ Broken
+
+No button or other affordance visible to expand/collapse sidebar
+
+--------------------------------------------------------------------------------------------------
+
+4. 📝 File Operations (Right-click Context Menu)
+
+4.1. Right-click folder → "New File" — creates .md, appears in tree: ❌ Broken
+
+No option in folder right-click menu to create a new file in folder, just create folder note
+
+4.2. Right-click folder → "New Folder" — creates folder, appears in tree: ✅ Works
+
+4.3. Right-click file → "Rename" — renames file, tab title updates: ⚠️ partial
+
+If the file is renamed while open the original name is displayed in the tab.
+
+4.4. Right-click file → "Delete" — file moves to .trash, disappears from tree: ⚠️ partial
+
+File disappears from tree, but no way to verify it went to .trash; no trash folder visible and path to test-vault folder not known.
+
+If deleted file is open in a tab, when deleted, the tab stays.
+
+4.5. Drag and drop a file into the sidebar — uploads and appears in tree: ⚠️ partial
+
+Dragging a file into a folder works, but cant drag a file to the top-level of the vault, that just opens the file. there should be a top-level folder in the tree with some space to drag stuff into, and probably some lines showing the depth of the file/folder
+
+4.6. Upload button (if present) — can upload a file via dialog: ✅ Works
+
+--------------------------------------------------------------------------------------------------
+
+5. ✏️ Editor Modes
+
+5.1. Raw mode: Type markdown, wait 5s, reload — content persists: ✅ Works
+
+5.2. Side-by-side mode: Left pane edits, right pane renders live: ❌ Broken
+
+No button to enable side-by-side mode
+
+5.3. Formatted mode (CodeJar): Syntax highlighting visible; editing smooth: ⚠️ partial 
+
+Trying to type parenthesis in the codeblock tries to autocomplete, breaking the code i'm writing.
+
+5.4. Rendered mode (TipTap WYSIWYG): No markdown characters visible, formatted text shown: ✅ Works
+
+5.4.1. Bold/italic toolbar buttons work: ✅ Works
+
+5.4.2. Switch back to Raw — markdown correct (no garbled conversion): ⚠️ partial 
+
+switching to preview does not properly display highlighted text
+
+5.5.  Dirty-state dot appears on tab when editing, disappears after auto-save: ✅ Works
+
+5.6.  Editor mode preference survives page reload: ⚠️ partial 
+
+it does persist, but reloading the page closes the tab
+
+5.7.  [[WikiLink]] autocomplete triggers when typing [[: ✅ Works 
+
+5.8.  Drag and drop an image into the editor — uploads and embeds correctly: ❌ Broken
+
+dragging an image onto the editor opens it in a new tab. clicking the uplaod image button creates an image link placeholder, when it should display a file dialog to go grab the image or some other way to specify the link.
+
+--------------------------------------------------------------------------------------------------
+
+6. 🗂️ Tabs
+
+6.1.  Open multiple files — each gets its own tab: ✅ Works 
+
+6.2. Click between tabs — content switches: ✅ Works 
+
+6.3. Close a tab (×) — tab removed, next tab activates: ✅ Works 
+
+6.4. Unsaved changes dot on tab visible before save: ✅ Works 
+
+6.5. Reload page — previously open tabs restore: ❌ Broken
+
+All tabs close
+
+--------------------------------------------------------------------------------------------------
+
+7. 🔍 Search
+
+7.1. Open Search (toolbar icon or Ctrl+F) — modal appears: ⚠️ partial 
+
+Open the dialog works, Ctrl + F opens browser dialog
+
+7.2. Type a query — results shown with highlighted snippets: ❌ Broken
+
+Only displays one result when there should be many
+
+7.3. Click a result — opens file, scrolls to match: ✅ Works 
+
+7.4. Quick Switcher (Ctrl+O) — type filename, press Enter to open:  ❌ Broken
+
+Opens native browser file open dialog
+
+--------------------------------------------------------------------------------------------------
+
+8. 📋 Sidebar Panels
+
+8.1. Outline: Headings from current file listed, click to scroll: ✅ Works
+
+8.2. Backlinks: Files that link to current file are listed: ❌ Broken
+
+8.3. Outgoing Links: Links from current file are listed: ✅ Works
+
+Creating wikilinks should autocomplete file names.
+
+Creates a link when a wikilink is created to a file that doesnt exist
+
+8.4. Tags: All tags in vault shown; click to filter:  ❌ Broken
+
+Tag display exists, but there's no way to create or edit tags
+
+8.5. Recent Files: Recently opened files listed, click to open:  ❌ Broken
+
+No files displayed
+
+8.6. Bookmarks: Bookmark a file, see it appear; remove bookmark: ❌ Broken
+
+Clicking bookmark button doesnt work
+
+8.7. Neighboring Files: Files in same folder listed: ✅ Works
+
+8.8.  Frontmatter Panel: Frontmatter fields editable; save persists: ✅ Works
+
+--------------------------------------------------------------------------------------------------
+
+9. 🔗 Wikilinks & Graph View
+
+9.1. [[link]] in editor navigates to target file on click (preview/rendered mode): ⚠️ partial 
+
+Works in rendered mode, but not in preview mode
+
+9.2. Graph View opens — nodes visible for notes with links:  ❌ Broken
+
+No nodes displayed, despite creating wiki links between them.
+
+9.3.  Clicking a graph node opens that file:   🔲 Not tested 
+
+Graph not working
+
+9.4.  Graph shows tag nodes and edges for #tags in content:  🔲 Not tested 
+
+Unable to create tags to test
+
+--------------------------------------------------------------------------------------------------
+
+10. 📅 Plugins
+
+10.1. Open Plugin Manager modal — installed plugins listed: ❌ Broken 
+
+10.2. Word Count plugin: word/character count visible while editing: ✅ Works 
+ 
+10.3. Daily Notes plugin: "Open Today's Note" creates or opens YYYY-MM-DD.md: ⚠️ partial
+
+The daily note opens if one does not exist, but it doesnt create the file. it indiicates that its saved, but doesnt display in the file tree. 
+
+10.4. Backlinks plugin (if separate from sidebar): backlink count visible: 🔲 Not tested 
+
+No backlinks plugin visible/present
+
+--------------------------------------------------------------------------------------------------
+
+11. 📄 Frontmatter
+
+11.1. Open a file with YAML frontmatter — Frontmatter Panel shows fields: ✅ Works  
+
+11.2. Edit a frontmatter value in the panel — saved correctly: ✅ Works 
+
+11.3. Add a new frontmatter key — persists on reload: ✅ Works 
+
+11.4. Invalid JSON/YAML in frontmatter editor — error shown, not silently corrupted: ❌ Broken
+
+If a dash '-' is typed in the value field it autocompletes to null; same for left and right curly braces '{' '}'
+
+--------------------------------------------------------------------------------------------------
+
+12. 🌐 Real-time Sync (WebSocket)
+
+12.1. Open the same vault in two browser tabs:  ❌ Broken
+
+12.2. Edit a file in Tab A — Tab B reflects change without refresh: ❌ Broken
+
+12.3. Create a file in Tab A — Tab B file tree updates: ❌ Broken
+
+12.4. Delete a file in Tab A — Tab B file tree removes it: ❌ Broken
+
+Additional note, when i clicked on a formatting button on a note i had edited with another tab open, a conflict resolution screen appeared to confirm which version i wanted to keep. Cool screen, but also not the scenario where it should appear.
+
+--------------------------------------------------------------------------------------------------
+
+13. ⚙️ Settings / Preferences
+
+13.1. Toggle dark/light theme — applies immediately, survives reload: ❌ Broken
+
+No visible button or option to change between light/dark
+
+There should also be a mode to change just the background color of notes to white or other eye friendly colors.
+
+13.2. Change font size — editor reflects change: ❌ Broken 
+
+No visible option to change font size.
+
+13.3. Default editor mode setting applies to newly opened files: ❌ Broken 
+
+
+--------------------------------------------------------------------------------------------------
+
+14. 🧪 Edge Cases
+
+14.1. File with special characters in name (spaces, (parens), émojis) — opens correctly: 🔲 Not tested
+
+files with spaces work, unable to test with emojis 
+
+14.2. Very large markdown file (1000+ lines) — editor loads, no freeze:  🔲 Not tested 
+ 
+14.3. Empty vault (no files) — graceful empty state shown:  ✅ Works
+
+14.4. Binary file with no viewer (e.g., .zip) — download option offered:   🔲 Not tested 
+
+Uploading/adding binary files does not work
+
+--------------------------------------------------------------------------------------------------
+
+Other:
+
+While using the app, i was silently logged out/deauthenticated even though i was using it, resulting in getting unauthorized errors when trying do stuff like upload files. The system shouldnt log me off while im using it, and if it does log me off due to actual inactivity it should redirect to the login screen.

@@ -17,8 +17,8 @@ const mockNodes = [
 ];
 
 const mockEdges = [
-    { id: 'e1', source: 'id1', target: 'id2', relation_type: 'located_in', source_field: 'location', direction: 'outgoing' },
-    { id: 'e2', source: 'id1', target: 'id3', relation_type: 'member_of', source_field: 'faction', direction: 'outgoing' },
+    { id: 'e1', source: 'id1', target: 'id2', label: 'located_in', relation_type: 'located_in', source_field: 'location', direction: 'outgoing', is_inverse: false },
+    { id: 'e2', source: 'id1', target: 'id3', label: 'member_of', relation_type: 'member_of', source_field: 'faction', direction: 'outgoing', is_inverse: false },
 ];
 
 const mockEntityTypes = [

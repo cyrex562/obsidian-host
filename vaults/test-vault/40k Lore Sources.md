@@ -1,0 +1,17 @@
+---
+{}
+---
+- Novel Unforgiven
+- 3rd edition rulebook - story about men of Stone
+- Perpetual short story
+- Andy Chambers Ancient History
+- Death & Integrity
+- Mechanicus Trilogy
+- Man of Iron story
+- Leagues of Votann = stone men
+- Rogue Trader books
+- Slaves to Darkness
+- Realms of Chaos
+- Inquisitor Board Game
+- The End and the Death Trilogy
+- Dawn of Fire Series

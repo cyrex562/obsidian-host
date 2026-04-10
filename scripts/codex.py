@@ -1036,6 +1036,131 @@ def _create_source_archive(archive_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Local install helpers
+# ---------------------------------------------------------------------------
+
+def _default_install_dir() -> Path:
+    """User-writable bin dir that is typically on $PATH."""
+    xdg_home = os.environ.get("XDG_DATA_HOME")
+    if xdg_home:
+        p = Path(xdg_home).parent / "bin"
+    else:
+        p = Path.home() / ".local" / "bin"
+    return p
+
+
+def _default_config_dir() -> Path:
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return Path(xdg) / "codex" if xdg else Path.home() / ".config" / "codex"
+
+
+def local_install(
+    *,
+    build_first: bool,
+    release: bool,
+    install_dir: Path,
+    config_dir: Path,
+    with_desktop: bool,
+    admin_password: str | None,
+    port: int,
+) -> None:
+    """Build (optionally) then copy binaries and config to local install locations."""
+    dummy_target = DeploymentTarget(
+        name="local",
+        ssh_host="",
+        ssh_user="",
+        ssh_port=22,
+        ip_address="127.0.0.1",
+        http_port=port,
+        app_dir=str(install_dir),
+    )
+
+    if build_first:
+        artifacts = assemble_dist(
+            dummy_target,
+            build_desktop_bin=with_desktop,
+            release=release,
+            skip_support=True,
+        )
+    else:
+        artifacts = load_existing_artifacts(dummy_target)
+
+    # ── install binary ────────────────────────────────────────────────────
+    step("Installing server binary")
+    install_dir.mkdir(parents=True, exist_ok=True)
+    dest_bin = install_dir / BIN_NAME
+    shutil.copy2(artifacts.server_binary, dest_bin)
+    dest_bin.chmod(dest_bin.stat().st_mode | 0o111)
+    ok(f"Server binary → {dest_bin}")
+
+    # ── install desktop binary (optional) ────────────────────────────────
+    desktop_src = DIST_DIR / "desktop" / DESKTOP_BIN_NAME
+    if with_desktop and desktop_src.exists():
+        step("Installing desktop binary")
+        dest_desktop = install_dir / DESKTOP_BIN_NAME
+        shutil.copy2(desktop_src, dest_desktop)
+        dest_desktop.chmod(dest_desktop.stat().st_mode | 0o111)
+        ok(f"Desktop binary → {dest_desktop}")
+    elif with_desktop:
+        warn(f"Desktop binary not found at {desktop_src} — skipping")
+
+    # ── install / create config ───────────────────────────────────────────
+    step("Installing config")
+    config_dir.mkdir(parents=True, exist_ok=True)
+    dest_cfg = config_dir / "config.toml"
+
+    if dest_cfg.exists():
+        info(f"Config already exists at {dest_cfg} — preserving (not overwritten)")
+    else:
+        lines = CONFIG_TEMPLATE.read_text(encoding="utf-8").splitlines()
+        rendered: list[str] = []
+        section = ""
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                section = stripped.strip("[]")
+                rendered.append(line)
+                continue
+            if section == "server" and stripped.startswith("host ="):
+                rendered.append('host = "127.0.0.1"')
+            elif section == "server" and stripped.startswith("port ="):
+                rendered.append(f"port = {port}")
+            elif section == "database" and stripped.startswith("path ="):
+                rendered.append(f'path = "{config_dir / "codex.db"}"')
+            elif section == "auth" and stripped.startswith("enabled ="):
+                rendered.append("enabled = true")
+            elif section == "auth" and stripped.startswith("bootstrap_admin_username ="):
+                rendered.append('bootstrap_admin_username = "admin"')
+            elif section == "auth" and stripped.startswith("bootstrap_admin_password =") and admin_password:
+                rendered.append(f'bootstrap_admin_password = "{admin_password}"')
+            else:
+                rendered.append(line)
+        dest_cfg.write_text("\n".join(rendered).strip() + "\n", encoding="utf-8")
+        ok(f"Config created → {dest_cfg}")
+        if admin_password:
+            console.print(Panel(
+                f"[bold]username:[/bold] admin\n[bold]password:[/bold] {admin_password}",
+                title="[yellow]Bootstrap admin credentials[/yellow]",
+                border_style="yellow",
+            ))
+        else:
+            warn("No --admin-password set. Edit the config and set bootstrap_admin_password before first run.")
+
+    # ── summary ───────────────────────────────────────────────────────────
+    console.print(Panel(
+        f"[bold]Binary:[/bold]  {dest_bin}\n"
+        f"[bold]Config:[/bold]  {dest_cfg}\n\n"
+        f"Run with:\n  [cyan]{dest_bin} --config {dest_cfg}[/cyan]\n\n"
+        f"Then open [cyan]http://127.0.0.1:{port}[/cyan]",
+        title="[bold green]Local install complete[/bold green]",
+        border_style="green",
+    ))
+
+    if install_dir not in [Path(p) for p in os.environ.get("PATH", "").split(os.pathsep)]:
+        warn(f"{install_dir} is not on your PATH. Add it with:\n  export PATH=\"{install_dir}:$PATH\"")
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def cli() -> None:
     """Codex — build, deploy, configure, and test the Codex server and desktop."""
@@ -1108,6 +1233,68 @@ def build(
             )
 
         console.print(Panel("[bold green]Build complete[/bold green]", border_style="green"))
+    except CodexError as e:
+        fail(str(e))
+        raise SystemExit(1)
+
+
+# ── local-install ────────────────────────────────────────────────────────────
+
+@cli.command("local-install")
+@click.option("--build-first/--no-build", default=True, show_default=True,
+              help="Build before installing (default: yes)")
+@click.option("--release/--debug", default=True, show_default=True, help="Cargo profile")
+@click.option("--install-dir", type=click.Path(path_type=Path), default=None, metavar="DIR",
+              help=f"Directory to install binaries into (default: ~/.local/bin)")
+@click.option("--config-dir", type=click.Path(path_type=Path), default=None, metavar="DIR",
+              help="Directory to install config.toml into (default: ~/.config/codex)")
+@click.option("--with-desktop/--no-desktop", default=False, show_default=True,
+              help="Also build and install the desktop client binary")
+@click.option("--admin-password", default=None, metavar="PASS", envvar="CODEX_ADMIN_PASSWORD",
+              help="Bootstrap admin password written to config (env: CODEX_ADMIN_PASSWORD)")
+@click.option("--port", default=8080, show_default=True, metavar="PORT",
+              help="Port to set in the generated config")
+def local_install_cmd(
+    build_first: bool,
+    release: bool,
+    install_dir: Path | None,
+    config_dir: Path | None,
+    with_desktop: bool,
+    admin_password: str | None,
+    port: int,
+) -> None:
+    """Build and install Codex locally.
+
+    Copies the server binary to INSTALL_DIR (default: ~/.local/bin) and writes
+    a starter config.toml to CONFIG_DIR (default: ~/.config/codex).
+    An existing config is never overwritten.
+
+    Examples:
+
+    \b
+      # Build + install to ~/.local/bin, prompt for nothing:
+      python scripts/codex.py local-install --admin-password mysecret
+
+    \b
+      # Install from an already-built dist/ without rebuilding:
+      python scripts/codex.py local-install --no-build
+
+    \b
+      # Install to /usr/local/bin (may require sudo for the copy):
+      python scripts/codex.py local-install --install-dir /usr/local/bin
+    """
+    effective_install_dir = install_dir or _default_install_dir()
+    effective_config_dir = config_dir or _default_config_dir()
+    try:
+        local_install(
+            build_first=build_first,
+            release=release,
+            install_dir=effective_install_dir,
+            config_dir=effective_config_dir,
+            with_desktop=with_desktop,
+            admin_password=admin_password,
+            port=port,
+        )
     except CodexError as e:
         fail(str(e))
         raise SystemExit(1)

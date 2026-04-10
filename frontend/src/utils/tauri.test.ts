@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 async function getTauriDialogMock() {
-  return await import('@tauri-apps/plugin-dialog') as {
+  return await import('@tauri-apps/plugin-dialog') as unknown as {
     open: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
   };
@@ -30,8 +30,8 @@ function setTauriContext(active: boolean) {
       configurable: true,
     });
   } else {
-    try { delete (window as Record<string, unknown>)['__TAURI_INTERNALS__']; } catch { /* noop */ }
-    try { delete (window as Record<string, unknown>)['__TAURI__']; } catch { /* noop */ }
+    try { delete (window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__']; } catch { /* noop */ }
+    try { delete (window as unknown as Record<string, unknown>)['__TAURI__']; } catch { /* noop */ }
   }
 }
 

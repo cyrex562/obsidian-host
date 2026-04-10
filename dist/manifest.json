@@ -1,16 +1,16 @@
 {
-  "build_time_utc": "2026-04-07T23:59:03.390477+00:00",
-  "git_commit": "83e91d9ad40ba169e305290b9100c41b245150cf",
-  "release_id": "c8a29e6ec76b9c6c",
+  "build_time_utc": "2026-04-09T23:09:02.888201+00:00",
+  "git_commit": "4eadddd2fba2c10c5ad789b6e2c2df246bd7802d",
+  "release_id": "9d13c4077ddbc99b",
   "target_platform": "x86_64-unknown-linux-gnu",
   "deployment_target": "local",
   "server": {
     "artifact": "server/codex",
-    "sha256": "c8a29e6ec76b9c6cda08abf03e4b3233c5b968dbf0ea89f65c3cd603f8c69f04",
+    "sha256": "9d13c4077ddbc99b0c4dc75c494d7f4f61d7957b0789b279b50230384c1537e0",
     "frontend_embedded": true
   },
   "desktop": {
-    "artifact": "desktop/codex-tauri",
-    "sha256": "e4b5f61b261d6f9fac238a3f23fcf069a2228073f30cead7eb613639ad563ed0"
+    "placeholder": true,
+    "path": "desktop"
   }
 }
