@@ -10,7 +10,11 @@ use std::collections::HashSet;
 pub struct MlService;
 
 impl MlService {
-    pub fn generate_outline(file_path: &str, content: &str, max_sections: usize) -> NoteOutlineResponse {
+    pub fn generate_outline(
+        file_path: &str,
+        content: &str,
+        max_sections: usize,
+    ) -> NoteOutlineResponse {
         let capped_max_sections = max_sections.clamp(1, 100);
 
         let mut sections = Vec::new();
@@ -58,13 +62,48 @@ impl MlService {
         let mut suggestions: Vec<OrganizationSuggestion> = Vec::new();
 
         let tag_rules: [(&[&str], &str, &str, f32); 7] = [
-            (&["meeting", "agenda", "minutes"], "meeting", "Detected meeting-related terms in the note content.", 0.86),
-            (&["todo", "task", "action item", "checklist"], "tasks", "Detected task-oriented language suggesting task tracking.", 0.89),
-            (&["project", "milestone", "roadmap", "deliverable"], "project", "Detected project planning terminology in this note.", 0.84),
-            (&["bug", "issue", "fix", "regression"], "bug", "Detected bug/issue language in this note.", 0.83),
-            (&["idea", "brainstorm", "concept", "proposal"], "idea", "Detected ideation terms suggesting an idea note.", 0.8),
-            (&["daily", "journal", "reflection", "log"], "daily", "Detected journaling language in this note.", 0.78),
-            (&["research", "experiment", "analysis", "hypothesis"], "research", "Detected research terminology in this note.", 0.81),
+            (
+                &["meeting", "agenda", "minutes"],
+                "meeting",
+                "Detected meeting-related terms in the note content.",
+                0.86,
+            ),
+            (
+                &["todo", "task", "action item", "checklist"],
+                "tasks",
+                "Detected task-oriented language suggesting task tracking.",
+                0.89,
+            ),
+            (
+                &["project", "milestone", "roadmap", "deliverable"],
+                "project",
+                "Detected project planning terminology in this note.",
+                0.84,
+            ),
+            (
+                &["bug", "issue", "fix", "regression"],
+                "bug",
+                "Detected bug/issue language in this note.",
+                0.83,
+            ),
+            (
+                &["idea", "brainstorm", "concept", "proposal"],
+                "idea",
+                "Detected ideation terms suggesting an idea note.",
+                0.8,
+            ),
+            (
+                &["daily", "journal", "reflection", "log"],
+                "daily",
+                "Detected journaling language in this note.",
+                0.78,
+            ),
+            (
+                &["research", "experiment", "analysis", "hypothesis"],
+                "research",
+                "Detected research terminology in this note.",
+                0.81,
+            ),
         ];
 
         for (keywords, tag, rationale, confidence) in tag_rules {
@@ -173,7 +212,8 @@ impl MlService {
 
         let mut summary = fragments.join(" ");
         if summary.is_empty() {
-            summary = "No substantial prose found; add content for a richer outline summary.".to_string();
+            summary =
+                "No substantial prose found; add content for a richer outline summary.".to_string();
         }
 
         if summary.len() > 260 {
@@ -246,21 +286,20 @@ mod tests {
 
     #[test]
     fn suggestions_include_tag_and_folder_move() {
-        let content = "# Sprint Meeting\n\nAgenda:\n- Discuss project roadmap\n- Action items and todo list";
-        let suggestions = MlService::suggest_organization("inbox/sprint-meeting.md", content, None, 10);
+        let content =
+            "# Sprint Meeting\n\nAgenda:\n- Discuss project roadmap\n- Action items and todo list";
+        let suggestions =
+            MlService::suggest_organization("inbox/sprint-meeting.md", content, None, 10);
 
         assert!(!suggestions.suggestions.is_empty());
-        assert!(
-            suggestions
-                .suggestions
-                .iter()
-                .any(|s| matches!(s.kind, OrganizationSuggestionKind::Tag) && s.tag.as_deref() == Some("meeting"))
-        );
-        assert!(
-            suggestions
-                .suggestions
-                .iter()
-                .any(|s| matches!(s.kind, OrganizationSuggestionKind::MoveToFolder))
-        );
+        assert!(suggestions
+            .suggestions
+            .iter()
+            .any(|s| matches!(s.kind, OrganizationSuggestionKind::Tag)
+                && s.tag.as_deref() == Some("meeting")));
+        assert!(suggestions
+            .suggestions
+            .iter()
+            .any(|s| matches!(s.kind, OrganizationSuggestionKind::MoveToFolder)));
     }
 }

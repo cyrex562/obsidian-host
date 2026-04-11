@@ -1,0 +1,33 @@
+[entity_type]
+name          = "Faction"
+icon          = "groups"
+color         = "#E8A838"
+template      = "templates/faction.md"
+labels        = ["graphable", "organization"]
+display_field = "full_name"
+show_on_create = ["full_name", "type"]
+
+[[entity_type.fields]]
+key      = "full_name"
+label    = "Full Name"
+type     = "string"
+required = true
+
+[[entity_type.fields]]
+key    = "type"
+label  = "Type"
+type   = "enum"
+values = ["Political", "Military", "Religious", "Criminal", "Merchant", "Academic", "Other"]
+
+[[entity_type.fields]]
+key          = "headquarters"
+label        = "Headquarters"
+type         = "entity_ref"
+target_label = "place"
+relation     = "located_in"
+
+[[entity_type.fields]]
+key         = "summary"
+label       = "Summary"
+type        = "text"
+description = "Short description of this faction"

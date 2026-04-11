@@ -101,7 +101,9 @@ async fn refresh_access_token(
 
     // Reject the refresh if the session has been explicitly revoked.
     if state.db.is_session_revoked(&old_claims.jti).await? {
-        return Err(AppError::Unauthorized("Session has been revoked".to_string()));
+        return Err(AppError::Unauthorized(
+            "Session has been revoked".to_string(),
+        ));
     }
 
     // Rotate: revoke the old session, issue fresh tokens.
@@ -114,7 +116,10 @@ async fn refresh_access_token(
         &config.auth,
     )?;
 
-    let _ = state.db.create_session(&refresh_jti, &old_claims.sub, refresh_exp).await;
+    let _ = state
+        .db
+        .create_session(&refresh_jti, &old_claims.sub, refresh_exp)
+        .await;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -317,10 +322,7 @@ fn effective_jwt_secret(auth_cfg: &crate::config::AuthConfig) -> String {
 
 /// List active sessions for the authenticated user.
 #[get("/api/auth/sessions")]
-async fn list_sessions(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn list_sessions(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = req
         .extensions()
         .get::<AuthenticatedUser>()

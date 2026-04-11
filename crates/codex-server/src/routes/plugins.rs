@@ -1,8 +1,8 @@
+use crate::routes::AppState;
 use crate::services::PluginService;
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
 use serde_json::json;
-use std::path::Path;
 
 #[derive(Deserialize)]
 struct PluginActionRequest {
@@ -11,10 +11,7 @@ struct PluginActionRequest {
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/api/plugins").route(web::get().to(list_plugins)))
-        .service(
-            web::resource("/api/plugins/{plugin_id}")
-                .route(web::get().to(get_plugin)),
-        )
+        .service(web::resource("/api/plugins/{plugin_id}").route(web::get().to(get_plugin)))
         .service(
             web::resource("/api/plugins/{plugin_id}/config")
                 .route(web::put().to(update_plugin_config)),
@@ -28,8 +25,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         );
 }
 
-async fn list_plugins() -> impl Responder {
-    let mut service = PluginService::new("./plugins");
+async fn list_plugins(state: web::Data<AppState>) -> impl Responder {
+    let mut service = PluginService::new(state.plugins_dir.clone());
     let plugins = match service.discover_plugins() {
         Ok(plugins) => plugins,
         Err(e) => {
@@ -46,9 +43,10 @@ async fn list_plugins() -> impl Responder {
 async fn toggle_plugin(
     path: web::Path<String>,
     req: web::Json<PluginActionRequest>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let plugin_id = path.into_inner();
-    let mut service = PluginService::new("./plugins");
+    let mut service = PluginService::new(state.plugins_dir.clone());
 
     // Discover plugins first
     if let Err(e) = service.discover_plugins() {
@@ -80,9 +78,9 @@ async fn toggle_plugin(
 }
 
 /// Get a single plugin by ID (includes manifest, config, and config_schema).
-async fn get_plugin(path: web::Path<String>) -> impl Responder {
+async fn get_plugin(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
     let plugin_id = path.into_inner();
-    let mut service = PluginService::new("./plugins");
+    let mut service = PluginService::new(state.plugins_dir.clone());
     if let Err(e) = service.discover_plugins() {
         return HttpResponse::InternalServerError()
             .json(json!({ "error": format!("Plugin discovery failed: {e}") }));
@@ -97,9 +95,10 @@ async fn get_plugin(path: web::Path<String>) -> impl Responder {
 async fn update_plugin_config(
     path: web::Path<String>,
     body: web::Json<serde_json::Value>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let plugin_id = path.into_inner();
-    let mut service = PluginService::new("./plugins");
+    let mut service = PluginService::new(state.plugins_dir.clone());
     if let Err(e) = service.discover_plugins() {
         return HttpResponse::InternalServerError()
             .json(json!({ "error": format!("Plugin discovery failed: {e}") }));
@@ -117,6 +116,7 @@ async fn update_plugin_config(
 /// 403 if the resolved path escapes the expected base directory.
 async fn serve_plugin_file(
     path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
 ) -> HttpResponse {
     let (plugin_id, filename) = path.into_inner();
 
@@ -125,9 +125,7 @@ async fn serve_plugin_file(
         return HttpResponse::Forbidden().body("Invalid path");
     }
 
-    let base = Path::new("./plugins")
-        .join(&plugin_id)
-        .join("dist");
+    let base = state.plugins_dir.join(&plugin_id).join("dist");
 
     let file_path = base.join(&filename);
 
@@ -146,11 +144,8 @@ async fn serve_plugin_file(
 
     match std::fs::read(&canonical_file) {
         Ok(bytes) => {
-            let mime = mime_guess::from_path(&canonical_file)
-                .first_or_octet_stream();
-            HttpResponse::Ok()
-                .content_type(mime.as_ref())
-                .body(bytes)
+            let mime = mime_guess::from_path(&canonical_file).first_or_octet_stream();
+            HttpResponse::Ok().content_type(mime.as_ref()).body(bytes)
         }
         Err(_) => HttpResponse::NotFound().body("Asset not found"),
     }

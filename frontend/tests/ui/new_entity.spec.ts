@@ -166,3 +166,54 @@ test.describe('New Entity dialog', () => {
         await expect(dialog).not.toBeVisible({ timeout: 3000 });
     });
 });
+
+test.describe('New Note dialog entity templates', () => {
+    test('shows template selector when entity templates are available', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, defaultVault.id);
+
+        await installCommonAppMocks(page, {
+            profile: defaultProfile,
+            vaults: [defaultVault],
+            treeByVaultId: { [defaultVault.id]: [] },
+            entityTypes: [characterType, locationTypeDef],
+        });
+
+        await page.goto('/');
+        await page.locator('button[title="New note"]').click();
+
+        const dialog = page.locator('.v-dialog:visible').first();
+        await expect(dialog.getByLabel('Template')).toBeVisible();
+        await expect(dialog.locator('.v-select__selection-text')).toHaveText('Regular note');
+    });
+
+    test('routes entity template selection into the entity creation dialog', async ({ page }) => {
+        await seedAuthTokens(page);
+        await seedActiveVault(page, defaultVault.id);
+
+        await installCommonAppMocks(page, {
+            profile: defaultProfile,
+            vaults: [defaultVault],
+            treeByVaultId: { [defaultVault.id]: [] },
+            entityTypes: [characterType],
+            fileContentsByVaultId: { [defaultVault.id]: {} },
+            entityTemplatesByTypeId: {
+                character: `---\ncodex_type: character\ncodex_plugin: worldbuilding\nname: ""\n---\n`,
+            },
+        });
+
+        await page.goto('/');
+        await page.locator('button[title="New note"]').click();
+
+        const noteDialog = page.locator('.v-dialog:visible').first();
+        await noteDialog.getByLabel('File name').fill('Lyra');
+        await noteDialog.locator('.v-select').click();
+        await page.locator('.v-list-item', { hasText: 'Character entity' }).first().click();
+        await noteDialog.getByRole('button', { name: 'Continue' }).click();
+
+        const entityDialog = page.locator('.v-dialog:visible').first();
+        await expect(entityDialog.getByText('New Entity')).toBeVisible();
+        await expect(entityDialog.getByLabel('File name')).toHaveValue('Lyra');
+        await expect(entityDialog.getByLabel('Name').first()).toBeVisible();
+    });
+});

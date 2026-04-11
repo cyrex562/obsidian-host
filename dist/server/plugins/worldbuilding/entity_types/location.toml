@@ -1,0 +1,33 @@
+[entity_type]
+name          = "Location"
+icon          = "place"
+color         = "#52B26B"
+template      = "templates/location.md"
+labels        = ["graphable", "place"]
+display_field = "full_name"
+show_on_create = ["full_name", "type"]
+
+[[entity_type.fields]]
+key      = "full_name"
+label    = "Full Name"
+type     = "string"
+required = true
+
+[[entity_type.fields]]
+key    = "type"
+label  = "Type"
+type   = "enum"
+values = ["City", "Town", "Village", "Wilderness", "Dungeon", "Landmark", "Region", "Planet", "Other"]
+
+[[entity_type.fields]]
+key          = "parent_location"
+label        = "Part Of"
+type         = "entity_ref"
+target_label = "place"
+relation     = "located_in"
+
+[[entity_type.fields]]
+key         = "summary"
+label       = "Summary"
+type        = "text"
+description = "Short description of this location"

@@ -57,8 +57,16 @@
             <v-divider class="my-3" />
             <div class="text-caption text-medium-emphasis mb-2">Quick fields</div>
             <template v-for="field in createFields" :key="field.key">
+              <v-select
+                v-if="field.field_type === 'enum'"
+                v-model="quickValues[field.key]"
+                :items="field.values"
+                :label="field.label"
+                density="comfortable"
+                class="mb-2"
+              />
               <v-textarea
-                v-if="field.field_type === 'text'"
+                v-else-if="field.field_type === 'text'"
                 v-model="quickValues[field.key]"
                 :label="field.label"
                 density="comfortable"
@@ -104,6 +112,10 @@ import { useFilesStore } from '@/stores/files';
 import { useTabsStore } from '@/stores/tabs';
 import { useEditorStore } from '@/stores/editor';
 
+const props = withDefaults(defineProps<{ initialTypeId?: string | null; initialFileName?: string }>(), {
+    initialTypeId: null,
+    initialFileName: '',
+});
 const model = defineModel<boolean>({ default: false });
 const emit = defineEmits<{ created: [path: string] }>();
 
@@ -137,7 +149,26 @@ const canCreate = computed(
 );
 
 watch(model, (open) => {
-    if (open && entityTypes.value.length === 0) loadTypes();
+    if (open) {
+        applyInitialFileName();
+        if (entityTypes.value.length === 0) {
+            void loadTypes();
+        } else {
+            applyInitialTypeSelection();
+        }
+    }
+});
+
+watch(() => props.initialTypeId, () => {
+    if (model.value) {
+        applyInitialTypeSelection();
+    }
+});
+
+watch(() => props.initialFileName, () => {
+    if (model.value) {
+        applyInitialFileName();
+    }
 });
 
 async function loadTypes() {
@@ -145,9 +176,7 @@ async function loadTypes() {
     try {
         const result = await apiListEntityTypes();
         entityTypes.value = result.entity_types ?? [];
-        if (entityTypes.value.length === 1) {
-            selectedTypeId.value = entityTypes.value[0].id;
-        }
+        applyInitialTypeSelection();
     } catch {
         // non-critical — show empty list
     } finally {
@@ -156,7 +185,46 @@ async function loadTypes() {
 }
 
 function onTypeChange() {
-    quickValues.value = {};
+    quickValues.value = defaultQuickValuesForSelectedType();
+}
+
+function applyInitialTypeSelection() {
+    if (props.initialTypeId) {
+        const matchingType = entityTypes.value.find((type) => type.id === props.initialTypeId);
+        if (matchingType) {
+            selectedTypeId.value = matchingType.id;
+            quickValues.value = defaultQuickValuesForType(matchingType);
+            return;
+        }
+    }
+
+    if (!selectedTypeId.value && entityTypes.value.length === 1) {
+        selectedTypeId.value = entityTypes.value[0].id;
+    }
+
+    quickValues.value = defaultQuickValuesForSelectedType();
+}
+
+function defaultQuickValuesForSelectedType(): Record<string, string> {
+    return defaultQuickValuesForType(selectedType.value);
+}
+
+function defaultQuickValuesForType(type: EntityTypeSchema | null): Record<string, string> {
+    if (!type) return {};
+    const createFieldKeys = new Set(type.show_on_create ?? []);
+    return type.fields.reduce<Record<string, string>>((acc, field) => {
+        if (!createFieldKeys.has(field.key) || field.default === undefined || field.default === null) {
+            return acc;
+        }
+        acc[field.key] = String(field.default);
+        return acc;
+    }, {});
+}
+
+function applyInitialFileName() {
+    if (props.initialFileName) {
+        fileName.value = props.initialFileName;
+    }
 }
 
 async function create() {

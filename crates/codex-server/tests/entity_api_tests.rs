@@ -1,7 +1,9 @@
 use actix_web::{test, web, App};
 use codex::db::Database;
 use codex::routes::{entities, AppState};
-use codex::services::{EntityTypeRegistry, MarkdownParser, RelationTypeRegistry, ReindexService, SearchIndex};
+use codex::services::{
+    EntityTypeRegistry, MarkdownParser, ReindexService, RelationTypeRegistry, SearchIndex,
+};
 use codex::watcher::FileWatcher;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -93,7 +95,9 @@ async fn test_list_entity_types_with_registered_type() {
     assert!(resp.status().is_success());
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let types = body["entity_types"].as_array().expect("should have entity_types array");
+    let types = body["entity_types"]
+        .as_array()
+        .expect("should have entity_types array");
     assert_eq!(types.len(), 1);
     assert_eq!(types[0]["id"].as_str(), Some("character"));
 }
@@ -146,7 +150,12 @@ async fn test_reindex_vault() {
     let content = "---\ncodex_type: character\ncodex_plugin: worldbuilding\ncodex_labels:\n- graphable\nfull_name: Alice Smith\n---\n# Alice Smith\n";
     std::fs::write(vault_dir.join("alice.md"), content).unwrap();
 
-    let app = test::init_service(App::new().app_data(state.clone()).configure(entities::configure)).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(state.clone())
+            .configure(entities::configure),
+    )
+    .await;
 
     let req = test::TestRequest::post()
         .uri(&format!("/api/vaults/{vault_id}/reindex"))
@@ -159,13 +168,9 @@ async fn test_reindex_vault() {
     assert_eq!(body["vault_id"].as_str(), Some(vault_id.as_str()));
 
     // Run reindex directly to verify it works synchronously
-    ReindexService::reindex_vault(
-        &state.db,
-        &vault_id,
-        vault_dir.to_str().unwrap(),
-    )
-    .await
-    .expect("reindex should succeed");
+    ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
+        .await
+        .expect("reindex should succeed");
 
     // Verify entity is now in the DB
     let list_req = test::TestRequest::get()
@@ -173,7 +178,9 @@ async fn test_reindex_vault() {
         .to_request();
     let list_resp = test::call_service(&app, list_req).await;
     let entities_body: serde_json::Value = test::read_body_json(list_resp).await;
-    let entities = entities_body["entities"].as_array().expect("entities array");
+    let entities = entities_body["entities"]
+        .as_array()
+        .expect("entities array");
     assert_eq!(entities.len(), 1);
     assert_eq!(entities[0]["entity_type"].as_str(), Some("character"));
 }
@@ -186,7 +193,9 @@ async fn test_entity_by_path_not_found() {
     let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entity-by-path?path=nonexistent.md"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entity-by-path?path=nonexistent.md"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     // 200 with null or 404 — either is acceptable; we verify entity is null
@@ -208,20 +217,23 @@ async fn test_entity_by_path_found_after_reindex() {
     let content = "---\ncodex_type: location\ncodex_plugin: worldbuilding\ncodex_labels:\n- graphable\nname: Castle Keep\n---\n# Castle Keep\n";
     std::fs::write(vault_dir.join("castle.md"), content).unwrap();
 
-    let app = test::init_service(App::new().app_data(state.clone()).configure(entities::configure)).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(state.clone())
+            .configure(entities::configure),
+    )
+    .await;
 
     // Reindex synchronously so entities are in DB before querying
-    ReindexService::reindex_vault(
-        &state.db,
-        &vault_id,
-        vault_dir.to_str().unwrap(),
-    )
-    .await
-    .expect("reindex should succeed");
+    ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
+        .await
+        .expect("reindex should succeed");
 
     // Now query by path
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entity-by-path?path=castle.md"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entity-by-path?path=castle.md"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -269,16 +281,17 @@ async fn test_get_graph_with_indexed_entities() {
         std::fs::write(vault_dir.join(filename), content).unwrap();
     }
 
-    let app = test::init_service(App::new().app_data(state.clone()).configure(entities::configure)).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(state.clone())
+            .configure(entities::configure),
+    )
+    .await;
 
     // Reindex synchronously
-    ReindexService::reindex_vault(
-        &state.db,
-        &vault_id,
-        vault_dir.to_str().unwrap(),
-    )
-    .await
-    .expect("reindex should succeed");
+    ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
+        .await
+        .expect("reindex should succeed");
 
     // Get graph
     let req = test::TestRequest::get()
@@ -310,12 +323,17 @@ async fn test_entity_template_no_schema_returns_error_or_default() {
     let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entity-template?type=character&plugin=worldbuilding"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entity-template?type=character&plugin=worldbuilding"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     // Without a registered schema or template file, expect 404 or an empty template
     let status = resp.status().as_u16();
-    assert!(status == 200 || status == 404, "Expected 200 or 404, got {status}");
+    assert!(
+        status == 200 || status == 404,
+        "Expected 200 or 404, got {status}"
+    );
 }
 
 // ── Entity index stats (direct DB verification) ────────────────────────────
@@ -330,13 +348,9 @@ async fn test_entity_count_in_db_after_reindex() {
     std::fs::write(vault_dir.join("hero.md"), content).unwrap();
 
     // Reindex synchronously
-    ReindexService::reindex_vault(
-        &state.db,
-        &vault_id,
-        vault_dir.to_str().unwrap(),
-    )
-    .await
-    .expect("reindex should succeed");
+    ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
+        .await
+        .expect("reindex should succeed");
 
     // Verify entity count directly via DB query (bypasses admin auth)
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM entities WHERE vault_id = ?")

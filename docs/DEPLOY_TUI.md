@@ -53,6 +53,7 @@ app_dir = "/opt/codex"
 The build step recreates `dist/` and writes:
 
 - `dist/server/codex`
+- `dist/server/plugins/`
 - `dist/config.template.toml`
 - `dist/server.config.example.toml`
 - `dist/manifest.json`
@@ -120,7 +121,7 @@ The generated `systemd` unit runs the server with:
 - `WorkingDirectory={app_dir}/shared`
 - `ExecStart={app_dir}/current/codex`
 
-That keeps `config.toml`, `codex.db`, and `logs/` in the persistent shared directory.
+That keeps `config.toml`, `codex.db`, and `logs/` in the persistent shared directory while loading bundled plugins from `{app_dir}/current/plugins`.
 
 ## Idempotence Rules
 

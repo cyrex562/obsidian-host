@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn http_get_requires_network_capability() {
         let api = make_api(vec![]); // no Network capability
-        // Capability check is sync — extract it without running the async part
+                                    // Capability check is sync — extract it without running the async part
         let result = api.check_capability(&PluginCapability::Network);
         assert!(result.is_err());
     }

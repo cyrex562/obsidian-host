@@ -377,14 +377,11 @@ impl FileService {
             }
             let trash_name = name.trim_end_matches(".meta.json").to_string();
             let meta_bytes = fs::read(entry.path())?;
-            let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)
-                .unwrap_or(serde_json::Value::Null);
+            let meta: serde_json::Value =
+                serde_json::from_slice(&meta_bytes).unwrap_or(serde_json::Value::Null);
             items.push(TrashItem {
                 trash_name,
-                original_path: meta["original_path"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string(),
+                original_path: meta["original_path"].as_str().unwrap_or("").to_string(),
                 trashed_at: meta["trashed_at"].as_str().unwrap_or("").to_string(),
             });
         }
@@ -421,9 +418,9 @@ impl FileService {
         let meta_bytes = fs::read(&meta_file)?;
         let meta: serde_json::Value = serde_json::from_slice(&meta_bytes)
             .map_err(|e| AppError::InternalError(format!("Corrupt trash metadata: {e}")))?;
-        let original_path = meta["original_path"]
-            .as_str()
-            .ok_or_else(|| AppError::InternalError("Missing original_path in trash metadata".to_string()))?;
+        let original_path = meta["original_path"].as_str().ok_or_else(|| {
+            AppError::InternalError("Missing original_path in trash metadata".to_string())
+        })?;
 
         let restore_path = Self::resolve_path(vault_path, original_path)?;
 
@@ -662,8 +659,8 @@ impl FileService {
     /// Appends a chunk of bytes to an in-progress upload session.
     /// Returns the new total byte size.
     pub fn append_upload_chunk(vault_path: &str, session_id: &str, bytes: &[u8]) -> AppResult<u64> {
-        use std::io::Write;
         use std::fs::OpenOptions;
+        use std::io::Write;
         let temp_file_path = upload_temp_file_path(vault_path, session_id);
         if !temp_file_path.exists() {
             return Err(AppError::NotFound("Upload session not found".to_string()));

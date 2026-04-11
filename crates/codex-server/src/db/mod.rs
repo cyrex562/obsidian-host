@@ -409,17 +409,13 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp)")
+            .execute(&self.pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)")
+            .execute(&self.pool)
+            .await?;
 
         // Active sessions table for token revocation support.
         sqlx::query(
@@ -437,11 +433,9 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
+            .execute(&self.pool)
+            .await?;
 
         // API keys table for programmatic access.
         sqlx::query(
@@ -471,11 +465,10 @@ impl Database {
             .await?;
 
         // Vault visibility: 'private' (default) or 'public'.
-        let _ = sqlx::query(
-            "ALTER TABLE vaults ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'",
-        )
-        .execute(&self.pool)
-        .await;
+        let _ =
+            sqlx::query("ALTER TABLE vaults ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'")
+                .execute(&self.pool)
+                .await;
 
         // Document format used by this vault. Currently always 'markdown';
         // reserved for a future 'mdx' upgrade (Phase 5 — format abstraction).
@@ -486,23 +479,17 @@ impl Database {
         .await;
 
         // ── Phase 4b: TOTP 2FA ──────────────────────────────────────────
-        let _ = sqlx::query(
-            "ALTER TABLE users ADD COLUMN totp_secret TEXT",
-        )
-        .execute(&self.pool)
-        .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN totp_secret TEXT")
+            .execute(&self.pool)
+            .await;
 
-        let _ = sqlx::query(
-            "ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
-        )
-        .execute(&self.pool)
-        .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0")
+            .execute(&self.pool)
+            .await;
 
-        let _ = sqlx::query(
-            "ALTER TABLE users ADD COLUMN totp_backup_codes TEXT",
-        )
-        .execute(&self.pool)
-        .await;
+        let _ = sqlx::query("ALTER TABLE users ADD COLUMN totp_backup_codes TEXT")
+            .execute(&self.pool)
+            .await;
 
         // ── Phase 4b: Invitations ───────────────────────────────────────
         sqlx::query(
@@ -566,11 +553,9 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_entities_vault_id ON entities(vault_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_entities_vault_id ON entities(vault_id)")
+            .execute(&self.pool)
+            .await?;
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_entities_vault_type ON entities(vault_id, entity_type)",
@@ -601,23 +586,17 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id)")
+            .execute(&self.pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id)")
+            .execute(&self.pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_relations_vault ON relations(vault_id)",
-        )
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_relations_vault ON relations(vault_id)")
+            .execute(&self.pool)
+            .await?;
 
         // ── Worldbuilding: reindex audit log ─────────────────────────────────
         sqlx::query(
@@ -1930,21 +1909,16 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        let row: (i64,) =
-            sqlx::query_as("SELECT failed_login_attempts FROM users WHERE id = ?")
-                .bind(user_id)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(AppError::from)?;
+        let row: (i64,) = sqlx::query_as("SELECT failed_login_attempts FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::from)?;
         Ok(row.0)
     }
 
     /// Lock a user account until a specified time.
-    pub async fn lock_user_until(
-        &self,
-        user_id: &str,
-        until: DateTime<Utc>,
-    ) -> AppResult<()> {
+    pub async fn lock_user_until(&self, user_id: &str, until: DateTime<Utc>) -> AppResult<()> {
         sqlx::query("UPDATE users SET locked_until = ? WHERE id = ?")
             .bind(until.to_rfc3339())
             .bind(user_id)
@@ -1955,21 +1929,16 @@ impl Database {
 
     /// Clear failed login attempts and unlock the account after successful login.
     pub async fn clear_failed_logins(&self, user_id: &str) -> AppResult<()> {
-        sqlx::query(
-            "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?",
-        )
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
     /// Check if a user is currently locked out. Returns `Some(locked_until)` if
     /// locked, `None` if not.
-    pub async fn get_lockout_status(
-        &self,
-        user_id: &str,
-    ) -> AppResult<Option<DateTime<Utc>>> {
+    pub async fn get_lockout_status(&self, user_id: &str) -> AppResult<Option<DateTime<Utc>>> {
         let row: Option<(Option<String>,)> =
             sqlx::query_as("SELECT locked_until FROM users WHERE id = ?")
                 .bind(user_id)
@@ -2018,10 +1987,7 @@ impl Database {
     }
 
     /// Get recent audit log entries (newest first), with an optional limit.
-    pub async fn get_audit_log(
-        &self,
-        limit: Option<i64>,
-    ) -> AppResult<Vec<AuditLogEntry>> {
+    pub async fn get_audit_log(&self, limit: Option<i64>) -> AppResult<Vec<AuditLogEntry>> {
         let limit = limit.unwrap_or(100).min(1000);
         let rows = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, String, Option<String>, Option<String>, i64)>(
             "SELECT id, timestamp, user_id, username, event_type, detail, ip_address, success FROM audit_log ORDER BY id DESC LIMIT ?",
@@ -2074,12 +2040,11 @@ impl Database {
 
     /// Check whether a session has been revoked.
     pub async fn is_session_revoked(&self, token_id: &str) -> AppResult<bool> {
-        let row: Option<(i64,)> =
-            sqlx::query_as("SELECT revoked FROM sessions WHERE token_id = ?")
-                .bind(token_id)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(AppError::from)?;
+        let row: Option<(i64,)> = sqlx::query_as("SELECT revoked FROM sessions WHERE token_id = ?")
+            .bind(token_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::from)?;
         // If the session isn't tracked at all, treat it as valid (backwards compat).
         Ok(row.map(|(v,)| v != 0).unwrap_or(false))
     }
@@ -2095,20 +2060,16 @@ impl Database {
 
     /// Revoke all active sessions for a user (log out everywhere).
     pub async fn revoke_all_sessions(&self, user_id: &str) -> AppResult<u64> {
-        let result = sqlx::query(
-            "UPDATE sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0",
-        )
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0")
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
         Ok(result.rows_affected())
     }
 
     /// List active (non-revoked, non-expired) sessions for a user.
-    pub async fn list_active_sessions(
-        &self,
-        user_id: &str,
-    ) -> AppResult<Vec<SessionInfo>> {
+    pub async fn list_active_sessions(&self, user_id: &str) -> AppResult<Vec<SessionInfo>> {
         let now = Utc::now().to_rfc3339();
         let rows = sqlx::query_as::<_, (String, String, String)>(
             "SELECT token_id, created_at, expires_at FROM sessions WHERE user_id = ? AND revoked = 0 AND expires_at > ? ORDER BY created_at DESC",
@@ -2197,27 +2158,27 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(id, name, prefix, user_id, created_at, expires_at, revoked)| ApiKeyInfo {
-                id,
-                name,
-                prefix,
-                user_id,
-                created_at: parse_rfc3339_utc(&created_at),
-                expires_at: expires_at.map(|s| parse_rfc3339_utc(&s)),
-                revoked: revoked != 0,
-            })
+            .map(
+                |(id, name, prefix, user_id, created_at, expires_at, revoked)| ApiKeyInfo {
+                    id,
+                    name,
+                    prefix,
+                    user_id,
+                    created_at: parse_rfc3339_utc(&created_at),
+                    expires_at: expires_at.map(|s| parse_rfc3339_utc(&s)),
+                    revoked: revoked != 0,
+                },
+            )
             .collect())
     }
 
     /// Revoke an API key.
     pub async fn revoke_api_key(&self, key_id: &str, user_id: &str) -> AppResult<()> {
-        let result = sqlx::query(
-            "UPDATE api_keys SET revoked = 1 WHERE id = ? AND user_id = ?",
-        )
-        .bind(key_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("UPDATE api_keys SET revoked = 1 WHERE id = ? AND user_id = ?")
+            .bind(key_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("API key not found".to_string()));
         }
@@ -2227,11 +2188,7 @@ impl Database {
     // ── Vault visibility / ownership transfer ───────────────────────────
 
     /// Set vault visibility to 'public' or 'private'.
-    pub async fn set_vault_visibility(
-        &self,
-        vault_id: &str,
-        visibility: &str,
-    ) -> AppResult<()> {
+    pub async fn set_vault_visibility(&self, vault_id: &str, visibility: &str) -> AppResult<()> {
         let result = sqlx::query("UPDATE vaults SET visibility = ? WHERE id = ?")
             .bind(visibility)
             .bind(vault_id)
@@ -2245,12 +2202,11 @@ impl Database {
 
     /// Get vault visibility ('public' or 'private').
     pub async fn get_vault_visibility(&self, vault_id: &str) -> AppResult<String> {
-        let row: Option<(String,)> =
-            sqlx::query_as("SELECT visibility FROM vaults WHERE id = ?")
-                .bind(vault_id)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(AppError::from)?;
+        let row: Option<(String,)> = sqlx::query_as("SELECT visibility FROM vaults WHERE id = ?")
+            .bind(vault_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(AppError::from)?;
         Ok(row.map(|(v,)| v).unwrap_or_else(|| "private".to_string()))
     }
 
@@ -2293,16 +2249,15 @@ impl Database {
         secret: &str,
         backup_codes: &[String],
     ) -> AppResult<()> {
-        let codes_json = serde_json::to_string(backup_codes)
-            .map_err(|e| AppError::InternalError(format!("Failed to serialize backup codes: {e}")))?;
-        sqlx::query(
-            "UPDATE users SET totp_secret = ?, totp_backup_codes = ? WHERE id = ?",
-        )
-        .bind(secret)
-        .bind(&codes_json)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let codes_json = serde_json::to_string(backup_codes).map_err(|e| {
+            AppError::InternalError(format!("Failed to serialize backup codes: {e}"))
+        })?;
+        sqlx::query("UPDATE users SET totp_secret = ?, totp_backup_codes = ? WHERE id = ?")
+            .bind(secret)
+            .bind(&codes_json)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -2346,11 +2301,7 @@ impl Database {
     }
 
     /// Consume a backup code (marks it as used by removing from the list).
-    pub async fn consume_backup_code(
-        &self,
-        user_id: &str,
-        code: &str,
-    ) -> AppResult<bool> {
+    pub async fn consume_backup_code(&self, user_id: &str, code: &str) -> AppResult<bool> {
         let (_, _, codes_json) = self.get_totp_state(user_id).await?;
         let Some(codes_json) = codes_json else {
             return Ok(false);
@@ -2406,7 +2357,18 @@ impl Database {
     pub async fn get_invitation_by_token(
         &self,
         token: &str,
-    ) -> AppResult<Option<(String, String, Option<String>, String, String, String, bool, Option<String>)>> {
+    ) -> AppResult<
+        Option<(
+            String,
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            bool,
+            Option<String>,
+        )>,
+    > {
         let row = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, i64, Option<String>)>(
             "SELECT id, role, vault_id, created_by_user_id, created_at, expires_at, accepted, accepted_by_user_id FROM invitations WHERE token = ?",
         )
@@ -2426,13 +2388,11 @@ impl Database {
         invite_id: &str,
         accepted_by_user_id: &str,
     ) -> AppResult<()> {
-        sqlx::query(
-            "UPDATE invitations SET accepted = 1, accepted_by_user_id = ? WHERE id = ?",
-        )
-        .bind(accepted_by_user_id)
-        .bind(invite_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE invitations SET accepted = 1, accepted_by_user_id = ? WHERE id = ?")
+            .bind(accepted_by_user_id)
+            .bind(invite_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -2451,19 +2411,31 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(id, token, role, vault_id, created_by, created_at, expires_at, accepted, accepted_by)| {
-                crate::models::InviteInfo {
+            .map(
+                |(
                     id,
                     token,
                     role,
                     vault_id,
                     created_by,
-                    created_at: parse_rfc3339_utc(&created_at),
-                    expires_at: parse_rfc3339_utc(&expires_at),
-                    accepted: accepted != 0,
+                    created_at,
+                    expires_at,
+                    accepted,
                     accepted_by,
-                }
-            })
+                )| {
+                    crate::models::InviteInfo {
+                        id,
+                        token,
+                        role,
+                        vault_id,
+                        created_by,
+                        created_at: parse_rfc3339_utc(&created_at),
+                        expires_at: parse_rfc3339_utc(&expires_at),
+                        accepted: accepted != 0,
+                        accepted_by,
+                    }
+                },
+            )
             .collect())
     }
 }

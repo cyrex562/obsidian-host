@@ -41,10 +41,7 @@ fn generate_backup_codes(count: usize) -> Vec<String> {
 
 /// Begin TOTP enrollment: generate secret, return otpauth URL and backup codes.
 #[post("/api/auth/totp/enroll")]
-async fn totp_enroll(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn totp_enroll(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = require_user(&req)?;
 
     // Check if already enabled.
@@ -129,10 +126,7 @@ async fn totp_verify(
 
 /// Disable TOTP 2FA.
 #[post("/api/auth/totp/disable")]
-async fn totp_disable(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn totp_disable(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = require_user(&req)?;
 
     state.db.disable_totp(&user.user_id).await?;
@@ -154,10 +148,7 @@ async fn totp_disable(
 
 /// Get TOTP status for the authenticated user.
 #[get("/api/auth/totp/status")]
-async fn totp_status(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn totp_status(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = require_user(&req)?;
     let (enabled, _, _) = state.db.get_totp_state(&user.user_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "totp_enabled": enabled })))

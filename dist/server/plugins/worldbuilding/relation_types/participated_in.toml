@@ -1,0 +1,15 @@
+[relation_type]
+name          = "participated_in"
+label         = "Participated In"
+from_label    = ""
+to_label      = "event"
+directed      = true
+inverse_label = "had_participant"
+color         = "#C4472A"
+
+[[relation_type.metadata_fields]]
+key     = "role"
+label   = "Role"
+type    = "enum"
+values  = ["Instigator", "Participant", "Witness", "Victim", "Organiser"]
+default = "Participant"

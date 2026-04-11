@@ -1,7 +1,7 @@
 use crate::middleware::request_id::RequestId;
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    HttpMessage, Error,
+    Error, HttpMessage,
 };
 use std::future::{ready, Ready};
 use std::pin::Pin;

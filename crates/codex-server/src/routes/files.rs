@@ -342,8 +342,7 @@ async fn create_file(
     let vault_id = vault_id.into_inner();
     let vault = state.db.get_vault(&vault_id).await?;
 
-    let content =
-        FileService::create_file(&vault.path, &req.path, req.content.as_deref())?;
+    let content = FileService::create_file(&vault.path, &req.path, req.content.as_deref())?;
     let etag = build_file_etag(&content);
 
     state

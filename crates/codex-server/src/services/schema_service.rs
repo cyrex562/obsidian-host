@@ -162,9 +162,7 @@ impl SchemaService {
                     }
                     info!(
                         "Registered entity type {}/{} from {}",
-                        plugin_id,
-                        schema.id,
-                        rel_path
+                        plugin_id, schema.id, rel_path
                     );
                     entity_registry.register(schema).await;
                 }
@@ -181,16 +179,12 @@ impl SchemaService {
                 Ok(schema) => {
                     info!(
                         "Registered relation type {}/{} from {}",
-                        plugin_id,
-                        schema.id,
-                        rel_path
+                        plugin_id, schema.id, rel_path
                     );
                     relation_registry.register(schema).await;
                 }
                 Err(e) => {
-                    warn!(
-                        "Failed to load relation type {rel_path} for plugin {plugin_id}: {e}"
-                    );
+                    warn!("Failed to load relation type {rel_path} for plugin {plugin_id}: {e}");
                 }
             }
         }
@@ -216,8 +210,8 @@ fn load_entity_type_toml(path: &Path, plugin_id: &str) -> Result<EntityTypeSchem
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
-    let parsed: EntityTypeToml =
-        toml::from_str(&content).map_err(|e| format!("TOML parse error in {}: {e}", path.display()))?;
+    let parsed: EntityTypeToml = toml::from_str(&content)
+        .map_err(|e| format!("TOML parse error in {}: {e}", path.display()))?;
 
     let id = path
         .file_stem()
@@ -244,8 +238,8 @@ fn load_relation_type_toml(path: &Path, plugin_id: &str) -> Result<RelationTypeS
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
-    let parsed: RelationTypeToml =
-        toml::from_str(&content).map_err(|e| format!("TOML parse error in {}: {e}", path.display()))?;
+    let parsed: RelationTypeToml = toml::from_str(&content)
+        .map_err(|e| format!("TOML parse error in {}: {e}", path.display()))?;
 
     let id = parsed.relation_type.name.clone();
     let body = parsed.relation_type;
@@ -283,7 +277,10 @@ async fn register_label(db: &Database, plugin_id: &str, decl: &PluginLabelDeclar
 #[cfg(test)]
 pub mod tests_helpers {
     use super::*;
-    pub fn load_entity_type_toml_pub(path: &std::path::Path, plugin_id: &str) -> Result<crate::models::schema::EntityTypeSchema, String> {
+    pub fn load_entity_type_toml_pub(
+        path: &std::path::Path,
+        plugin_id: &str,
+    ) -> Result<crate::models::schema::EntityTypeSchema, String> {
         super::load_entity_type_toml(path, plugin_id)
     }
 }
@@ -331,18 +328,20 @@ mod tests {
     async fn test_registry_all_returns_all_registered() {
         let registry = EntityTypeRegistry::new();
         for id in ["character", "location", "faction"] {
-            registry.register(EntityTypeSchema {
-                id: id.into(),
-                plugin_id: "wb".into(),
-                name: id.into(),
-                icon: None,
-                color: None,
-                template: None,
-                labels: vec![],
-                display_field: None,
-                show_on_create: vec![],
-                fields: vec![],
-            }).await;
+            registry
+                .register(EntityTypeSchema {
+                    id: id.into(),
+                    plugin_id: "wb".into(),
+                    name: id.into(),
+                    icon: None,
+                    color: None,
+                    template: None,
+                    labels: vec![],
+                    display_field: None,
+                    show_on_create: vec![],
+                    fields: vec![],
+                })
+                .await;
         }
         let all = registry.all().await;
         assert_eq!(all.len(), 3);
@@ -351,20 +350,34 @@ mod tests {
     #[tokio::test]
     async fn test_registry_remove_plugin() {
         let registry = EntityTypeRegistry::new();
-        registry.register(EntityTypeSchema {
-            id: "character".into(),
-            plugin_id: "wb".into(),
-            name: "Character".into(),
-            icon: None, color: None, template: None,
-            labels: vec![], display_field: None, show_on_create: vec![], fields: vec![],
-        }).await;
-        registry.register(EntityTypeSchema {
-            id: "item".into(),
-            plugin_id: "other-plugin".into(),
-            name: "Item".into(),
-            icon: None, color: None, template: None,
-            labels: vec![], display_field: None, show_on_create: vec![], fields: vec![],
-        }).await;
+        registry
+            .register(EntityTypeSchema {
+                id: "character".into(),
+                plugin_id: "wb".into(),
+                name: "Character".into(),
+                icon: None,
+                color: None,
+                template: None,
+                labels: vec![],
+                display_field: None,
+                show_on_create: vec![],
+                fields: vec![],
+            })
+            .await;
+        registry
+            .register(EntityTypeSchema {
+                id: "item".into(),
+                plugin_id: "other-plugin".into(),
+                name: "Item".into(),
+                icon: None,
+                color: None,
+                template: None,
+                labels: vec![],
+                display_field: None,
+                show_on_create: vec![],
+                fields: vec![],
+            })
+            .await;
 
         registry.remove_plugin("wb").await;
 
@@ -427,7 +440,10 @@ default = "Active"
     #[test]
     fn test_load_entity_type_toml_from_real_file() {
         let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().parent().unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
             .join("plugins/worldbuilding/entity_types/character.toml");
 
         if !plugin_dir.exists() {

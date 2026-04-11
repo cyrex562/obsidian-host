@@ -105,8 +105,8 @@ fn run_setup(app: &mut tauri::App) -> anyhow::Result<()> {
     //    Tauri must own the main thread on Linux/macOS; Actix is kept separate.
     let config_for_server = config.clone();
     std::thread::spawn(move || {
-        if let Err(e) = actix_web::rt::System::new()
-            .block_on(async { codex::run(config_for_server).await })
+        if let Err(e) =
+            actix_web::rt::System::new().block_on(async { codex::run(config_for_server).await })
         {
             error!("Server thread exited with error: {e:#}");
             let _ = err_tx.send(format!("{e:#}"));
@@ -307,7 +307,8 @@ pub(crate) fn classify_server_error(raw: &str, port: u16) -> String {
         || lower.contains("already in use")
         || lower.contains("os error 98")  // EADDRINUSE on Linux
         || lower.contains("os error 48")  // EADDRINUSE on macOS
-        || lower.contains("only one usage")  // Windows WSAEADDRINUSE
+        || lower.contains("only one usage")
+    // Windows WSAEADDRINUSE
     {
         format!(
             "Port {port} is already in use.\n\
@@ -347,28 +348,49 @@ mod tests {
 
     #[test]
     fn classify_port_in_use_linux() {
-        let msg = classify_server_error("Os { code: 98, kind: AddrInUse, message: \"Address already in use\" }", 8080);
-        assert!(msg.contains("Port 8080 is already in use"), "expected port-conflict message, got: {msg}");
-        assert!(msg.contains("relaunch Codex"), "expected suggestion, got: {msg}");
+        let msg = classify_server_error(
+            "Os { code: 98, kind: AddrInUse, message: \"Address already in use\" }",
+            8080,
+        );
+        assert!(
+            msg.contains("Port 8080 is already in use"),
+            "expected port-conflict message, got: {msg}"
+        );
+        assert!(
+            msg.contains("relaunch Codex"),
+            "expected suggestion, got: {msg}"
+        );
     }
 
     #[test]
     fn classify_port_in_use_macos() {
         let msg = classify_server_error("os error 48", 8080);
-        assert!(msg.contains("Port 8080 is already in use"), "macOS EADDRINUSE: {msg}");
+        assert!(
+            msg.contains("Port 8080 is already in use"),
+            "macOS EADDRINUSE: {msg}"
+        );
     }
 
     #[test]
     fn classify_port_in_use_windows() {
         let msg = classify_server_error("Only one usage of each socket address", 8080);
-        assert!(msg.contains("Port 8080 is already in use"), "Windows WSAEADDRINUSE: {msg}");
+        assert!(
+            msg.contains("Port 8080 is already in use"),
+            "Windows WSAEADDRINUSE: {msg}"
+        );
     }
 
     #[test]
     fn classify_permission_denied() {
         let msg = classify_server_error("permission denied binding port 80", 80);
-        assert!(msg.contains("Permission denied"), "expected permission message, got: {msg}");
-        assert!(msg.contains("config.toml"), "expected config hint, got: {msg}");
+        assert!(
+            msg.contains("Permission denied"),
+            "expected permission message, got: {msg}"
+        );
+        assert!(
+            msg.contains("config.toml"),
+            "expected config hint, got: {msg}"
+        );
     }
 
     #[test]

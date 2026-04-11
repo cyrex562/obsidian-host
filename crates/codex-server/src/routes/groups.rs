@@ -78,7 +78,10 @@ async fn add_group_member(
         ));
     };
 
-    state.db.add_user_to_group(&group_id, &target_user_id).await?;
+    state
+        .db
+        .add_user_to_group(&group_id, &target_user_id)
+        .await?;
     let members = state.db.list_group_members(&group_id).await?;
     Ok(HttpResponse::Ok().json(members))
 }

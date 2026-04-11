@@ -97,8 +97,7 @@ impl EntityService {
 
         let id = entity_id(vault_id, path);
         let labels_json = serde_json::to_string(&labels).unwrap_or_else(|_| "[]".to_string());
-        let fields_json =
-            serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
+        let fields_json = serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
         let now = Utc::now().to_rfc3339();
 
         // Schema-aware validation (Phase 2): check required fields
@@ -108,7 +107,9 @@ impl EntityService {
                     if field_def.required {
                         let present = fields
                             .get(&field_def.key)
-                            .map(|v| !v.is_null() && v.as_str().map(|s| !s.is_empty()).unwrap_or(true))
+                            .map(|v| {
+                                !v.is_null() && v.as_str().map(|s| !s.is_empty()).unwrap_or(true)
+                            })
                             .unwrap_or(false);
                         if !present {
                             warn!(
@@ -125,20 +126,38 @@ impl EntityService {
                         merged_labels.push(schema_label.clone());
                     }
                 }
-                let merged_json = serde_json::to_string(&merged_labels)
-                    .unwrap_or_else(|_| "[]".to_string());
+                let merged_json =
+                    serde_json::to_string(&merged_labels).unwrap_or_else(|_| "[]".to_string());
                 // Re-use merged_json below by shadowing
                 return Self::do_upsert(
-                    db, vault_id, path, &entity_type, &plugin_id,
-                    &merged_json, &fields_json, file_modified_at, &now, &id,
-                ).await;
+                    db,
+                    vault_id,
+                    path,
+                    &entity_type,
+                    &plugin_id,
+                    &merged_json,
+                    &fields_json,
+                    file_modified_at,
+                    &now,
+                    &id,
+                )
+                .await;
             }
         }
 
         Self::do_upsert(
-            db, vault_id, path, &entity_type, &plugin_id,
-            &labels_json, &fields_json, file_modified_at, &now, &id,
-        ).await
+            db,
+            vault_id,
+            path,
+            &entity_type,
+            &plugin_id,
+            &labels_json,
+            &fields_json,
+            file_modified_at,
+            &now,
+            &id,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -208,21 +227,25 @@ impl EntityService {
             .bind(&id)
             .execute(db.pool())
             .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                error: e,
-                operation: "remove_entity_relations".into(),
-                details: None,
-            }))?;
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                    error: e,
+                    operation: "remove_entity_relations".into(),
+                    details: None,
+                })
+            })?;
 
         sqlx::query("DELETE FROM entities WHERE id = ?")
             .bind(&id)
             .execute(db.pool())
             .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                error: e,
-                operation: "remove_entity".into(),
-                details: None,
-            }))?;
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                    error: e,
+                    operation: "remove_entity".into(),
+                    details: None,
+                })
+            })?;
 
         debug!("Removed entity {id} ({vault_id}:{path})");
         Ok(())
@@ -276,14 +299,13 @@ impl EntityService {
             query = query.bind(p);
         }
 
-        let mut entities: Vec<Entity> = query
-            .fetch_all(db.pool())
-            .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
+        let mut entities: Vec<Entity> = query.fetch_all(db.pool()).await.map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
                 error: e,
                 operation: "list_entities".into(),
                 details: None,
-            }))?;
+            })
+        })?;
 
         // Post-filter by label
         if let Some(label) = label_filter {
@@ -341,16 +363,17 @@ impl EntityService {
 
     /// Get the paths of all indexed entities in a vault (used by reindex cleanup).
     pub async fn get_indexed_paths(db: &Database, vault_id: &str) -> AppResult<Vec<String>> {
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT path FROM entities WHERE vault_id = ?")
-                .bind(vault_id)
-                .fetch_all(db.pool())
-                .await
-                .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT path FROM entities WHERE vault_id = ?")
+            .bind(vault_id)
+            .fetch_all(db.pool())
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
                     error: e,
                     operation: "get_indexed_paths".into(),
                     details: None,
-                }))?;
+                })
+            })?;
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
@@ -424,7 +447,10 @@ mod tests {
     #[test]
     fn test_entity_id_is_hex_string() {
         let id = entity_id("vault", "path.md");
-        assert!(id.chars().all(|c| c.is_ascii_hexdigit()), "entity_id should be hex: {id}");
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit()),
+            "entity_id should be hex: {id}"
+        );
         assert_eq!(id.len(), 64, "SHA256 hex should be 64 chars");
     }
 
@@ -457,7 +483,8 @@ mod tests {
     #[test]
     fn test_parse_frontmatter_leading_whitespace() {
         let content = "\n\n---\ncodex_type: location\n---\n# Content";
-        let fm = EntityService::parse_frontmatter(content).expect("should parse through leading whitespace");
+        let fm = EntityService::parse_frontmatter(content)
+            .expect("should parse through leading whitespace");
         assert_eq!(fm["codex_type"].as_str(), Some("location"));
     }
 

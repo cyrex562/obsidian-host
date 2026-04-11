@@ -6,7 +6,7 @@ use argon2::{
 use codex::config::AppConfig;
 use codex::db::Database;
 use codex::middleware::AuthMiddleware;
-use codex::models::{CreateVaultRequest, CreateFileRequest, UpdateFileRequest};
+use codex::models::{CreateFileRequest, CreateVaultRequest, UpdateFileRequest};
 use codex::routes::{auth, files, vaults, AppState};
 use codex::services::{MarkdownParser, SearchIndex};
 use codex::watcher::FileWatcher;
@@ -49,7 +49,7 @@ async fn verify_etag_optimistic_locking_and_change_log() {
         ml_undo_store: std::sync::Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-    shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
+        shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
         document_parser: Arc::new(MarkdownParser),
         entity_type_registry: codex::services::EntityTypeRegistry::new(),
         relation_type_registry: codex::services::RelationTypeRegistry::new(),
@@ -85,7 +85,7 @@ async fn verify_etag_optimistic_locking_and_change_log() {
     // Create a vault
     let vault_dir = temp_dir.path().join("test-vault");
     std::fs::create_dir_all(&vault_dir).unwrap();
-    
+
     let create_vault_req = test::TestRequest::post()
         .uri("/api/vaults")
         .insert_header((header::AUTHORIZATION, auth_header.clone()))
@@ -94,7 +94,7 @@ async fn verify_etag_optimistic_locking_and_change_log() {
             path: Some(vault_dir.to_string_lossy().to_string()),
         })
         .to_request();
-    
+
     let create_vault_resp = test::call_service(&app, create_vault_req).await;
     let vault_body: serde_json::Value = test::read_body_json(create_vault_resp).await;
     let vault_id = vault_body["id"].as_str().unwrap().to_string();
@@ -167,6 +167,12 @@ async fn verify_etag_optimistic_locking_and_change_log() {
     let conflict_resp = test::call_service(&app, conflict_req).await;
     assert_eq!(conflict_resp.status().as_u16(), 412); // Precondition Failed
     let conflict_body: serde_json::Value = test::read_body_json(conflict_resp).await;
-    assert_eq!(conflict_body["error"].as_str().unwrap(), "precondition_failed");
-    assert_eq!(conflict_body["server_content"]["content"].as_str().unwrap(), "Second Content");
+    assert_eq!(
+        conflict_body["error"].as_str().unwrap(),
+        "precondition_failed"
+    );
+    assert_eq!(
+        conflict_body["server_content"]["content"].as_str().unwrap(),
+        "Second Content"
+    );
 }

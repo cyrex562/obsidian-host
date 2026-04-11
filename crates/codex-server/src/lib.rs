@@ -11,6 +11,7 @@ pub mod watcher;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use anyhow::Context as _;
 use config::AppConfig;
 use db::Database;
 use routes::AppState;
@@ -25,18 +26,17 @@ use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
 use watcher::FileWatcher;
-use anyhow::Context as _;
 
 // TLS support — only imported when actually needed at runtime
 use rustls::ServerConfig as RustlsServerConfig;
 use rustls_pemfile::{certs, private_key};
 
-#[cfg(not(debug_assertions))]
-use actix_web::{HttpResponse, Result as WebResult};
 #[cfg(debug_assertions)]
 use actix_files::NamedFile;
 #[cfg(debug_assertions)]
 use actix_web::Result as WebResult;
+#[cfg(not(debug_assertions))]
+use actix_web::{HttpResponse, Result as WebResult};
 #[cfg(not(debug_assertions))]
 use assets::Assets;
 #[cfg(not(debug_assertions))]
@@ -126,9 +126,8 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .map(|v| v.to_lowercase() == "json")
         .unwrap_or(false);
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        "warn,codex=info,actix_web=info,actix_server=info".into()
-    });
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "warn,codex=info,actix_web=info,actix_server=info".into());
 
     // try_init instead of init so the function is safe to call multiple times
     // (e.g. from tests or when Tauri sets up its own subscriber first).
@@ -255,10 +254,9 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
                 models::FileChangeType::Created | models::FileChangeType::Modified => {
                     if change_event.path.ends_with(".md") {
                         if let Ok(vault) = db_clone.get_vault(&change_event.vault_id).await {
-                            if let Ok(content) = services::FileService::read_file(
-                                &vault.path,
-                                &change_event.path,
-                            ) {
+                            if let Ok(content) =
+                                services::FileService::read_file(&vault.path, &change_event.path)
+                            {
                                 let _ = search_index_clone.update_file(
                                     &change_event.vault_id,
                                     &change_event.path,
@@ -278,17 +276,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
                             )
                             .await
                             {
-                                warn!(
-                                    "Entity index_file failed for {}: {e}",
-                                    change_event.path
-                                );
+                                warn!("Entity index_file failed for {}: {e}", change_event.path);
                             }
                         }
                     }
                 }
                 models::FileChangeType::Deleted => {
-                    let _ = search_index_clone
-                        .remove_file(&change_event.vault_id, &change_event.path);
+                    let _ =
+                        search_index_clone.remove_file(&change_event.vault_id, &change_event.path);
                     if let Err(e) = ReindexService::remove_file(
                         &db_clone,
                         &change_event.vault_id,
@@ -296,10 +291,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
                     )
                     .await
                     {
-                        warn!(
-                            "Entity remove_file failed for {}: {e}",
-                            change_event.path
-                        );
+                        warn!("Entity remove_file failed for {}: {e}", change_event.path);
                     }
                 }
                 models::FileChangeType::Renamed { from, to } => {
@@ -311,20 +303,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
                     }
                     if to.ends_with(".md") {
                         if let Ok(vault) = db_clone.get_vault(&change_event.vault_id).await {
-                            if let Ok(content) =
-                                services::FileService::read_file(&vault.path, to)
-                            {
+                            if let Ok(content) = services::FileService::read_file(&vault.path, to) {
                                 let _ = search_index_clone.update_file(
                                     &change_event.vault_id,
                                     to,
                                     content.content,
                                 );
                             }
-                            let abs_path = format!(
-                                "{}/{}",
-                                vault.path.trim_end_matches('/'),
-                                to
-                            );
+                            let abs_path = format!("{}/{}", vault.path.trim_end_matches('/'), to);
                             if let Err(e) = ReindexService::index_file(
                                 &db_clone,
                                 &change_event.vault_id,
@@ -333,9 +319,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
                             )
                             .await
                             {
-                                warn!(
-                                    "Entity index_file (rename to) failed for {to}: {e}"
-                                );
+                                warn!("Entity index_file (rename to) failed for {to}: {e}");
                             }
                         }
                     }
@@ -393,12 +377,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 
     // --- Plugin schemas ----------------------------------------------------
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
+    let plugins_dir = services::resolve_plugins_dir();
+    info!("Using plugins directory: {}", plugins_dir.display());
 
     let entity_type_registry = EntityTypeRegistry::new();
     let relation_type_registry = RelationTypeRegistry::new();
     {
         use services::PluginService;
-        let mut plugin_svc = PluginService::new("./plugins");
+        let mut plugin_svc = PluginService::new(plugins_dir.clone());
         match plugin_svc.discover_plugins() {
             Ok(plugins) => {
                 if let Err(e) = SchemaService::load_plugin_schemas(
@@ -430,7 +416,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         ml_undo_store: Arc::new(Mutex::new(HashMap::new())),
         entity_type_registry,
         relation_type_registry,
-        plugins_dir: "./plugins".to_string(),
+        plugins_dir: plugins_dir.clone(),
         shutdown_tx: shutdown_tx.clone(),
         document_parser: Arc::new(MarkdownParser),
     });
@@ -489,7 +475,10 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     .shutdown_timeout(10);
 
     // Bind with TLS if cert_file + key_file are both configured; otherwise plain HTTP.
-    let server = match (tls_config.cert_file.as_deref(), tls_config.key_file.as_deref()) {
+    let server = match (
+        tls_config.cert_file.as_deref(),
+        tls_config.key_file.as_deref(),
+    ) {
         (Some(cert_path), Some(key_path)) => {
             info!("TLS enabled — loading certificate from {cert_path}");
             let cert_bytes = std::fs::read(cert_path)
@@ -547,7 +536,8 @@ async fn wait_for_shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
         tokio::select! {
             _ = sigterm.recv() => {}
             _ = tokio::signal::ctrl_c() => {}

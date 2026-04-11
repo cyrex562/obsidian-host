@@ -59,6 +59,7 @@ CONFIG_TEMPLATE = REPO_ROOT / "config.toml"
 SYSTEMD_TEMPLATE = REPO_ROOT / "deploy" / "systemd" / "codex.service.template"
 DIST_DIR = REPO_ROOT / "dist"
 FRONTEND_DIR = REPO_ROOT / "frontend"
+PLUGINS_DIR = REPO_ROOT / "plugins"
 FRONTEND_NODE_MODULES = FRONTEND_DIR / "node_modules"
 FRONTEND_BUILD_OUTPUT = REPO_ROOT / "target" / "frontend"
 LINUX_TARGET = "x86_64-unknown-linux-gnu"
@@ -476,6 +477,8 @@ def assemble_dist(
     server_dir.mkdir()
     bin_copy = server_dir / BIN_NAME
     shutil.copy2(server_bin, bin_copy)
+    plugins_copy = server_dir / "plugins"
+    shutil.copytree(PLUGINS_DIR, plugins_copy, dirs_exist_ok=True)
 
     # Copy desktop binary if it was built
     desktop_copy: Path | None = None
@@ -520,6 +523,7 @@ def assemble_dist(
     with tarfile.open(tarball, "w:gz") as arc:
         arc.add(bin_copy, arcname=BIN_NAME)
         arc.add(manifest_path, arcname="manifest.json")
+        arc.add(plugins_copy, arcname="plugins")
         if desktop_copy is not None:
             arc.add(desktop_copy, arcname=f"desktop/{DESKTOP_BIN_NAME}")
 

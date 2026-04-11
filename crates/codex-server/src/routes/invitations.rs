@@ -44,8 +44,7 @@ async fn create_invitation(
 
     let id = Uuid::new_v4().to_string();
     let token = generate_invite_token();
-    let expires_at =
-        Utc::now() + chrono::Duration::hours(body.expires_in_hours.max(1) as i64);
+    let expires_at = Utc::now() + chrono::Duration::hours(body.expires_in_hours.max(1) as i64);
 
     state
         .db
@@ -85,10 +84,7 @@ async fn create_invitation(
 
 /// List invitations created by the authenticated user.
 #[get("/api/invitations")]
-async fn list_invitations(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn list_invitations(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = require_user(&req)?;
     let invites = state.db.list_invitations_by_creator(&user.user_id).await?;
     Ok(HttpResponse::Ok().json(invites))

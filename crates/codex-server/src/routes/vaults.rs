@@ -30,8 +30,8 @@ pub struct AppState {
     pub ml_undo_store: Arc<Mutex<HashMap<String, MlUndoReceipt>>>,
     pub entity_type_registry: EntityTypeRegistry,
     pub relation_type_registry: RelationTypeRegistry,
-    /// Path to the plugins directory (e.g. `"./plugins"`)
-    pub plugins_dir: String,
+    /// Path to the bundled plugins directory.
+    pub plugins_dir: PathBuf,
     /// Broadcast a `()` on this channel to tell all WebSocket sessions to
     /// send a Close frame and exit cleanly before the server stops.
     pub shutdown_tx: broadcast::Sender<()>,
@@ -75,7 +75,8 @@ fn resolve_vault_path(config: &AppConfig, body: &CreateVaultRequest) -> AppResul
     {
         // Canonicalize custom paths to make them absolute
         let path_buf = PathBuf::from(path);
-        return path_buf.canonicalize()
+        return path_buf
+            .canonicalize()
             .map(|p| p.to_string_lossy().to_string())
             .or_else(|_| Ok(path.to_string()));
     }
@@ -93,7 +94,9 @@ fn resolve_vault_path(config: &AppConfig, body: &CreateVaultRequest) -> AppResul
         base_dir
     } else {
         std::env::current_dir()
-            .map_err(|e| AppError::InternalError(format!("Failed to get current directory: {}", e)))?
+            .map_err(|e| {
+                AppError::InternalError(format!("Failed to get current directory: {}", e))
+            })?
             .join(base_dir)
     };
     Ok(absolute_base.join(slug).to_string_lossy().to_string())

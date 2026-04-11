@@ -6,7 +6,7 @@ use argon2::{
 use codex::config::AppConfig;
 use codex::db::Database;
 use codex::middleware::AuthMiddleware;
-use codex::routes::{auth, api_keys, files, vaults, AppState};
+use codex::routes::{api_keys, auth, files, vaults, AppState};
 use codex::services::{MarkdownParser, SearchIndex};
 use codex::watcher::FileWatcher;
 use serde_json::json;
@@ -48,7 +48,7 @@ async fn verify_api_keys_and_totp() {
         ml_undo_store: std::sync::Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-    shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
+        shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
         document_parser: Arc::new(MarkdownParser),
         entity_type_registry: codex::services::EntityTypeRegistry::new(),
         relation_type_registry: codex::services::RelationTypeRegistry::new(),
@@ -101,7 +101,12 @@ async fn verify_api_keys_and_totp() {
     let me_resp = test::call_service(&app, me_req).await;
     let me_status = me_resp.status();
     let me_body: serde_json::Value = test::read_body_json(me_resp).await;
-    assert!(me_status.is_success(), "Failed to use API key. Status: {}, Body: {}", me_status, me_body);
+    assert!(
+        me_status.is_success(),
+        "Failed to use API key. Status: {}, Body: {}",
+        me_status,
+        me_body
+    );
     assert_eq!(me_body["username"], "admin");
 
     // 3. List API Keys
@@ -161,7 +166,7 @@ async fn test_public_vault_allows_anonymous_reads() {
         ws_broadcaster: tokio::sync::broadcast::channel::<codex::models::WsMessage>(16).0,
         change_log_retention_days: 7,
         ml_undo_store: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-    shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
+        shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
         document_parser: Arc::new(MarkdownParser),
         entity_type_registry: codex::services::EntityTypeRegistry::new(),
         relation_type_registry: codex::services::RelationTypeRegistry::new(),
@@ -226,7 +231,11 @@ async fn test_public_vault_allows_anonymous_reads() {
             .to_request(),
     )
     .await;
-    assert_eq!(resp.status().as_u16(), 401, "private vault must reject anonymous reads");
+    assert_eq!(
+        resp.status().as_u16(),
+        401,
+        "private vault must reject anonymous reads"
+    );
 
     // ── Mark vault as public ─────────────────────────────────────────────
     let vis_resp = test::call_service(
@@ -248,7 +257,11 @@ async fn test_public_vault_allows_anonymous_reads() {
             .to_request(),
     )
     .await;
-    assert_eq!(resp.status().as_u16(), 200, "public vault must allow anonymous reads");
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "public vault must allow anonymous reads"
+    );
 
     // ── Unauthenticated write on a public vault → still 401 ──────────────
     let resp = test::call_service(
@@ -259,7 +272,11 @@ async fn test_public_vault_allows_anonymous_reads() {
             .to_request(),
     )
     .await;
-    assert_eq!(resp.status().as_u16(), 401, "public vault must reject anonymous writes");
+    assert_eq!(
+        resp.status().as_u16(),
+        401,
+        "public vault must reject anonymous writes"
+    );
 
     // ── Revert to private ────────────────────────────────────────────────
     let _ = test::call_service(
@@ -280,7 +297,11 @@ async fn test_public_vault_allows_anonymous_reads() {
             .to_request(),
     )
     .await;
-    assert_eq!(resp.status().as_u16(), 401, "reverted private vault must reject anonymous reads");
+    assert_eq!(
+        resp.status().as_u16(),
+        401,
+        "reverted private vault must reject anonymous reads"
+    );
 
     let _ = state; // keep state alive
 }

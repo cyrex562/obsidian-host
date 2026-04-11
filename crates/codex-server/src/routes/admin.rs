@@ -222,9 +222,7 @@ async fn edit_user(
                 Some(&admin.user_id),
                 Some(&admin.username),
                 "user_admin_toggled",
-                Some(&format!(
-                    "Set is_admin={is_admin} for user {user_id}"
-                )),
+                Some(&format!("Set is_admin={is_admin} for user {user_id}")),
                 None,
                 true,
             )

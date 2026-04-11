@@ -114,9 +114,7 @@ pub async fn exchange_code(
     let client_secret = auth_cfg
         .oidc_client_secret
         .as_deref()
-        .ok_or_else(|| {
-            AppError::InternalError("oidc_client_secret not configured".to_string())
-        })?;
+        .ok_or_else(|| AppError::InternalError("oidc_client_secret not configured".to_string()))?;
     let redirect_uri = auth_cfg
         .oidc_redirect_uri
         .as_deref()

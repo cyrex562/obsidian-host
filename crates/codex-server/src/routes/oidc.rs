@@ -29,13 +29,14 @@ async fn oidc_authorize(config: web::Data<AppConfig>) -> AppResult<HttpResponse>
 
     let discovery = oidc_provider::fetch_discovery(issuer).await?;
     let state_token = generate_state_token();
-    let authorize_url =
-        oidc_provider::build_authorize_url(&discovery, &config.auth, &state_token)?;
+    let authorize_url = oidc_provider::build_authorize_url(&discovery, &config.auth, &state_token)?;
 
-    Ok(HttpResponse::Ok().json(oidc_provider::OidcAuthorizeResponse {
-        authorize_url,
-        state: state_token,
-    }))
+    Ok(
+        HttpResponse::Ok().json(oidc_provider::OidcAuthorizeResponse {
+            authorize_url,
+            state: state_token,
+        }),
+    )
 }
 
 /// Step 2: OIDC callback after the user authenticates with the provider.
@@ -95,7 +96,10 @@ async fn oidc_callback(
                     Some(&id),
                     Some(&username),
                     "oidc_user_provisioned",
-                    Some(&format!("Auto-provisioned from OIDC (sub={})", userinfo.sub)),
+                    Some(&format!(
+                        "Auto-provisioned from OIDC (sub={})",
+                        userinfo.sub
+                    )),
                     None,
                     true,
                 )
@@ -117,14 +121,13 @@ async fn oidc_callback(
         .await;
 
     // Issue our own JWT tokens.
-    let (response, refresh_jti, refresh_exp) = crate::routes::auth::issue_tokens_public(
-        &user_id,
-        &username,
-        "oidc",
-        &config.auth,
-    )?;
+    let (response, refresh_jti, refresh_exp) =
+        crate::routes::auth::issue_tokens_public(&user_id, &username, "oidc", &config.auth)?;
 
-    let _ = state.db.create_session(&refresh_jti, &user_id, refresh_exp).await;
+    let _ = state
+        .db
+        .create_session(&refresh_jti, &user_id, refresh_exp)
+        .await;
 
     Ok(HttpResponse::Ok().json(response))
 }

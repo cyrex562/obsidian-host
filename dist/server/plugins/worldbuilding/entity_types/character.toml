@@ -1,0 +1,46 @@
+[entity_type]
+name          = "Character"
+icon          = "person"
+color         = "#4A90D9"
+template      = "templates/character.md"
+labels        = ["graphable", "person"]
+display_field = "full_name"
+show_on_create = ["full_name", "status", "faction"]
+
+[[entity_type.fields]]
+key      = "full_name"
+label    = "Full Name"
+type     = "string"
+required = true
+
+[[entity_type.fields]]
+key      = "status"
+label    = "Status"
+type     = "enum"
+values   = ["Active", "Deceased", "Unknown", "Defected"]
+default  = "Active"
+
+[[entity_type.fields]]
+key          = "faction"
+label        = "Primary Faction"
+type         = "entity_ref"
+target_label = "organization"
+relation     = "member_of"
+
+[[entity_type.fields]]
+key          = "location"
+label        = "Base Location"
+type         = "entity_ref"
+target_label = "place"
+relation     = "located_in"
+
+[[entity_type.fields]]
+key   = "birth_date"
+label = "Date of Birth"
+type  = "date"
+
+[[entity_type.fields]]
+key         = "summary"
+label       = "Summary"
+type        = "text"
+description = "Short character summary (not prose)"

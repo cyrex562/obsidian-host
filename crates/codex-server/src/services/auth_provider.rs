@@ -143,8 +143,7 @@ async fn authenticate_with_password_provider(
         };
 
         if max_attempts > 0 && attempts >= max_attempts {
-            let until = chrono::Utc::now()
-                + chrono::Duration::minutes(lockout_minutes);
+            let until = chrono::Utc::now() + chrono::Duration::minutes(lockout_minutes);
             let _ = db.lock_user_until(user_id, until).await;
             let _ = db
                 .write_audit_log(

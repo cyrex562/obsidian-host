@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::services::schema_service::EntityTypeRegistry;
+use std::path::Path;
 
 pub struct TemplateService;
 
@@ -11,14 +12,11 @@ impl TemplateService {
     pub async fn get_template(
         registry: &EntityTypeRegistry,
         entity_type_id: &str,
-        plugins_dir: &str,
+        plugins_dir: &Path,
     ) -> AppResult<String> {
-        let schema = registry
-            .get_by_id(entity_type_id)
-            .await
-            .ok_or_else(|| {
-                AppError::NotFound(format!("Entity type not found: {entity_type_id}"))
-            })?;
+        let schema = registry.get_by_id(entity_type_id).await.ok_or_else(|| {
+            AppError::NotFound(format!("Entity type not found: {entity_type_id}"))
+        })?;
 
         // If the plugin declared a template file, try to read it
         if let Some(ref template_rel) = schema.template {
@@ -26,8 +24,12 @@ impl TemplateService {
             // We stored the full plugin directory path in the registry implicitly
             // via SchemaService — but PluginService stores plugin.path.
             // For now we derive the plugin dir from plugins_dir + plugin_id basename.
-            let plugin_basename = schema.plugin_id.rsplit('.').next().unwrap_or(&schema.plugin_id);
-            let template_abs = format!("{plugins_dir}/{plugin_basename}/{template_rel}");
+            let plugin_basename = schema
+                .plugin_id
+                .rsplit('.')
+                .next()
+                .unwrap_or(&schema.plugin_id);
+            let template_abs = plugins_dir.join(plugin_basename).join(template_rel);
             if let Ok(content) = tokio::fs::read_to_string(&template_abs).await {
                 return Ok(content);
             }
@@ -38,9 +40,7 @@ impl TemplateService {
     }
 }
 
-fn generate_minimal_template(
-    schema: &crate::models::schema::EntityTypeSchema,
-) -> String {
+fn generate_minimal_template(schema: &crate::models::schema::EntityTypeSchema) -> String {
     use std::fmt::Write;
     let mut fm = String::new();
     writeln!(fm, "---").unwrap();
@@ -99,7 +99,11 @@ mod tests {
         }
     }
 
-    fn make_field(key: &str, field_type: FieldType, default: Option<serde_json::Value>) -> FieldSchema {
+    fn make_field(
+        key: &str,
+        field_type: FieldType,
+        default: Option<serde_json::Value>,
+    ) -> FieldSchema {
         FieldSchema {
             key: key.into(),
             label: key.into(),
@@ -120,15 +124,24 @@ mod tests {
     fn test_minimal_template_contains_frontmatter_delimiters() {
         let schema = make_schema("character", "worldbuilding", vec![], vec![]);
         let tmpl = generate_minimal_template(&schema);
-        assert!(tmpl.starts_with("---\n"), "should start with front-matter opener");
-        assert!(tmpl.contains("\n---\n"), "should contain front-matter closer");
+        assert!(
+            tmpl.starts_with("---\n"),
+            "should start with front-matter opener"
+        );
+        assert!(
+            tmpl.contains("\n---\n"),
+            "should contain front-matter closer"
+        );
     }
 
     #[test]
     fn test_minimal_template_contains_codex_type() {
         let schema = make_schema("character", "worldbuilding", vec![], vec![]);
         let tmpl = generate_minimal_template(&schema);
-        assert!(tmpl.contains("codex_type: character"), "should set codex_type");
+        assert!(
+            tmpl.contains("codex_type: character"),
+            "should set codex_type"
+        );
     }
 
     #[test]
@@ -147,7 +160,10 @@ mod tests {
             vec![],
         );
         let tmpl = generate_minimal_template(&schema);
-        assert!(tmpl.contains("codex_labels:"), "should emit codex_labels section");
+        assert!(
+            tmpl.contains("codex_labels:"),
+            "should emit codex_labels section"
+        );
         assert!(tmpl.contains("  - graphable"));
         assert!(tmpl.contains("  - person"));
     }
@@ -156,7 +172,10 @@ mod tests {
     fn test_minimal_template_no_labels_section_when_empty() {
         let schema = make_schema("event", "wb", vec![], vec![]);
         let tmpl = generate_minimal_template(&schema);
-        assert!(!tmpl.contains("codex_labels:"), "no labels block when labels is empty");
+        assert!(
+            !tmpl.contains("codex_labels:"),
+            "no labels block when labels is empty"
+        );
     }
 
     #[test]
@@ -168,7 +187,10 @@ mod tests {
             vec![make_field("full_name", FieldType::String, None)],
         );
         let tmpl = generate_minimal_template(&schema);
-        assert!(tmpl.contains("full_name: \"\""), "string field with no default gets empty string");
+        assert!(
+            tmpl.contains("full_name: \"\""),
+            "string field with no default gets empty string"
+        );
     }
 
     #[test]
@@ -177,10 +199,17 @@ mod tests {
             "character",
             "wb",
             vec![],
-            vec![make_field("status", FieldType::Enum, Some(serde_json::json!("Active")))],
+            vec![make_field(
+                "status",
+                FieldType::Enum,
+                Some(serde_json::json!("Active")),
+            )],
         );
         let tmpl = generate_minimal_template(&schema);
-        assert!(tmpl.contains("status: Active"), "enum field with default uses default value");
+        assert!(
+            tmpl.contains("status: Active"),
+            "enum field with default uses default value"
+        );
     }
 
     #[test]
@@ -199,7 +228,11 @@ mod tests {
             vec![],
             vec![
                 make_field("name", FieldType::String, None),
-                make_field("alignment", FieldType::Enum, Some(serde_json::json!("Neutral"))),
+                make_field(
+                    "alignment",
+                    FieldType::Enum,
+                    Some(serde_json::json!("Neutral")),
+                ),
                 make_field("founded", FieldType::Date, None),
             ],
         );
@@ -238,8 +271,14 @@ mod tests {
         let content = TemplateService::get_template(&registry, "character", "/nonexistent/dir")
             .await
             .expect("should return generated fallback");
-        assert!(content.contains("codex_type:"), "fallback should include type field");
-        assert!(content.contains("full_name: \"\""), "fallback should include field");
+        assert!(
+            content.contains("codex_type:"),
+            "fallback should include type field"
+        );
+        assert!(
+            content.contains("full_name: \"\""),
+            "fallback should include field"
+        );
     }
 
     #[tokio::test]
@@ -266,13 +305,10 @@ mod tests {
         };
         registry.register(schema).await;
 
-        let content = TemplateService::get_template(
-            &registry,
-            "character",
-            temp.path().to_str().unwrap(),
-        )
-        .await
-        .expect("should read template from disk");
+        let content =
+            TemplateService::get_template(&registry, "character", temp.path().to_str().unwrap())
+                .await
+                .expect("should read template from disk");
         assert_eq!(content, tmpl_content);
     }
 }

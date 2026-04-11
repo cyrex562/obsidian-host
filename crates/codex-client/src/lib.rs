@@ -869,10 +869,7 @@ impl ObsidianClient {
             .await
     }
 
-    pub async fn admin_delete_user(
-        &self,
-        user_id: &str,
-    ) -> Result<serde_json::Value, ClientError> {
+    pub async fn admin_delete_user(&self, user_id: &str) -> Result<serde_json::Value, ClientError> {
         let endpoint = format!("/api/admin/users/{user_id}");
         self.send_json(HttpMethod::Delete, &endpoint, Option::<&()>::None)
             .await

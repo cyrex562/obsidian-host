@@ -99,9 +99,7 @@ where
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        let state_for_api_key = req
-            .app_data::<actix_web::web::Data<AppState>>()
-            .cloned();
+        let state_for_api_key = req.app_data::<actix_web::web::Data<AppState>>().cloned();
 
         // Try JWT bearer token.
         let bearer = extract_access_token(&req);
@@ -148,9 +146,7 @@ where
                 "error": "UNAUTHORIZED",
                 "message": "Missing or invalid Authorization header or API key"
             }));
-            return Box::pin(
-                async move { Ok(req.into_response(response).map_into_right_body()) },
-            );
+            return Box::pin(async move { Ok(req.into_response(response).map_into_right_body()) });
         }
 
         // If we have an API key, validate it asynchronously and resolve the user.
@@ -281,10 +277,11 @@ where
                         }
                         Ok(false) => {}
                         Err(_) => {
-                            let response = HttpResponse::InternalServerError().json(serde_json::json!({
-                                "error": "INTERNAL_ERROR",
-                                "message": "Failed to validate password policy"
-                            }));
+                            let response =
+                                HttpResponse::InternalServerError().json(serde_json::json!({
+                                    "error": "INTERNAL_ERROR",
+                                    "message": "Failed to validate password policy"
+                                }));
                             return Ok(req.into_response(response).map_into_right_body());
                         }
                     }

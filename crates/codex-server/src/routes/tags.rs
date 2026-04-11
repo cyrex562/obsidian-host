@@ -91,9 +91,7 @@ async fn list_backlinks(
     // Patterns to search for
     let wiki_stem_lower = format!("[[{}]]", stem.to_lowercase());
     let path_lower = target_path.to_lowercase();
-    let path_no_ext = target_path
-        .trim_end_matches(".md")
-        .to_lowercase();
+    let path_no_ext = target_path.trim_end_matches(".md").to_lowercase();
 
     #[derive(Serialize)]
     struct BacklinkEntry {

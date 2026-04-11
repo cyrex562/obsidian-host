@@ -369,9 +369,7 @@ impl AppConfig {
                 &serde_json::to_string(&AppConfig::default()).unwrap(),
                 config::FileFormat::Json,
             ))
-            .add_source(
-                config::File::new(path_str, config::FileFormat::Toml).required(true),
-            )
+            .add_source(config::File::new(path_str, config::FileFormat::Toml).required(true))
             .add_source(config::Environment::with_prefix("CODEX").separator("__"))
             .build()
             .with_context(|| format!("Failed to load config from {}", path.display()))?;
@@ -398,7 +396,10 @@ impl AppConfig {
     /// subsequent calls overwrite the file with the same content.
     pub fn write_default(paths: &CodexPaths) -> anyhow::Result<Self> {
         std::fs::create_dir_all(&paths.config_dir).with_context(|| {
-            format!("Failed to create config dir: {}", paths.config_dir.display())
+            format!(
+                "Failed to create config dir: {}",
+                paths.config_dir.display()
+            )
         })?;
         let config = Self::default_for_dirs(paths);
         let content = toml::to_string_pretty(&config)
@@ -418,10 +419,7 @@ impl AppConfig {
             .join("codex.db")
             .to_string_lossy()
             .into_owned();
-        cfg.vault.base_dir = paths
-            .default_vault_dir
-            .to_string_lossy()
-            .into_owned();
+        cfg.vault.base_dir = paths.default_vault_dir.to_string_lossy().into_owned();
         cfg
     }
 }
@@ -478,8 +476,7 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
-            msg.contains(path.display().to_string().as_str())
-                || msg.contains("Failed"),
+            msg.contains(path.display().to_string().as_str()) || msg.contains("Failed"),
             "unexpected: {msg}"
         );
     }

@@ -1,0 +1,29 @@
+{
+  "id": "com.codex.worldbuilding",
+  "name": "Worldbuilding",
+  "version": "1.0.0",
+  "description": "Typed entities and relations for worldbuilding: characters, factions, locations, events, and more.",
+  "author": "Codex",
+  "license": "MIT",
+  "main": "main.js",
+  "plugin_type": "javascript",
+  "entity_types": [
+    "entity_types/character.toml",
+    "entity_types/faction.toml",
+    "entity_types/location.toml",
+    "entity_types/event.toml"
+  ],
+  "relation_types": [
+    "relation_types/member_of.toml",
+    "relation_types/located_in.toml",
+    "relation_types/participated_in.toml",
+    "relation_types/knows.toml"
+  ],
+  "labels": [
+    { "name": "graphable", "description": "Show this entity in the graph view" },
+    { "name": "person",    "description": "A person or character" },
+    { "name": "organization", "description": "A group, faction, or institution" },
+    { "name": "place",     "description": "A physical or conceptual location" },
+    { "name": "event",     "description": "A historical or narrative event" }
+  ]
+}

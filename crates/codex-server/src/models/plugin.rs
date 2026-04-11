@@ -53,7 +53,6 @@ pub struct PluginManifest {
     pub config_schema: Option<serde_json::Value>,
 
     // ── Plugin schema declarations (optional; backwards-compatible) ──────────
-
     /// Relative paths to entity-type TOML files inside the plugin directory
     /// (e.g. `["entity_types/character.toml"]`)
     #[serde(default)]

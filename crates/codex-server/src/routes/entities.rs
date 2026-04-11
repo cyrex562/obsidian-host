@@ -20,8 +20,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg
         // Entities for a vault
         .service(
-            web::resource("/api/vaults/{vault_id}/entities")
-                .route(web::get().to(list_entities)),
+            web::resource("/api/vaults/{vault_id}/entities").route(web::get().to(list_entities)),
         )
         .service(
             web::resource("/api/vaults/{vault_id}/entities/{entity_id}")
@@ -33,14 +32,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route(web::get().to(get_entity_relations)),
         )
         // Full graph data (all entities + relations for a vault)
-        .service(
-            web::resource("/api/vaults/{vault_id}/graph")
-                .route(web::get().to(get_graph)),
-        )
+        .service(web::resource("/api/vaults/{vault_id}/graph").route(web::get().to(get_graph)))
         // Trigger a full reindex
         .service(
-            web::resource("/api/vaults/{vault_id}/reindex")
-                .route(web::post().to(trigger_reindex)),
+            web::resource("/api/vaults/{vault_id}/reindex").route(web::post().to(trigger_reindex)),
         )
         // Entity template (vault-scoped — ?type=<type_id>&plugin=<plugin_id>)
         .service(
@@ -53,22 +48,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route(web::get().to(get_entity_by_path)),
         )
         // Labels list (also registered here for convenience)
-        .service(
-            web::resource("/api/plugins/labels")
-                .route(web::get().to(list_labels)),
-        )
+        .service(web::resource("/api/plugins/labels").route(web::get().to(list_labels)))
         // Schema registries
-        .service(
-            web::resource("/api/plugins/entity-types")
-                .route(web::get().to(list_entity_types)),
-        )
+        .service(web::resource("/api/plugins/entity-types").route(web::get().to(list_entity_types)))
         .service(
             web::resource("/api/plugins/entity-types/{type_id}/template")
                 .route(web::get().to(get_entity_type_template)),
         )
         .service(
-            web::resource("/api/plugins/relation-types")
-                .route(web::get().to(list_relation_types)),
+            web::resource("/api/plugins/relation-types").route(web::get().to(list_relation_types)),
         );
 }
 
@@ -97,10 +85,7 @@ async fn list_entities(
     }
 }
 
-async fn get_entity(
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> HttpResponse {
+async fn get_entity(path: web::Path<(String, String)>, state: web::Data<AppState>) -> HttpResponse {
     let (_vault_id, entity_id) = path.into_inner();
 
     match EntityService::get(&state.db, &entity_id).await {
@@ -120,13 +105,15 @@ async fn get_entity_relations(
     let (vault_id, entity_id) = path.into_inner();
 
     match EntityService::get(&state.db, &entity_id).await {
-        Ok(Some(entity)) => match build_entity_relations_payload(&state, &vault_id, &entity).await {
-            Ok(relations) => HttpResponse::Ok().json(json!({ "relations": relations })),
-            Err(e) => {
-                tracing::error!("get_entity_relations error: {e}");
-                HttpResponse::InternalServerError().json(json!({ "error": e.to_string() }))
+        Ok(Some(entity)) => {
+            match build_entity_relations_payload(&state, &vault_id, &entity).await {
+                Ok(relations) => HttpResponse::Ok().json(json!({ "relations": relations })),
+                Err(e) => {
+                    tracing::error!("get_entity_relations error: {e}");
+                    HttpResponse::InternalServerError().json(json!({ "error": e.to_string() }))
+                }
             }
-        },
+        }
         Ok(None) => HttpResponse::NotFound().json(json!({ "error": "Entity not found" })),
         Err(e) => {
             tracing::error!("get_entity_relations entity lookup error: {e}");
@@ -137,10 +124,7 @@ async fn get_entity_relations(
 
 /// Returns a graph payload suitable for D3 force simulation:
 /// `{ nodes: [Entity], links: [Relation] }`
-async fn get_graph(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> HttpResponse {
+async fn get_graph(path: web::Path<String>, state: web::Data<AppState>) -> HttpResponse {
     let vault_id = path.into_inner();
 
     let entities_fut = EntityService::list_all_in_vault(&state.db, &vault_id);
@@ -193,10 +177,7 @@ async fn get_graph(
     }
 }
 
-async fn trigger_reindex(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> HttpResponse {
+async fn trigger_reindex(path: web::Path<String>, state: web::Data<AppState>) -> HttpResponse {
     let vault_id = path.into_inner();
 
     let vault = match state.db.get_vault(&vault_id).await {
@@ -223,7 +204,9 @@ async fn trigger_reindex(
                     duration_ms,
                 };
                 let _ = ws_tx.send(msg);
-                tracing::info!("Reindex complete for vault {vid}: {file_count} files in {duration_ms}ms");
+                tracing::info!(
+                    "Reindex complete for vault {vid}: {file_count} files in {duration_ms}ms"
+                );
             }
             Err(e) => {
                 tracing::error!("Background reindex failed for vault {vid}: {e}");
@@ -257,12 +240,8 @@ async fn get_entity_type_template(
     state: web::Data<AppState>,
 ) -> HttpResponse {
     let type_id = path.into_inner();
-    match TemplateService::get_template(
-        &state.entity_type_registry,
-        &type_id,
-        &state.plugins_dir,
-    )
-    .await
+    match TemplateService::get_template(&state.entity_type_registry, &type_id, &state.plugins_dir)
+        .await
     {
         Ok(content) => HttpResponse::Ok().json(json!({ "content": content })),
         Err(e) => {
@@ -299,7 +278,10 @@ async fn get_vault_entity_template(
     {
         Ok(content) => HttpResponse::Ok().json(json!({ "content": content })),
         Err(e) => {
-            tracing::warn!("Vault entity template fetch failed for {}: {e}", query.entity_type);
+            tracing::warn!(
+                "Vault entity template fetch failed for {}: {e}",
+                query.entity_type
+            );
             HttpResponse::NotFound().json(json!({ "error": e.to_string() }))
         }
     }

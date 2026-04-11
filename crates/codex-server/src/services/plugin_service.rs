@@ -1,6 +1,7 @@
 use crate::models::plugin::{Plugin, PluginCapability, PluginManifest, PluginState};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
@@ -21,7 +22,7 @@ pub struct PluginService {
 impl PluginService {
     pub fn new(plugins_dir: impl Into<PathBuf>) -> Self {
         let plugins_dir = plugins_dir.into();
-        let config_path = plugins_dir.join(".plugins_config.json");
+        let config_path = resolve_plugin_config_path(&plugins_dir);
         let config = Self::load_config(&config_path).unwrap_or_default();
 
         Self {
@@ -407,6 +408,32 @@ pub struct PluginStats {
     pub enabled: usize,
     pub loaded: usize,
     pub failed: usize,
+}
+
+pub fn resolve_plugins_dir() -> PathBuf {
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundled_plugins = exe_dir.join("plugins");
+            if bundled_plugins.exists() {
+                return bundled_plugins;
+            }
+        }
+    }
+
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("plugins")
+}
+
+fn resolve_plugin_config_path(plugins_dir: &Path) -> PathBuf {
+    if let Ok(cwd) = env::current_dir() {
+        let cwd_plugins = cwd.join("plugins");
+        if cwd_plugins != plugins_dir {
+            return cwd.join(".plugins_config.json");
+        }
+    }
+
+    plugins_dir.join(".plugins_config.json")
 }
 
 /// Check if version string is valid semver

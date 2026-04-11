@@ -40,11 +40,13 @@ impl LabelService {
             .bind(description)
             .execute(db.pool())
             .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                error: e,
-                operation: "seed_core_labels".into(),
-                details: Some(format!("label: {name}")),
-            }))?;
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                    error: e,
+                    operation: "seed_core_labels".into(),
+                    details: Some(format!("label: {name}")),
+                })
+            })?;
         }
         info!("Seeded {} core labels", CORE_LABELS.len());
         Ok(())
@@ -59,16 +61,19 @@ impl LabelService {
         plugin_id: &str,
     ) -> AppResult<()> {
         // Check for existing registration
-        let existing: Option<Label> =
-            sqlx::query_as("SELECT name, description, source, plugin_id FROM labels WHERE name = ?")
-                .bind(name)
-                .fetch_optional(db.pool())
-                .await
-                .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                    error: e,
-                    operation: "register_label_check".into(),
-                    details: None,
-                }))?;
+        let existing: Option<Label> = sqlx::query_as(
+            "SELECT name, description, source, plugin_id FROM labels WHERE name = ?",
+        )
+        .bind(name)
+        .fetch_optional(db.pool())
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "register_label_check".into(),
+                details: None,
+            })
+        })?;
 
         if let Some(existing) = existing {
             let owner = existing.plugin_id.as_deref().unwrap_or("<core>");
@@ -92,11 +97,13 @@ impl LabelService {
         .bind(plugin_id)
         .execute(db.pool())
         .await
-        .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-            error: e,
-            operation: "register_label".into(),
-            details: Some(format!("label: {name}")),
-        }))?;
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "register_label".into(),
+                details: Some(format!("label: {name}")),
+            })
+        })?;
 
         Ok(())
     }
@@ -107,25 +114,30 @@ impl LabelService {
             .bind(plugin_id)
             .execute(db.pool())
             .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                error: e,
-                operation: "remove_plugin_labels".into(),
-                details: None,
-            }))?;
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                    error: e,
+                    operation: "remove_plugin_labels".into(),
+                    details: None,
+                })
+            })?;
         Ok(())
     }
 
     /// List all registered labels (core + plugin).
     pub async fn list(db: &Database) -> AppResult<Vec<Label>> {
-        let labels: Vec<Label> =
-            sqlx::query_as("SELECT name, description, source, plugin_id FROM labels ORDER BY source, name")
-                .fetch_all(db.pool())
-                .await
-                .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                    error: e,
-                    operation: "list_labels".into(),
-                    details: None,
-                }))?;
+        let labels: Vec<Label> = sqlx::query_as(
+            "SELECT name, description, source, plugin_id FROM labels ORDER BY source, name",
+        )
+        .fetch_all(db.pool())
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "list_labels".into(),
+                details: None,
+            })
+        })?;
         Ok(labels)
     }
 }
@@ -151,7 +163,16 @@ mod tests {
     #[test]
     fn test_core_labels_contains_expected_names() {
         let names: Vec<&str> = CORE_LABELS.iter().map(|(n, _)| *n).collect();
-        for expected in ["graphable", "person", "organization", "place", "event", "object", "concept", "creature"] {
+        for expected in [
+            "graphable",
+            "person",
+            "organization",
+            "place",
+            "event",
+            "object",
+            "concept",
+            "creature",
+        ] {
             assert!(names.contains(&expected), "missing core label: {expected}");
         }
     }
@@ -159,7 +180,10 @@ mod tests {
     #[test]
     fn test_core_labels_all_have_descriptions() {
         for (name, desc) in CORE_LABELS {
-            assert!(!desc.is_empty(), "core label '{name}' should have a description");
+            assert!(
+                !desc.is_empty(),
+                "core label '{name}' should have a description"
+            );
         }
     }
 
@@ -189,7 +213,11 @@ mod tests {
         LabelService::seed_core_labels(&db).await.unwrap(); // second call should not error or duplicate
 
         let labels = LabelService::list(&db).await.unwrap();
-        assert_eq!(labels.len(), CORE_LABELS.len(), "no duplicates on double-seed");
+        assert_eq!(
+            labels.len(),
+            CORE_LABELS.len(),
+            "no duplicates on double-seed"
+        );
     }
 
     #[tokio::test]
@@ -213,12 +241,20 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = setup_db(&temp).await;
 
-        LabelService::register(&db, "undead", Some("A dead but animated entity"), "com.plugin.undead")
-            .await
-            .unwrap();
+        LabelService::register(
+            &db,
+            "undead",
+            Some("A dead but animated entity"),
+            "com.plugin.undead",
+        )
+        .await
+        .unwrap();
 
         let labels = LabelService::list(&db).await.unwrap();
-        let label = labels.iter().find(|l| l.name == "undead").expect("should have undead label");
+        let label = labels
+            .iter()
+            .find(|l| l.name == "undead")
+            .expect("should have undead label");
         assert_eq!(label.source, "plugin");
         assert_eq!(label.plugin_id.as_deref(), Some("com.plugin.undead"));
     }
@@ -228,9 +264,13 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = setup_db(&temp).await;
 
-        LabelService::register(&db, "custom", None, "plugin-a").await.unwrap();
+        LabelService::register(&db, "custom", None, "plugin-a")
+            .await
+            .unwrap();
         // Re-registering from same plugin should be a no-op (not an error)
-        LabelService::register(&db, "custom", None, "plugin-a").await.unwrap();
+        LabelService::register(&db, "custom", None, "plugin-a")
+            .await
+            .unwrap();
 
         let labels = LabelService::list(&db).await.unwrap();
         let count = labels.iter().filter(|l| l.name == "custom").count();
@@ -242,12 +282,17 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = setup_db(&temp).await;
 
-        LabelService::register(&db, "custom", None, "plugin-a").await.unwrap();
+        LabelService::register(&db, "custom", None, "plugin-a")
+            .await
+            .unwrap();
         let result = LabelService::register(&db, "custom", None, "plugin-b").await;
 
         assert!(result.is_err(), "second plugin should get a Conflict error");
         let err_str = result.unwrap_err().to_string();
-        assert!(err_str.contains("already registered"), "error message should mention conflict: {err_str}");
+        assert!(
+            err_str.contains("already registered"),
+            "error message should mention conflict: {err_str}"
+        );
     }
 
     #[tokio::test]
@@ -268,16 +313,33 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = setup_db(&temp).await;
 
-        LabelService::register(&db, "label-a", None, "plugin-x").await.unwrap();
-        LabelService::register(&db, "label-b", None, "plugin-x").await.unwrap();
-        LabelService::register(&db, "label-c", None, "plugin-y").await.unwrap();
+        LabelService::register(&db, "label-a", None, "plugin-x")
+            .await
+            .unwrap();
+        LabelService::register(&db, "label-b", None, "plugin-x")
+            .await
+            .unwrap();
+        LabelService::register(&db, "label-c", None, "plugin-y")
+            .await
+            .unwrap();
 
-        LabelService::remove_plugin_labels(&db, "plugin-x").await.unwrap();
+        LabelService::remove_plugin_labels(&db, "plugin-x")
+            .await
+            .unwrap();
 
         let labels = LabelService::list(&db).await.unwrap();
-        assert!(!labels.iter().any(|l| l.name == "label-a"), "label-a should be removed");
-        assert!(!labels.iter().any(|l| l.name == "label-b"), "label-b should be removed");
-        assert!(labels.iter().any(|l| l.name == "label-c"), "label-c (plugin-y) should remain");
+        assert!(
+            !labels.iter().any(|l| l.name == "label-a"),
+            "label-a should be removed"
+        );
+        assert!(
+            !labels.iter().any(|l| l.name == "label-b"),
+            "label-b should be removed"
+        );
+        assert!(
+            labels.iter().any(|l| l.name == "label-c"),
+            "label-c (plugin-y) should remain"
+        );
     }
 
     #[tokio::test]
@@ -286,10 +348,16 @@ mod tests {
         let db = setup_db(&temp).await;
 
         LabelService::seed_core_labels(&db).await.unwrap();
-        LabelService::remove_plugin_labels(&db, "some-plugin").await.unwrap();
+        LabelService::remove_plugin_labels(&db, "some-plugin")
+            .await
+            .unwrap();
 
         let labels = LabelService::list(&db).await.unwrap();
-        assert_eq!(labels.len(), CORE_LABELS.len(), "core labels should be untouched");
+        assert_eq!(
+            labels.len(),
+            CORE_LABELS.len(),
+            "core labels should be untouched"
+        );
     }
 
     // ── list ──────────────────────────────────────────────────────────────
@@ -313,7 +381,13 @@ mod tests {
             .unwrap();
 
         let labels = LabelService::list(&db).await.unwrap();
-        assert!(labels.iter().any(|l| l.name == "graphable"), "core label should be present");
-        assert!(labels.iter().any(|l| l.name == "custom-label"), "plugin label should be present");
+        assert!(
+            labels.iter().any(|l| l.name == "graphable"),
+            "core label should be present"
+        );
+        assert!(
+            labels.iter().any(|l| l.name == "custom-label"),
+            "plugin label should be present"
+        );
     }
 }

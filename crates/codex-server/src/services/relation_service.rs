@@ -46,11 +46,13 @@ impl RelationService {
         .bind(&entity.id)
         .execute(db.pool())
         .await
-        .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-            error: e,
-            operation: "clear_field_relations".into(),
-            details: None,
-        }))?;
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "clear_field_relations".into(),
+                details: None,
+            })
+        })?;
 
         let fields = entity.fields_map();
         let obj = match fields.as_object() {
@@ -62,10 +64,7 @@ impl RelationService {
             // Handle both scalar and list entity refs
             let ref_values: Vec<&str> = match field_value {
                 serde_json::Value::String(s) => vec![s.as_str()],
-                serde_json::Value::Array(arr) => arr
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect(),
+                serde_json::Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
                 _ => continue,
             };
 
@@ -82,7 +81,8 @@ impl RelationService {
                     Ok(Some(target_entity)) => {
                         // Determine the inverse label using registry if available
                         let inverse_type = if let Some(reg) = registry {
-                            reg.find_by_name(field_key).await
+                            reg.find_by_name(field_key)
+                                .await
                                 .and_then(|rt| rt.inverse_label)
                                 .unwrap_or_else(|| format!("inverse_of_{field_key}"))
                         } else {
@@ -206,11 +206,13 @@ impl RelationService {
         .bind(entity_id)
         .fetch_all(db.pool())
         .await
-        .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-            error: e,
-            operation: "get_relations_for_entity".into(),
-            details: None,
-        }))?;
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "get_relations_for_entity".into(),
+                details: None,
+            })
+        })?;
         Ok(relations)
     }
 
@@ -226,11 +228,13 @@ impl RelationService {
         .bind(vault_id)
         .fetch_all(db.pool())
         .await
-        .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-            error: e,
-            operation: "list_vault_relations".into(),
-            details: None,
-        }))?;
+        .map_err(|e| {
+            AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                error: e,
+                operation: "list_vault_relations".into(),
+                details: None,
+            })
+        })?;
         Ok(relations)
     }
 
@@ -248,11 +252,13 @@ impl RelationService {
             .bind(relation_id)
             .execute(db.pool())
             .await
-            .map_err(|e| AppError::DatabaseError(crate::error::DatabaseErrorContext {
-                error: e,
-                operation: "update_relation_metadata".into(),
-                details: None,
-            }))?;
+            .map_err(|e| {
+                AppError::DatabaseError(crate::error::DatabaseErrorContext {
+                    error: e,
+                    operation: "update_relation_metadata".into(),
+                    details: None,
+                })
+            })?;
         Ok(())
     }
 }
@@ -295,7 +301,10 @@ mod tests {
 
     #[test]
     fn test_extract_wiki_title_outer_whitespace_trimmed() {
-        assert_eq!(extract_wiki_title("  [[Castle Keep]]  "), Some("Castle Keep"));
+        assert_eq!(
+            extract_wiki_title("  [[Castle Keep]]  "),
+            Some("Castle Keep")
+        );
     }
 
     #[test]
@@ -350,8 +359,14 @@ mod tests {
 
     fn make_frontmatter(entity_type: &str, fields: serde_json::Value) -> serde_json::Value {
         let mut obj = fields.as_object().cloned().unwrap_or_default();
-        obj.insert("codex_type".into(), serde_json::Value::String(entity_type.into()));
-        obj.insert("codex_plugin".into(), serde_json::Value::String("worldbuilding".into()));
+        obj.insert(
+            "codex_type".into(),
+            serde_json::Value::String(entity_type.into()),
+        );
+        obj.insert(
+            "codex_plugin".into(),
+            serde_json::Value::String("worldbuilding".into()),
+        );
         serde_json::Value::Object(obj)
     }
 
@@ -369,9 +384,16 @@ mod tests {
         let db = setup_db(&temp).await;
 
         let fm = make_frontmatter("character", serde_json::json!({ "full_name": "Alice" }));
-        EntityService::upsert(&db, "vault-1", "alice.md", &fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap();
+        EntityService::upsert(
+            &db,
+            "vault-1",
+            "alice.md",
+            &fm,
+            "2024-01-01T00:00:00Z",
+            None,
+        )
+        .await
+        .unwrap();
 
         let result = RelationService::resolve_target(&db, "vault-1", "alice")
             .await
@@ -386,9 +408,16 @@ mod tests {
         let db = setup_db(&temp).await;
 
         let fm = make_frontmatter("character", serde_json::json!({}));
-        EntityService::upsert(&db, "vault-1", "CastleKeep.md", &fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap();
+        EntityService::upsert(
+            &db,
+            "vault-1",
+            "CastleKeep.md",
+            &fm,
+            "2024-01-01T00:00:00Z",
+            None,
+        )
+        .await
+        .unwrap();
 
         let result = RelationService::resolve_target(&db, "vault-1", "castlekeep")
             .await
@@ -402,16 +431,19 @@ mod tests {
         let db = setup_db(&temp).await;
 
         let fm = make_frontmatter("character", serde_json::json!({ "full_name": "Alice" }));
-        let entity = EntityService::upsert(&db, "v1", "alice.md", &fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap()
-            .unwrap();
+        let entity =
+            EntityService::upsert(&db, "v1", "alice.md", &fm, "2024-01-01T00:00:00Z", None)
+                .await
+                .unwrap()
+                .unwrap();
 
         RelationService::sync_from_entity(&db, &entity, None)
             .await
             .unwrap();
 
-        let relations = RelationService::get_for_entity(&db, &entity.id).await.unwrap();
+        let relations = RelationService::get_for_entity(&db, &entity.id)
+            .await
+            .unwrap();
         assert!(relations.is_empty());
     }
 
@@ -421,32 +453,53 @@ mod tests {
         let db = setup_db(&temp).await;
 
         // Index both entities
-        let alice_fm = make_frontmatter(
-            "character",
-            serde_json::json!({ "faction": "[[Order]]" }),
-        );
-        let alice = EntityService::upsert(&db, "v1", "alice.md", &alice_fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap()
-            .unwrap();
+        let alice_fm = make_frontmatter("character", serde_json::json!({ "faction": "[[Order]]" }));
+        let alice = EntityService::upsert(
+            &db,
+            "v1",
+            "alice.md",
+            &alice_fm,
+            "2024-01-01T00:00:00Z",
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
 
         let order_fm = make_frontmatter("faction", serde_json::json!({}));
-        let order = EntityService::upsert(&db, "v1", "Order.md", &order_fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap()
-            .unwrap();
+        let order = EntityService::upsert(
+            &db,
+            "v1",
+            "Order.md",
+            &order_fm,
+            "2024-01-01T00:00:00Z",
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
 
         RelationService::sync_from_entity(&db, &alice, None)
             .await
             .unwrap();
 
         // Forward edge: alice → order
-        let alice_relations = RelationService::get_for_entity(&db, &alice.id).await.unwrap();
-        assert!(!alice_relations.is_empty(), "alice should have at least one relation");
+        let alice_relations = RelationService::get_for_entity(&db, &alice.id)
+            .await
+            .unwrap();
+        assert!(
+            !alice_relations.is_empty(),
+            "alice should have at least one relation"
+        );
 
         // Inverse edge visible from order's perspective
-        let order_relations = RelationService::get_for_entity(&db, &order.id).await.unwrap();
-        assert!(!order_relations.is_empty(), "order should have an inverse relation");
+        let order_relations = RelationService::get_for_entity(&db, &order.id)
+            .await
+            .unwrap();
+        assert!(
+            !order_relations.is_empty(),
+            "order should have an inverse relation"
+        );
 
         let forward = alice_relations.iter().find(|r| r.direction == "forward");
         assert!(forward.is_some(), "should have a forward relation");
@@ -459,32 +512,52 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = setup_db(&temp).await;
 
-        let alice_fm = make_frontmatter(
-            "character",
-            serde_json::json!({ "faction": "[[Order]]" }),
-        );
-        let alice = EntityService::upsert(&db, "v1", "alice.md", &alice_fm, "2024-01-01T00:00:00Z", None)
-            .await
-            .unwrap()
-            .unwrap();
+        let alice_fm = make_frontmatter("character", serde_json::json!({ "faction": "[[Order]]" }));
+        let alice = EntityService::upsert(
+            &db,
+            "v1",
+            "alice.md",
+            &alice_fm,
+            "2024-01-01T00:00:00Z",
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
 
         EntityService::upsert(
-            &db, "v1", "Order.md",
+            &db,
+            "v1",
+            "Order.md",
             &make_frontmatter("faction", serde_json::json!({})),
-            "2024-01-01T00:00:00Z", None,
+            "2024-01-01T00:00:00Z",
+            None,
         )
         .await
         .unwrap();
 
         // First sync — creates relations
-        RelationService::sync_from_entity(&db, &alice, None).await.unwrap();
-        let count_first = RelationService::get_for_entity(&db, &alice.id).await.unwrap().len();
+        RelationService::sync_from_entity(&db, &alice, None)
+            .await
+            .unwrap();
+        let count_first = RelationService::get_for_entity(&db, &alice.id)
+            .await
+            .unwrap()
+            .len();
         assert!(count_first > 0);
 
         // Re-sync — should not double-count
-        RelationService::sync_from_entity(&db, &alice, None).await.unwrap();
-        let count_second = RelationService::get_for_entity(&db, &alice.id).await.unwrap().len();
-        assert_eq!(count_first, count_second, "re-sync should not create duplicate relations");
+        RelationService::sync_from_entity(&db, &alice, None)
+            .await
+            .unwrap();
+        let count_second = RelationService::get_for_entity(&db, &alice.id)
+            .await
+            .unwrap()
+            .len();
+        assert_eq!(
+            count_first, count_second,
+            "re-sync should not create duplicate relations"
+        );
     }
 
     #[tokio::test]
@@ -494,31 +567,49 @@ mod tests {
 
         // Create two entities and a relation between them
         let fm_a = make_frontmatter("character", serde_json::json!({ "friend": "[[Bob]]" }));
-        let alice = EntityService::upsert(&db, "v1", "alice.md", &fm_a, "2024-01-01T00:00:00Z", None)
-            .await.unwrap().unwrap();
+        let alice =
+            EntityService::upsert(&db, "v1", "alice.md", &fm_a, "2024-01-01T00:00:00Z", None)
+                .await
+                .unwrap()
+                .unwrap();
 
         EntityService::upsert(
-            &db, "v1", "bob.md",
+            &db,
+            "v1",
+            "bob.md",
             &make_frontmatter("character", serde_json::json!({})),
-            "2024-01-01T00:00:00Z", None,
+            "2024-01-01T00:00:00Z",
+            None,
         )
-        .await.unwrap();
+        .await
+        .unwrap();
 
-        RelationService::sync_from_entity(&db, &alice, None).await.unwrap();
+        RelationService::sync_from_entity(&db, &alice, None)
+            .await
+            .unwrap();
 
-        let relations = RelationService::get_for_entity(&db, &alice.id).await.unwrap();
-        let rel = relations.iter().find(|r| r.direction == "forward").expect("forward relation");
+        let relations = RelationService::get_for_entity(&db, &alice.id)
+            .await
+            .unwrap();
+        let rel = relations
+            .iter()
+            .find(|r| r.direction == "forward")
+            .expect("forward relation");
 
         let metadata = serde_json::json!({ "relationship": "Friend" });
-        RelationService::update_metadata(&db, &rel.id, &metadata).await.unwrap();
+        RelationService::update_metadata(&db, &rel.id, &metadata)
+            .await
+            .unwrap();
 
         // Re-fetch and check
         let updated = RelationService::get_for_entity(&db, &alice.id)
-            .await.unwrap()
+            .await
+            .unwrap()
             .into_iter()
             .find(|r| r.id == rel.id)
             .unwrap();
-        let stored: serde_json::Value = serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+        let stored: serde_json::Value =
+            serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
         assert_eq!(stored["relationship"].as_str(), Some("Friend"));
     }
 }

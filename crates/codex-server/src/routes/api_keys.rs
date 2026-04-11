@@ -60,9 +60,9 @@ async fn create_api_key(
     let key_hash = hash_key(&raw_key)?;
     let id = Uuid::new_v4().to_string();
 
-    let expires_at = body.expires_in_days.map(|days| {
-        Utc::now() + chrono::Duration::days(days as i64)
-    });
+    let expires_at = body
+        .expires_in_days
+        .map(|days| Utc::now() + chrono::Duration::days(days as i64));
 
     state
         .db
@@ -92,10 +92,7 @@ async fn create_api_key(
 
 /// List all API keys for the authenticated user.
 #[get("/api/auth/api-keys")]
-async fn list_api_keys(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> AppResult<HttpResponse> {
+async fn list_api_keys(state: web::Data<AppState>, req: HttpRequest) -> AppResult<HttpResponse> {
     let user = require_user(&req)?;
     let keys = state.db.list_api_keys(&user.user_id).await?;
     Ok(HttpResponse::Ok().json(keys))

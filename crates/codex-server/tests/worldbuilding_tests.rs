@@ -79,25 +79,40 @@ async fn test_entity_list_filter_by_entity_type() {
     let (state, vault_id) = setup(&temp).await;
     let vault_dir = temp.path().join("vault");
 
-    write_entity(&vault_dir, "alice.md", "character", &[("full_name", "Alice")]);
-    write_entity(&vault_dir, "city.md", "location", &[("full_name", "The City")]);
+    write_entity(
+        &vault_dir,
+        "alice.md",
+        "character",
+        &[("full_name", "Alice")],
+    );
+    write_entity(
+        &vault_dir,
+        "city.md",
+        "location",
+        &[("full_name", "The City")],
+    );
 
     ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entities?entity_type=character"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entities?entity_type=character"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
     let body: serde_json::Value = test::read_body_json(resp).await;
     let list = body["entities"].as_array().unwrap();
-    assert_eq!(list.len(), 1, "filter by entity_type=character should return 1");
+    assert_eq!(
+        list.len(),
+        1,
+        "filter by entity_type=character should return 1"
+    );
     assert_eq!(list[0]["entity_type"].as_str(), Some("character"));
 }
 
@@ -115,8 +130,7 @@ async fn test_entity_list_filter_by_label() {
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/vaults/{vault_id}/entities?label=graphable"))
@@ -135,15 +149,24 @@ async fn test_entity_list_filter_by_name_query() {
     let (state, vault_id) = setup(&temp).await;
     let vault_dir = temp.path().join("vault");
 
-    write_entity(&vault_dir, "aria.md", "character", &[("full_name", "Aria Stormwind")]);
-    write_entity(&vault_dir, "lyra.md", "character", &[("full_name", "Lyra Brightwood")]);
+    write_entity(
+        &vault_dir,
+        "aria.md",
+        "character",
+        &[("full_name", "Aria Stormwind")],
+    );
+    write_entity(
+        &vault_dir,
+        "lyra.md",
+        "character",
+        &[("full_name", "Lyra Brightwood")],
+    );
 
     ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     // Query "stormwind" — should only match Aria
     let req = test::TestRequest::get()
@@ -173,18 +196,23 @@ async fn test_entity_list_filter_by_plugin() {
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entities?plugin=worldbuilding"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entities?plugin=worldbuilding"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
     let body: serde_json::Value = test::read_body_json(resp).await;
     let list = body["entities"].as_array().unwrap();
-    assert_eq!(list.len(), 1, "plugin filter should only return worldbuilding entities");
+    assert_eq!(
+        list.len(),
+        1,
+        "plugin filter should only return worldbuilding entities"
+    );
     assert_eq!(list[0]["plugin_id"].as_str(), Some("worldbuilding"));
 }
 
@@ -198,7 +226,12 @@ async fn test_get_entity_by_id() {
     let (state, vault_id) = setup(&temp).await;
     let vault_dir = temp.path().join("vault");
 
-    write_entity(&vault_dir, "hero.md", "character", &[("full_name", "The Hero")]);
+    write_entity(
+        &vault_dir,
+        "hero.md",
+        "character",
+        &[("full_name", "The Hero")],
+    );
 
     ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap())
         .await
@@ -209,14 +242,16 @@ async fn test_get_entity_by_id() {
         .unwrap();
     let entity_id = &entities[0].id;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/vaults/{vault_id}/entities/{entity_id}"))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success(), "get_entity_by_id should return 200");
+    assert!(
+        resp.status().is_success(),
+        "get_entity_by_id should return 200"
+    );
 
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["entity_type"].as_str(), Some("character"));
@@ -228,11 +263,12 @@ async fn test_get_entity_by_id_not_found() {
     let temp = TempDir::new().unwrap();
     let (state, vault_id) = setup(&temp).await;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entities/nonexistent-id-00000"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entities/nonexistent-id-00000"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status().as_u16(), 404);
@@ -258,11 +294,12 @@ async fn test_entity_relations_endpoint_empty() {
         .unwrap();
     let entity_id = &entities[0].id;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/api/vaults/{vault_id}/entities/{entity_id}/relations"))
+        .uri(&format!(
+            "/api/vaults/{vault_id}/entities/{entity_id}/relations"
+        ))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -296,8 +333,7 @@ async fn test_entity_relations_endpoint_with_linked_entities() {
         .unwrap();
     let alice = entities.iter().find(|e| e.path == "alice.md").unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -310,13 +346,19 @@ async fn test_entity_relations_endpoint_with_linked_entities() {
 
     let body: serde_json::Value = test::read_body_json(resp).await;
     let relations = body["relations"].as_array().expect("relations array");
-    assert!(!relations.is_empty(), "alice should have a relation to Order");
+    assert!(
+        !relations.is_empty(),
+        "alice should have a relation to Order"
+    );
 
     // Check that forward relation goes from alice → order
     let forward = relations
         .iter()
         .find(|r| r["direction"].as_str() == Some("forward"));
-    assert!(forward.is_some(), "should have a forward direction relation");
+    assert!(
+        forward.is_some(),
+        "should have a forward direction relation"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -341,8 +383,7 @@ async fn test_graph_contains_edges_for_wiki_links() {
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/vaults/{vault_id}/graph"))
@@ -355,7 +396,10 @@ async fn test_graph_contains_edges_for_wiki_links() {
     let edges = body["edges"].as_array().unwrap();
 
     assert_eq!(nodes.len(), 2, "should have 2 graph nodes");
-    assert!(!edges.is_empty(), "should have at least one edge from wiki-link");
+    assert!(
+        !edges.is_empty(),
+        "should have at least one edge from wiki-link"
+    );
 
     // Edge fields
     let edge = &edges[0];
@@ -377,19 +421,20 @@ async fn test_graph_node_has_expected_fields() {
         .await
         .unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/vaults/{vault_id}/graph"))
         .to_request();
-    let body: serde_json::Value =
-        test::read_body_json(test::call_service(&app, req).await).await;
+    let body: serde_json::Value = test::read_body_json(test::call_service(&app, req).await).await;
 
     let node = &body["nodes"].as_array().unwrap()[0];
     assert!(node["id"].is_string(), "node.id should be a string");
     assert!(node["path"].is_string(), "node.path should be a string");
-    assert!(node["entity_type"].is_string(), "node.entity_type should be a string");
+    assert!(
+        node["entity_type"].is_string(),
+        "node.entity_type should be a string"
+    );
     assert!(node["labels"].is_array(), "node.labels should be an array");
     assert!(node["title"].is_string(), "node.title should be a string");
     // title should be derived from path basename (without extension)
@@ -405,8 +450,7 @@ async fn test_labels_endpoint_empty_db() {
     let temp = TempDir::new().unwrap();
     let (state, _vault_id) = setup(&temp).await;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri("/api/plugins/labels")
@@ -425,8 +469,7 @@ async fn test_labels_endpoint_after_seed() {
 
     LabelService::seed_core_labels(&state.db).await.unwrap();
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri("/api/plugins/labels")
@@ -441,7 +484,9 @@ async fn test_labels_endpoint_after_seed() {
         "should return at least 8 core labels after seed"
     );
 
-    let graphable = labels.iter().find(|l| l["name"].as_str() == Some("graphable"));
+    let graphable = labels
+        .iter()
+        .find(|l| l["name"].as_str() == Some("graphable"));
     assert!(graphable.is_some(), "should contain 'graphable' label");
     assert_eq!(graphable.unwrap()["source"].as_str(), Some("core"));
 }
@@ -472,18 +517,25 @@ async fn test_entity_type_template_endpoint_with_registered_schema() {
         })
         .await;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri("/api/plugins/entity-types/character/template")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success(), "should return 200 for registered type");
+    assert!(
+        resp.status().is_success(),
+        "should return 200 for registered type"
+    );
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let content = body["content"].as_str().expect("content field should be a string");
-    assert!(content.contains("codex_type:"), "template should contain codex_type");
+    let content = body["content"]
+        .as_str()
+        .expect("content field should be a string");
+    assert!(
+        content.contains("codex_type:"),
+        "template should contain codex_type"
+    );
 }
 
 #[actix_web::test]
@@ -491,8 +543,7 @@ async fn test_entity_type_template_endpoint_missing_type_returns_404() {
     let temp = TempDir::new().unwrap();
     let (state, _vault_id) = setup(&temp).await;
 
-    let app =
-        test::init_service(App::new().app_data(state).configure(entities::configure)).await;
+    let app = test::init_service(App::new().app_data(state).configure(entities::configure)).await;
 
     let req = test::TestRequest::get()
         .uri("/api/plugins/entity-types/nonexistent-type/template")
@@ -528,7 +579,10 @@ async fn test_reindex_multiple_entity_types() {
     let types: std::collections::HashSet<String> =
         entities.iter().map(|e| e.entity_type.clone()).collect();
     for expected_type in ["character", "location", "faction", "event"] {
-        assert!(types.contains(expected_type), "missing type: {expected_type}");
+        assert!(
+            types.contains(expected_type),
+            "missing type: {expected_type}"
+        );
     }
 }
 
@@ -580,7 +634,10 @@ async fn test_reindex_relation_created_for_cross_linked_entities() {
     let relations = RelationService::get_for_entity(&state.db, &aria.id)
         .await
         .unwrap();
-    assert!(!relations.is_empty(), "aria should have a relation to Elder");
+    assert!(
+        !relations.is_empty(),
+        "aria should have a relation to Elder"
+    );
 }
 
 #[actix_web::test]
@@ -598,13 +655,12 @@ async fn test_reindex_unresolved_ref_does_not_fail() {
     );
 
     // This should not error — unresolved refs are silently skipped
-    let result = ReindexService::reindex_vault(
-        &state.db,
-        &vault_id,
-        vault_dir.to_str().unwrap(),
-    )
-    .await;
-    assert!(result.is_ok(), "unresolved wiki-link should not fail reindex");
+    let result =
+        ReindexService::reindex_vault(&state.db, &vault_id, vault_dir.to_str().unwrap()).await;
+    assert!(
+        result.is_ok(),
+        "unresolved wiki-link should not fail reindex"
+    );
 
     // Entity is still indexed, just has no relations
     let entities = EntityService::list_all_in_vault(&state.db, &vault_id)

@@ -1,0 +1,15 @@
+[relation_type]
+name          = "knows"
+label         = "Knows"
+from_label    = "person"
+to_label      = "person"
+directed      = false
+inverse_label = "knows"
+color         = "#9B59B6"
+
+[[relation_type.metadata_fields]]
+key     = "relationship"
+label   = "Relationship Type"
+type    = "enum"
+values  = ["Ally", "Enemy", "Friend", "Rival", "Family", "Acquaintance"]
+default = "Acquaintance"

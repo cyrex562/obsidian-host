@@ -100,7 +100,11 @@
   </div>
 
   <!-- New entity dialog -->
-  <NewEntityDialog v-model="newEntityDialog" />
+  <NewEntityDialog
+    v-model="newEntityDialog"
+    :initial-type-id="newEntityDialogInitialTypeId"
+    :initial-file-name="newEntityDialogInitialFileName"
+  />
 
   <!-- New note dialog -->
   <v-dialog v-model="newNoteDialog" max-width="400">
@@ -114,11 +118,24 @@
           autofocus
           @keyup.enter="confirmNewNote"
         />
+        <v-select
+          v-if="loadingNewNoteTemplates || noteTemplateItems.length > 1"
+          v-model="newNoteTemplateId"
+          :items="noteTemplateItems"
+          item-title="title"
+          item-value="value"
+          label="Template"
+          prepend-inner-icon="mdi-shape-outline"
+          density="comfortable"
+          :loading="loadingNewNoteTemplates"
+          hint="Choose a regular note or start from an entity template."
+          persistent-hint
+        />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
         <v-btn @click="newNoteDialog = false">Cancel</v-btn>
-        <v-btn color="primary" @click="confirmNewNote">Create</v-btn>
+        <v-btn color="primary" @click="confirmNewNote">{{ newNoteActionLabel }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -145,7 +162,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, provide, ref } from 'vue';
+import { apiListEntityTypes } from '@/api/client';
+import type { EntityTypeSchema } from '@/api/types';
 import { useVaultsStore } from '@/stores/vaults';
 import { useFilesStore } from '@/stores/files';
 import { useTabsStore } from '@/stores/tabs';
@@ -160,27 +179,57 @@ const uiStore = useUiStore();
 const sort = ref<'asc' | 'desc'>('asc');
 const newNoteDialog = ref(false);
 const newNoteName = ref('');
+const newNoteTemplateId = ref('');
+const loadingNewNoteTemplates = ref(false);
+const entityTypes = ref<EntityTypeSchema[]>([]);
 const newFolderDialog = ref(false);
 const newFolderName = ref('');
 const newEntityDialog = ref(false);
+const newEntityDialogInitialTypeId = ref<string | null>(null);
+const newEntityDialogInitialFileName = ref('');
+
+const noteTemplateItems = computed(() => [
+  { title: 'Regular note', value: '' },
+  ...entityTypes.value.map((type) => ({
+    title: `${type.name} entity`,
+    value: type.id,
+  })),
+]);
+
+const selectedNoteEntityType = computed(() =>
+  entityTypes.value.find((type) => type.id === newNoteTemplateId.value) ?? null,
+);
+
+const newNoteActionLabel = computed(() =>
+  selectedNoteEntityType.value ? 'Continue' : 'Create',
+);
 
 function openGraph() {
   const vaultId = vaultsStore.activeVaultId;
   if (vaultId) tabsStore.openGraphTab(tabsStore.activePaneId, vaultId);
 }
 
-// Provide sort value for FileTree via provide/inject
-import { provide } from 'vue';
 provide('fileTreeSort', sort);
 
 function newNote() {
   newNoteName.value = '';
+  newNoteTemplateId.value = '';
   newNoteDialog.value = true;
+  void loadEntityTypes();
 }
 
 async function confirmNewNote() {
   const vaultId = vaultsStore.activeVaultId;
   if (!vaultId || !newNoteName.value.trim()) return;
+
+  if (selectedNoteEntityType.value) {
+    newEntityDialogInitialTypeId.value = selectedNoteEntityType.value.id;
+    newEntityDialogInitialFileName.value = newNoteName.value.trim();
+    newNoteDialog.value = false;
+    newEntityDialog.value = true;
+    return;
+  }
+
   const name = newNoteName.value.trim().endsWith('.md')
     ? newNoteName.value.trim()
     : newNoteName.value.trim() + '.md';
@@ -188,6 +237,18 @@ async function confirmNewNote() {
   const node = await filesStore.createFile(vaultId, name);
   if (node) {
     tabsStore.openTab(tabsStore.activePaneId, node.path, node.path.split('/').pop()!);
+  }
+}
+
+async function loadEntityTypes() {
+  loadingNewNoteTemplates.value = true;
+  try {
+    const result = await apiListEntityTypes();
+    entityTypes.value = result.entity_types ?? [];
+  } catch {
+    entityTypes.value = [];
+  } finally {
+    loadingNewNoteTemplates.value = false;
   }
 }
 

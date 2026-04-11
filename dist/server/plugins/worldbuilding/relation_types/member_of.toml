@@ -1,0 +1,20 @@
+[relation_type]
+name          = "member_of"
+label         = "Member Of"
+from_label    = "person"
+to_label      = "organization"
+directed      = true
+inverse_label = "has_member"
+color         = "#E8A838"
+
+[[relation_type.metadata_fields]]
+key     = "status"
+label   = "Membership Status"
+type    = "enum"
+values  = ["Active", "Former", "Founding", "Honorary"]
+default = "Active"
+
+[[relation_type.metadata_fields]]
+key   = "role"
+label = "Role / Title"
+type  = "string"

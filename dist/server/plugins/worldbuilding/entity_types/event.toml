@@ -1,0 +1,32 @@
+[entity_type]
+name          = "Event"
+icon          = "event"
+color         = "#C4472A"
+template      = "templates/event.md"
+labels        = ["graphable", "event"]
+display_field = "full_name"
+show_on_create = ["full_name", "date", "location"]
+
+[[entity_type.fields]]
+key      = "full_name"
+label    = "Full Name"
+type     = "string"
+required = true
+
+[[entity_type.fields]]
+key   = "date"
+label = "Date"
+type  = "date"
+
+[[entity_type.fields]]
+key          = "location"
+label        = "Location"
+type         = "entity_ref"
+target_label = "place"
+relation     = "located_in"
+
+[[entity_type.fields]]
+key         = "summary"
+label       = "Summary"
+type        = "text"
+description = "Short description of this event"

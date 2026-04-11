@@ -1,8 +1,8 @@
 use crate::services::wiki_link_service::{FileIndex, WikiLinkResolver};
 use codex_types::{DocumentParser, Frontmatter, RenderedDocument};
 use pulldown_cmark::{html, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
-use serde_json;
 use regex::Regex;
+use serde_json;
 use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
@@ -739,15 +739,27 @@ mod tests {
     fn markdown_parser_render_produces_html() {
         let parser = MarkdownParser;
         let doc = parser.render("# Hello\n\nworld");
-        assert!(doc.html.contains("<h1>"), "expected h1 tag, got: {}", doc.html);
-        assert!(doc.html.contains("world"), "expected body, got: {}", doc.html);
+        assert!(
+            doc.html.contains("<h1>"),
+            "expected h1 tag, got: {}",
+            doc.html
+        );
+        assert!(
+            doc.html.contains("world"),
+            "expected body, got: {}",
+            doc.html
+        );
     }
 
     #[test]
     fn markdown_parser_render_bold_and_italic() {
         let parser = MarkdownParser;
         let doc = parser.render("**bold** and _italic_");
-        assert!(doc.html.contains("<strong>bold</strong>"), "missing bold: {}", doc.html);
+        assert!(
+            doc.html.contains("<strong>bold</strong>"),
+            "missing bold: {}",
+            doc.html
+        );
         assert!(
             doc.html.contains("<em>italic</em>"),
             "missing italic: {}",
@@ -771,7 +783,10 @@ mod tests {
         let parser = MarkdownParser;
         let src = "# Just a heading\n\nNo frontmatter here.";
         let fm = parser.extract_frontmatter(src);
-        assert!(fm.is_null(), "expected null when no frontmatter, got: {fm:?}");
+        assert!(
+            fm.is_null(),
+            "expected null when no frontmatter, got: {fm:?}"
+        );
     }
 
     #[test]
@@ -807,7 +822,10 @@ mod tests {
         let prose = parser.extract_prose(src);
         assert!(prose.contains("Prose content."), "prose: {prose}");
         // Text outside sentinels should NOT be included
-        assert!(!prose.contains("Extra after."), "sentinel not respected: {prose}");
+        assert!(
+            !prose.contains("Extra after."),
+            "sentinel not respected: {prose}"
+        );
         assert!(!prose.contains("title:"), "frontmatter in prose: {prose}");
     }
 

@@ -1,7 +1,7 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     http::header::{HeaderName, HeaderValue},
-    HttpMessage, Error,
+    Error, HttpMessage,
 };
 use std::future::{ready, Ready};
 use std::pin::Pin;

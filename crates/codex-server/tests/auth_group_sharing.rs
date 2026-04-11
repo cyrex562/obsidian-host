@@ -52,7 +52,7 @@ async fn username_login_group_membership_and_vault_sharing_work() {
         ml_undo_store: std::sync::Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
-    shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
+        shutdown_tx: tokio::sync::broadcast::channel::<()>(1).0,
         document_parser: Arc::new(MarkdownParser),
         entity_type_registry: codex::services::EntityTypeRegistry::new(),
         relation_type_registry: codex::services::RelationTypeRegistry::new(),

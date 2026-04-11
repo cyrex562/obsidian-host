@@ -54,8 +54,9 @@ pub fn serialize_frontmatter(frontmatter: Option<&Value>, content: &str) -> AppR
         None => Ok(content.to_string()),
         Some(fm) => {
             // Convert JSON back to YAML
-            let yaml_str = serde_yaml::to_string(fm)
-                .map_err(|e| AppError::InternalError(format!("Failed to serialize frontmatter: {}", e)))?;
+            let yaml_str = serde_yaml::to_string(fm).map_err(|e| {
+                AppError::InternalError(format!("Failed to serialize frontmatter: {}", e))
+            })?;
 
             // Combine with content
             Ok(format!("---\n{}---\n{}", yaml_str, content))

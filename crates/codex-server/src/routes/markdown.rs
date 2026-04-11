@@ -22,9 +22,7 @@ pub async fn render_markdown(
     req: web::Json<RenderRequest>,
 ) -> AppResult<HttpResponse> {
     let doc = state.document_parser.render(&req.content);
-    Ok(HttpResponse::Ok()
-        .content_type("text/html")
-        .body(doc.html))
+    Ok(HttpResponse::Ok().content_type("text/html").body(doc.html))
 }
 
 /// Render markdown with wiki link resolution for a specific vault.

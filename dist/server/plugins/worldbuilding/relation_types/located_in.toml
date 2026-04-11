@@ -1,0 +1,8 @@
+[relation_type]
+name          = "located_in"
+label         = "Located In"
+from_label    = ""
+to_label      = "place"
+directed      = true
+inverse_label = "contains"
+color         = "#52B26B"

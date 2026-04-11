@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tantivy::collector::TopDocs;
 use tantivy::query::{AllQuery, QueryParser};
+use tantivy::schema::Value as TantivyValue;
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING,
 };
 use tantivy::{doc, Index, IndexReader, ReloadPolicy, TantivyDocument, Term};
-use tantivy::schema::Value as TantivyValue;
 use walkdir::WalkDir;
 
 // ── Entity metadata ──────────────────────────────────────────────────────────
@@ -473,7 +473,13 @@ impl SearchIndex {
                 let entity_type = doc
                     .get_first(et_field)
                     .and_then(|v| TantivyValue::as_str(&v))
-                    .and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
+                    .and_then(|s| {
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(s.to_string())
+                        }
+                    });
                 let labels_str = doc
                     .get_first(lbl_field)
                     .and_then(|v| TantivyValue::as_str(&v))
@@ -591,8 +597,7 @@ impl SearchIndex {
                         .unwrap_or(path)
                         .to_string_lossy()
                         .to_string();
-                    let file_name =
-                        path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
                     let mut matches = Vec::new();
                     let mut score = 0.0f32;
@@ -943,8 +948,7 @@ mod tests {
 
         let match_info = &note_result.unwrap().matches[0];
         assert_eq!(
-            match_info.line_number,
-            4,
+            match_info.line_number, 4,
             "Expected line 4, got {}",
             match_info.line_number
         );
@@ -1019,12 +1023,20 @@ mod tests {
             .unwrap();
 
         let results_jp = index
-            .search("test-vault", "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}", 1, 10)
+            .search(
+                "test-vault",
+                "\u{3053}\u{3093}\u{306B}\u{3061}\u{306F}",
+                1,
+                10,
+            )
             .unwrap()
             .results;
         assert!(!results_jp.is_empty(), "Should find Japanese text");
 
-        let results_emoji = index.search("test-vault", "\u{1F980}", 1, 10).unwrap().results;
+        let results_emoji = index
+            .search("test-vault", "\u{1F980}", 1, 10)
+            .unwrap()
+            .results;
         assert!(!results_emoji.is_empty(), "Should find emoji");
     }
 
@@ -1126,7 +1138,9 @@ mod tests {
         fs::write(vault.join("alice.md"), content).unwrap();
 
         let index = SearchIndex::new();
-        index.index_vault("vault1", vault.to_str().unwrap()).unwrap();
+        index
+            .index_vault("vault1", vault.to_str().unwrap())
+            .unwrap();
 
         let results = index.search("vault1", "alice", 1, 10).unwrap().results;
         assert!(!results.is_empty());
@@ -1143,7 +1157,9 @@ mod tests {
         fs::write(vault.join("note.md"), content).unwrap();
 
         let index = SearchIndex::new();
-        index.index_vault("vault1", vault.to_str().unwrap()).unwrap();
+        index
+            .index_vault("vault1", vault.to_str().unwrap())
+            .unwrap();
 
         let results = index.search("vault1", "note", 1, 10).unwrap().results;
         assert!(!results.is_empty());

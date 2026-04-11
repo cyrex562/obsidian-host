@@ -1,0 +1,16 @@
+{
+  "build_time_utc": "2026-04-11T20:42:55.172129+00:00",
+  "git_commit": "3929b0d5eeb4182c00dd6ece2ae1bfa15c340b22",
+  "release_id": "a3a8c59363869521",
+  "target_platform": "x86_64-unknown-linux-gnu",
+  "deployment_target": "obsidian-test-a",
+  "server": {
+    "artifact": "server/codex",
+    "sha256": "a3a8c59363869521c065ec59f0fe27193adb2a52bf6ecd6733acbade2746d847",
+    "frontend_embedded": true
+  },
+  "desktop": {
+    "placeholder": true,
+    "path": "desktop"
+  }
+}
